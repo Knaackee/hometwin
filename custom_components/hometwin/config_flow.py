@@ -91,4 +91,11 @@ class HomeTwinOptionsFlow(OptionsFlow):
             vol.Optional(CONF_MAX_STEPS, default=o.get(CONF_MAX_STEPS, DEFAULT_MAX_STEPS)): NumberSelector(NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX)),
             vol.Optional(CONF_SYSTEM_PROMPT, default=_extra(o.get(CONF_SYSTEM_PROMPT))): TextSelector(TextSelectorConfig(multiline=True)),
         })
-        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="init", data_schema=schema, errors=errors,
+            description_placeholders={
+                "openrouter_url": "https://openrouter.ai/api/v1",
+                "openai_url": "https://api.openai.com/v1",
+                "ollama_url": "http://ollama.local:11434/v1",
+            },
+        )

@@ -1,6 +1,7 @@
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import '../tools/build-index.mjs';
 
 // Bundle the object library (index + recipes) into the panel so it works offline.
 const lib = JSON.parse(readFileSync('../library/index.json', 'utf8'));
@@ -11,7 +12,9 @@ const nodePaths = [resolve('node_modules')];
 // Home Assistant panel: main module + lazily loaded chunks (PDF support) next to it.
 const out = '../custom_components/hometwin/frontend';
 rmSync(out, { recursive: true, force: true }); mkdirSync(out, { recursive: true });
-await build({ entryPoints: { 'hometwin-panel': 'src/entry-ha.js' }, bundle: true, format: 'esm', splitting: true, minify: true, target: 'es2020', outdir: out, chunkNames: 'chunks/[name]-[hash]', legalComments: 'eof', logLevel: 'warning', nodePaths, supported: { 'top-level-await': true } });
+// Shared engine files also resolve packages from the root installation. Use one Three.js copy
+// regardless of whether the library-tool dependencies are installed beside the frontend.
+await build({ entryPoints: { 'hometwin-panel': 'src/entry-ha.js' }, bundle: true, format: 'esm', splitting: true, minify: true, target: 'es2020', outdir: out, chunkNames: 'chunks/[name]-[hash]', legalComments: 'eof', logLevel: 'warning', nodePaths, alias: { three: resolve('node_modules/three') }, supported: { 'top-level-await': true } });
 // Standalone demo: one HTML file, three.js and pdf.js from the CDN import map.
 const demo = await build({ entryPoints: ['src/entry-demo.js'], bundle: true, format: 'esm', minify: true, target: 'es2020', write: false, external: ['three', 'three/*', 'pdfjs-dist/*'], logLevel: 'warning', nodePaths, supported: { 'top-level-await': true } });
 const js = demo.outputFiles[0].text.replace(/<\/script/g, '<\\/script');

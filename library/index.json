@@ -1,13 +1,14 @@
 {
  "schema": 1,
- "generated": "2026-10-16T15:12:56.513Z",
- "count": 6,
+ "generated": "2026-10-16T16:17:41.903Z",
+ "count": 7,
  "categories": [
   "climate/radiator",
   "climate/thermostat",
   "furniture/seating",
   "furniture/storage",
   "lighting/floor",
+  "media",
   "music/instruments"
  ],
  "items": [
@@ -192,6 +193,36 @@
    "author": "knaackee",
    "format": "recipe",
    "preview": "manufacturers/martin/music/instruments/ed-sheeran-divide-signature/preview.webp"
+  },
+  {
+   "id": "manufacturers/microsoft/media/xbox-wireless-controller-robot-white",
+   "name": {
+    "en": "Xbox Wireless Controller — Robot White",
+    "de": "Xbox Wireless Controller — Robot White"
+   },
+   "category": "media",
+   "manufacturer": "Microsoft",
+   "model": "Xbox Wireless Controller (Series X|S)",
+   "variant": "Robot White",
+   "dimensions": {
+    "w": 0.153,
+    "d": 0.102,
+    "h": 0.061
+   },
+   "mount": "table",
+   "ha": {
+    "domains": []
+   },
+   "tags": [
+    "controller",
+    "gamepad",
+    "xbox",
+    "gaming"
+   ],
+   "license": "CC0-1.0",
+   "author": "knaackee",
+   "format": "recipe",
+   "preview": "manufacturers/microsoft/media/xbox-wireless-controller-robot-white/preview.webp"
   }
  ]
 }

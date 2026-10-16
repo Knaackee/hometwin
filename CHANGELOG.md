@@ -1,4 +1,11 @@
 # Changelog
+## 0.5.1 (2026-10-16)
+
+- Include the Xbox Wireless Controller in the generated offline catalogue, website gallery and editor.
+- Fix Home Assistant translation validation and provide local HomeTwin brand assets.
+- Publish four-view object review sheets and fail CI when expected preview artifacts are missing.
+- Refresh the library index during panel builds and check all generated panel files in CI.
+
 
 ## 0.5.0 (beta): first public release as HomeTwin (2026-10-16)
 

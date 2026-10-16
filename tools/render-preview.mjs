@@ -35,11 +35,14 @@ for (const dir of dirs) {
   const id = idOf(dir);
   try {
     const obj = readJson(join(dir, 'object.json')), recipe = readJson(join(dir, 'recipe.json'));
-    const r = await page.evaluate(([rc, pa, meta]) => window.renderRecipe(rc, pa, meta), [recipe, params, { title: `${obj.name?.en || id}  —  ${id}`, expected: obj.dimensions }]);
+    const r = await page.evaluate(([rc, pa, meta]) => window.renderRecipe(rc, pa, meta), [recipe, params, { title: obj.name?.en || id, expected: obj.dimensions }]);
     const toBuf = (u) => Buffer.from(u.split(',')[1], 'base64');
     const sheet = join(ROOT, '.preview', `${basename(dir)}-sheet.png`);
     writeFileSync(sheet, toBuf(r.sheet));
-    if (!NO_WRITE) writeFileSync(join(dir, 'preview.webp'), toBuf(r.preview));
+    if (!NO_WRITE) {
+      writeFileSync(join(dir, 'preview.webp'), toBuf(r.preview));
+      writeFileSync(join(dir, 'review.png'), toBuf(r.sheet));
+    }
     const s = r.bounds.size.map((v) => v.toFixed(3));
     console.log(`✔ ${id}\n    size W ${s[0]} × D ${s[2]} × H ${s[1]} m · ${r.stats.triangles} tris\n    preview: ${NO_WRITE ? '(not written)' : join(dir, 'preview.webp')}\n    sheet:   ${sheet}`);
   } catch (e) { failed++; console.log(`✘ ${id}: ${e.message}`); }

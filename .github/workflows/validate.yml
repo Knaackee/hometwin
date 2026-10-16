@@ -39,8 +39,23 @@ jobs:
         working-directory: frontend
       - run: node build.mjs
         working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: built-panel
+          path: custom_components/hometwin/frontend/
       - name: Built panel is committed and up to date
-        run: git diff --exit-code -- custom_components/hometwin/frontend || (echo "::error::Run 'cd frontend && node build.mjs' and commit the result" && exit 1)
+        run: |
+          changes=$(git status --porcelain -- custom_components/hometwin/frontend library/index.json frontend/src/library.gen.js docs/demo/index.html)
+          if [ -n "$changes" ]; then
+            echo "$changes"
+            echo "::error::Run 'cd frontend && npm ci && node build.mjs' and commit all generated files. The built-panel artifact contains the Linux CI output."
+            exit 1
+          fi
+      - name: Build is unchanged with library-tool dependencies installed
+        run: |
+          npm ci
+          npm run build
+          test -z "$(git status --porcelain -- custom_components/hometwin/frontend library/index.json frontend/src/library.gen.js docs/demo/index.html)"
 
   library:
     runs-on: ubuntu-latest
@@ -53,14 +68,19 @@ jobs:
       - name: Validate all objects
         run: npm run validate -- --strict
       - name: Render previews of changed objects
+        id: previews
         if: github.event_name == 'pull_request'
         run: |
           git fetch origin ${{ github.base_ref }} --depth=1
-          ids=$(git diff --name-only origin/${{ github.base_ref }} -- library | grep -E '/(object|recipe)\.json$' | xargs -r -n1 dirname | sed 's#^library/##' | sort -u)
-          if [ -n "$ids" ]; then npm run preview -- $ids; fi
+          ids=$(git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }} -- library | grep -E '/((object|recipe)\.json|review\.png)$' | xargs -r -n1 dirname | sed 's#^library/##' | sort -u)
+          if [ -n "$ids" ]; then
+            npm run preview -- $ids
+            echo "rendered=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'pull_request'
+        if: steps.previews.outputs.rendered == 'true'
         with:
           name: previews
-          path: .preview/
-          if-no-files-found: ignore
+          path: .preview/*-sheet.png
+          include-hidden-files: true
+          if-no-files-found: error

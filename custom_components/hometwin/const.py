@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "hometwin"
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 
 PANEL_URL_PATH = "hometwin"
 PANEL_COMPONENT = "hometwin-panel"

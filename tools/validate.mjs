@@ -13,7 +13,7 @@ const STRICT = args.includes('--strict'), JSON_OUT = args.includes('--json');
 const ajv = new Ajv({ allErrors: true, strict: false });
 const vObject = ajv.compile(readJson(join(LIBRARY, 'schema/object.schema.json')));
 const vRecipe = ajv.compile(readJson(join(LIBRARY, 'schema/recipe.schema.json')));
-const ALLOWED = new Set(['object.json', 'recipe.json', 'model.glb', 'preview.webp', 'README.md']);
+const ALLOWED = new Set(['object.json', 'recipe.json', 'model.glb', 'preview.webp', 'review.png', 'README.md']);
 const LIMITS = { recipeBytes: 64 * 1024, glbBytes: 2 * 1024 * 1024, previewBytes: 150 * 1024, triangles: 30000, trianglesWarn: 15000 };
 
 function check(dir) {
