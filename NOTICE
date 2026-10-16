@@ -1,0 +1,4 @@
+Parts of the wall derivation in frontend/src/house.js are adapted from
+house-control (https://github.com/0xProbabillity/house-control),
+Copyright (c) 0xProbabillity, MIT License.
+Three.js (bundled in the panel) is Copyright (c) 2010-2024 three.js authors, MIT License.
