@@ -1,0 +1,58 @@
+<p align="center"><img src="docs/assets/logo.svg" width="96" alt="HomeTwin-Logo"></p>
+
+<h1 align="center">HomeTwin</h1>
+
+<p align="center"><b>Dein Zuhause in 3D für Home Assistant.</b><br>
+Bauplan hochladen, KI liest die Räume, jedes Gerät dort bedienen, wo es ist.</p>
+
+<p align="center">
+  <a href="https://knaackee.github.io/hometwin/demo/"><b>▶️ Live-Demo</b></a> ·
+  <a href="https://knaackee.github.io/hometwin/">🌐 Website</a> ·
+  <a href="README.md">🇬🇧 English</a>
+</p>
+
+<p align="center"><img src="docs/assets/screenshot-house.png" alt="HomeTwin: zweigeschossiges Haus in 3D mit Bedienfeld" width="100%"></p>
+
+> [!WARNING]
+> **HomeTwin ist eine öffentliche Beta.** Es läuft im Alltag, Datenformate können sich aber noch ändern. Bitte ab und zu ein Backup exportieren (*Bearbeiten → Haus → Backup*).
+
+## ✨ Was es kann
+
+- 🏠 **Dein Haus in 3D**: Etagen, Räume, Wände, Fenster, Türen, Treppen, Dächer, Garten. Aus dem Bauplan oder selbst gezeichnet.
+- 💡 **Geräte live**: Licht leuchtet in seiner Farbe, Rollläden und Tore fahren, offene Fenster leuchten auf, PV zeigt die Leistung. Tippen schaltet, langes Drücken öffnet den Detaildialog von Home Assistant.
+- ☀️ **Echter Sonnenstand** mit Schatten.
+- 🤖 **Bauplan-KI**: Räume, Türen, Fenster und Maßstab aus dem Architektenplan, mit zweitem Prüfdurchgang.
+- 🚶 **Begehen**: in Augenhöhe durchs Haus gehen, unterwegs bedienen und umstellen.
+- 🏡 **Mehrere Dächer**: Sattel-, Walm-, Pult- oder Flachdach, eigene Dächer für Garage, Carport und Gartenhaus. Dazu Gauben und Dachfenster.
+- 📱 **Fürs Handy und Wand-Tablet**: Bottom Sheet, Raumauswahl, Gesten, Leistungsmodus.
+- 🧩 **Objekt-Bibliothek der Community**, neue Objekte erscheinen live nach dem Merge.
+- 💾 **Backup**: komplette Konfiguration exportieren und importieren.
+
+## ⚡ Vom Bauplan zum 3D-Haus in ca. 2 Minuten
+
+Im eigenen Test hat `google/gemini-3.8-flash` einen echten Architektenplan mit 12 Räumen und 16 Öffnungen in etwa zwei Minuten gelesen. Den Maßstab hat die KI aus den Maßketten übernommen, Messen war nicht nötig. Danach folgen die Prüfung (Flächen gegen die m²-Angaben, Ecken ziehen, Türen und Fenster per Klick), weitere Etagen und das Dach. Zum Schluss wachsen die Mauern hoch.
+
+## 🚀 Installation
+
+1. HACS → ⋮ → *Benutzerdefinierte Repositories* → `knaackee/hometwin` als **Integration** hinzufügen.
+2. **HomeTwin** installieren und Home Assistant neu starten.
+3. *Einstellungen → Geräte & Dienste → Integration hinzufügen → **HomeTwin***.
+4. **HomeTwin** in der Seitenleiste öffnen.
+
+KI (optional): ein OpenAI-kompatibler Endpunkt mit Bildverständnis, empfohlen **`google/gemini-3.8-flash`** über OpenRouter mit Reasoning „Aus“ oder „Low“.
+
+> Von der Vorabversion **Raumwerk**? HomeTwin übernimmt Plan, Bauplan-Bilder und KI-Einstellungen beim ersten Start automatisch. Alternativ: *Backup → exportieren/importieren*.
+
+## 🧩 In 5 Minuten beitragen
+
+Gib deinem Agenten (Claude, Codex …) den Skill [`skills/add-object/SKILL.md`](skills/add-object/SKILL.md) und ein Produkt oder ein Foto. Er recherchiert die Maße, baut das Objekt, zeigt dir eine Vorschau und stellt den Pull Request. Aus **einem Handyfoto** entstand so in etwa **fünf Minuten** eine maßgenaue *Martin Ed Sheeran ÷ Signature Edition*.
+
+Geh durchs Haus, schau in der [Galerie](https://knaackee.github.io/hometwin/#library), was fehlt, und reich es ein. Am liebsten **mehrere Objekte pro Pull Request**, z. B. 3–10 aus einem Raum. Das geht beim Mergen viel schneller. Mehr dazu in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## 🗺️ Roadmap
+
+Englische Oberfläche und i18n · „Braucht Aufmerksamkeit“ (Batterie, Ausfälle, Alarme) · Geräte-Sheets · parametrische Objekte · Kiosk-Modus.
+
+## 📜 Lizenz
+
+Code [MIT](LICENSE), Bibliothek [CC0-1.0](library/LICENSE). Unabhängiges Community-Projekt, nicht mit Home Assistant verbunden.

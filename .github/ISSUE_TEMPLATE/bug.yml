@@ -1,0 +1,33 @@
+name: 🐞 Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: HomeTwin version
+      placeholder: e.g. 0.5.0
+    validations:
+      required: true
+  - type: input
+    id: ha
+    attributes:
+      label: Home Assistant version
+      placeholder: e.g. 2026.10.1
+  - type: input
+    id: device
+    attributes:
+      label: Browser / device
+      placeholder: e.g. Chrome 140 on Windows, HA app on iPhone 15
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Browser console (F12) or Home Assistant log lines mentioning hometwin. Please remove private data.

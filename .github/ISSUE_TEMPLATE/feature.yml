@@ -1,0 +1,16 @@
+name: ✨ Feature idea
+description: Suggest an improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Describe the problem you want solved and how you imagine it.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Screenshots, examples from other dashboards, your setup.

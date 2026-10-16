@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up HomeTwin",
+        "description": "Adds the HomeTwin 3D dashboard to the sidebar. Configure the AI assistant afterwards via “Configure”.",
+        "data": {
+          "title": "Sidebar title",
+          "demo_when_empty": "Start with the sample house while no plan exists"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "HomeTwin is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HomeTwin options",
+        "description": "The assistant uses an OpenAI-compatible endpoint (e.g. OpenRouter, OpenAI, Ollama, LM Studio). Without a model it stays off. The API key stays on the Home Assistant server.",
+        "data": {
+          "title": "Sidebar title",
+          "demo_when_empty": "Start with the sample house while no plan exists",
+          "base_url": "Endpoint base URL",
+          "model": "Model",
+          "api_key": "API key",
+          "reasoning_effort": "Reasoning effort",
+          "max_steps": "Max tool steps per request",
+          "system_prompt": "Additional instructions (optional)"
+        },
+        "data_description": {
+          "base_url": "e.g. https://openrouter.ai/api/v1, https://api.openai.com/v1 or http://ollama.local:11434/v1",
+          "model": "Recommended: google/gemini-3.8-flash on OpenRouter (fast, reads images; floor plan in about 1–2 min) with reasoning off or low. Any vision model works.",
+          "reasoning_effort": "Only sent when not “none”. As reasoning.effort for OpenRouter, otherwise as reasoning_effort.",
+          "system_prompt": "Added to the built-in assistant rules, e.g. \"Name rooms in English\" or \"Our house has no basement\"."
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "The address must start with http:// or https://."
+    }
+  },
+  "selector": {
+    "reasoning": {
+      "options": {
+        "none": "Off (not sent)",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      }
+    }
+  }
+}

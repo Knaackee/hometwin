@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "params": {
+    "w": {
+      "default": 1.0,
+      "min": 0.4,
+      "max": 3.0,
+      "label": {
+        "en": "Width",
+        "de": "Breite"
+      }
+    },
+    "h": {
+      "default": 0.6,
+      "min": 0.3,
+      "max": 0.9,
+      "label": {
+        "en": "Height",
+        "de": "Höhe"
+      }
+    },
+    "color": {
+      "default": "#f2f2ef",
+      "type": "color",
+      "label": {
+        "en": "Colour",
+        "de": "Farbe"
+      }
+    }
+  },
+  "derived": {
+    "ribs": "floor((w-0.04)/0.033)"
+  },
+  "materials": {
+    "panel": {
+      "base": "metal_white",
+      "color": "$color"
+    },
+    "rib": {
+      "base": "metal_white",
+      "color": "$color",
+      "shade": -0.05
+    },
+    "grille": {
+      "base": "metal_white",
+      "color": "$color",
+      "shade": -0.25
+    },
+    "bracket": {
+      "base": "metal_black"
+    }
+  },
+  "parts": [
+    {
+      "name": "bracket",
+      "shape": "box",
+      "size": [
+        0.04,
+        0.08,
+        0.03
+      ],
+      "pos": [
+        "w/2-0.12",
+        "h*0.55",
+        -0.035
+      ],
+      "mirror": "x",
+      "mat": "bracket"
+    },
+    {
+      "name": "back panel",
+      "shape": "box",
+      "size": [
+        "w",
+        "h",
+        0.02
+      ],
+      "pos": [
+        0,
+        0,
+        -0.01
+      ],
+      "round": 0.004,
+      "mat": "panel"
+    },
+    {
+      "name": "front panel",
+      "shape": "box",
+      "size": [
+        "w",
+        "h",
+        0.02
+      ],
+      "pos": [
+        0,
+        0,
+        0.04
+      ],
+      "round": 0.004,
+      "mat": "panel"
+    },
+    {
+      "name": "rib",
+      "shape": "box",
+      "size": [
+        0.012,
+        "h-0.03",
+        0.004
+      ],
+      "pos": [
+        "-w/2 + 0.02 + 0.0165 + i*0.033",
+        0.015,
+        0.051
+      ],
+      "repeat": {
+        "n": "ribs"
+      },
+      "round": 0.0015,
+      "mat": "rib"
+    },
+    {
+      "name": "top grille",
+      "shape": "box",
+      "size": [
+        "w-0.01",
+        0.004,
+        0.028
+      ],
+      "pos": [
+        0,
+        "h-0.006",
+        0.015
+      ],
+      "mat": "grille"
+    },
+    {
+      "name": "side cover",
+      "shape": "box",
+      "size": [
+        0.004,
+        "h-0.01",
+        0.05
+      ],
+      "pos": [
+        "w/2-0.002",
+        0.005,
+        0.025
+      ],
+      "mirror": "x",
+      "mat": "panel"
+    }
+  ]
+}

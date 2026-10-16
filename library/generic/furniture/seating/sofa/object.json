@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "id": "generic/furniture/seating/sofa",
+  "name": {
+    "en": "Sofa",
+    "de": "Sofa"
+  },
+  "category": "furniture/seating",
+  "manufacturer": null,
+  "model": null,
+  "variant": null,
+  "dimensions": {
+    "w": 2.2,
+    "d": 0.95,
+    "h": 0.81
+  },
+  "mount": "floor",
+  "ha": {
+    "domains": []
+  },
+  "tags": [
+    "sofa",
+    "couch",
+    "living-room"
+  ],
+  "license": "CC0-1.0",
+  "author": "hometwin",
+  "generated_by": "hometwin example",
+  "sources": [],
+  "created": "2026-10-16"
+}

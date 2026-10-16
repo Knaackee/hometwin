@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "id": "generic/lighting/floor/arc-lamp",
+  "name": {
+    "en": "Arc floor lamp",
+    "de": "Bogenleuchte"
+  },
+  "category": "lighting/floor",
+  "manufacturer": null,
+  "model": null,
+  "variant": null,
+  "dimensions": {
+    "w": 1.9,
+    "d": 0.44,
+    "h": 2.0
+  },
+  "mount": "floor",
+  "ha": {
+    "domains": [
+      "light"
+    ]
+  },
+  "tags": [
+    "lamp",
+    "arc",
+    "floor-lamp"
+  ],
+  "license": "CC0-1.0",
+  "author": "hometwin",
+  "generated_by": "hometwin example",
+  "sources": [],
+  "created": "2026-10-16"
+}

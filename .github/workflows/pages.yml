@@ -1,0 +1,41 @@
+name: Website
+
+# Publishes docs/ (product page, live demo) plus the library gallery on every push to main,
+# so merged library objects appear on the website and in every HomeTwin panel.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Build library index and gallery data
+        run: npm run pages
+      - name: Build demo
+        run: npm ci && node build.mjs
+        working-directory: frontend
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4

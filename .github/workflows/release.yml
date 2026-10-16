@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"; tag="${tag%%-*}"
+          manifest=$(python3 -c "import json;print(json.load(open('custom_components/hometwin/manifest.json'))['version'])")
+          [ "$tag" = "$manifest" ] || { echo "::error::tag $GITHUB_REF_NAME does not match manifest version $manifest"; exit 1; }
+      - name: Build hometwin.zip
+        run: cd custom_components/hometwin && zip -r ../../hometwin.zip . -x '__pycache__/*'
+      - run: gh release upload "$GITHUB_REF_NAME" hometwin.zip --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,19 @@
+<title>HomeTwin – Live demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root { color-scheme: dark; --bg: #0b0f17; }
+html, body { height: 100%; margin: 0; background: var(--bg); overflow: hidden; }
+#app { position: fixed; inset: 0; padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+hometwin-panel { --ha-font-family-body: "Hanken Grotesk", system-ui, sans-serif; }
+</style>
+<div id="app"></div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "pdfjs-dist/": "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/"
+} }
+</script>
+<script type="module">/*BUNDLE*/</script>

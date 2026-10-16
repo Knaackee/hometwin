@@ -1,0 +1,24 @@
+name: 🛋️ Object request
+description: An object is missing in the library and you can't add it yourself
+labels: [library]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tip: with a coding agent you can add objects yourself in about 5 minutes. See [CONTRIBUTING.md](https://github.com/knaackee/hometwin/blob/main/CONTRIBUTING.md).
+  - type: input
+    id: product
+    attributes:
+      label: Product
+      placeholder: Manufacturer, model, variant (or "generic dining table")
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Product page or datasheet (link)
+  - type: input
+    id: size
+    attributes:
+      label: Dimensions W × D × H
+      placeholder: e.g. 220 × 95 × 81 cm

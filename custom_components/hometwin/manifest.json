@@ -1,0 +1,21 @@
+{
+  "domain": "hometwin",
+  "name": "HomeTwin",
+  "codeowners": [
+    "@knaackee"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "frontend",
+    "panel_custom",
+    "websocket_api"
+  ],
+  "documentation": "https://knaackee.github.io/hometwin/",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/knaackee/hometwin/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.5.0"
+}

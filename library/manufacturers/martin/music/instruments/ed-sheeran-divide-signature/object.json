@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "id": "manufacturers/martin/music/instruments/ed-sheeran-divide-signature",
+  "name": {
+    "en": "Martin Ed Sheeran ÷ (Divide) Signature Edition",
+    "de": "Martin Ed Sheeran ÷ (Divide) Signature Edition"
+  },
+  "category": "music/instruments",
+  "manufacturer": "Martin",
+  "model": "Ed Sheeran ÷ Signature Edition",
+  "variant": "Natural (LX1E body)",
+  "dimensions": {
+    "w": 0.305,
+    "d": 0.09,
+    "h": 0.864
+  },
+  "mount": "floor",
+  "ha": {
+    "domains": []
+  },
+  "tags": [
+    "guitar",
+    "acoustic-guitar",
+    "travel-guitar",
+    "instrument",
+    "music"
+  ],
+  "license": "CC0-1.0",
+  "author": "knaackee",
+  "generated_by": "hometwin-add-object skill (Claude)",
+  "sources": [
+    {
+      "url": "https://www.guitarcenter.com/Martin/Ed-Sheeran-3-Divide-Signature-Edition-Little-Martin-Acoustic-Electric-Guitar.gc",
+      "type": "product",
+      "note": "materials, 23 in scale, blue ÷ inlays and rosette"
+    },
+    {
+      "url": "https://www.micheomusic.com/products/martin-lxsheeran3-ed-sheeran-signature-edition-6-strings-acoustic-electric-guitar-w-solid-spruce-top-hpl-mahogany-back-sides-birch-neck-richlite-fingerboard-fishman-sonitone-electronics-natural",
+      "type": "product",
+      "note": "specs: 14 frets to body, 20 frets, nut 43 mm, Richlite bridge"
+    },
+    {
+      "url": "https://equipboard.com/items/martin-lx1-little-martin",
+      "type": "other",
+      "note": "LX1 body: length 15 in, width 12 in, depth 3 in, overall 34 in (secondary source)"
+    },
+    {
+      "url": "https://prosoundhq.com/taylor-gs-mini-vs-martin-lx1-little-martin-acoustic-guitars/",
+      "type": "other",
+      "note": "confirms body 15 x 12 x 3 in (secondary source)"
+    },
+    {
+      "url": "https://umgf.com/little-martin-dimensions-t30183.html",
+      "type": "other",
+      "note": "overall length 34 in"
+    }
+  ],
+  "created": "2026-10-16",
+  "description": {
+    "en": "Travel-size acoustic-electric guitar (Little Martin body, 23\" scale) with Sitka spruce top, HPL mahogany back and sides, Richlite fingerboard with blue ÷ inlays.",
+    "de": "Reisegitarre (Little-Martin-Korpus, 23\" Mensur) mit Fichtendecke, HPL-Mahagoni-Korpus und Richlite-Griffbrett mit blauen ÷-Einlagen."
+  }
+}

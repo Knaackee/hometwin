@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "params": {
+    "cols": {
+      "default": 4,
+      "type": "int",
+      "min": 1,
+      "max": 5,
+      "label": {
+        "en": "Columns",
+        "de": "Spalten"
+      }
+    },
+    "rows": {
+      "default": 4,
+      "type": "int",
+      "min": 1,
+      "max": 5,
+      "label": {
+        "en": "Rows",
+        "de": "Reihen"
+      }
+    },
+    "cell": {
+      "default": 0.335,
+      "min": 0.25,
+      "max": 0.45,
+      "label": {
+        "en": "Compartment size",
+        "de": "Fachgröße"
+      }
+    },
+    "d": {
+      "default": 0.39,
+      "min": 0.25,
+      "max": 0.5,
+      "label": {
+        "en": "Depth",
+        "de": "Tiefe"
+      }
+    },
+    "color": {
+      "default": "#eceae5",
+      "type": "color",
+      "label": {
+        "en": "Colour",
+        "de": "Farbe"
+      }
+    }
+  },
+  "derived": {
+    "t": 0.035,
+    "tt": 0.016,
+    "w": "cols*cell + (cols-1)*tt + 2*t",
+    "h": "rows*cell + (rows-1)*tt + 2*t"
+  },
+  "materials": {
+    "board": {
+      "base": "laminate_white",
+      "color": "$color"
+    },
+    "inner": {
+      "base": "laminate_white",
+      "color": "$color",
+      "shade": -0.04
+    }
+  },
+  "parts": [
+    {
+      "name": "bottom",
+      "shape": "box",
+      "size": [
+        "w",
+        "t",
+        "d"
+      ],
+      "round": 0.003,
+      "mat": "board"
+    },
+    {
+      "name": "top",
+      "shape": "box",
+      "size": [
+        "w",
+        "t",
+        "d"
+      ],
+      "pos": [
+        0,
+        "h-t",
+        0
+      ],
+      "round": 0.003,
+      "mat": "board"
+    },
+    {
+      "name": "side",
+      "shape": "box",
+      "size": [
+        "t",
+        "h-2*t",
+        "d"
+      ],
+      "pos": [
+        "w/2-t/2",
+        "t",
+        0
+      ],
+      "mirror": "x",
+      "mat": "board"
+    },
+    {
+      "name": "divider",
+      "shape": "box",
+      "size": [
+        "tt",
+        "h-2*t",
+        "d-0.004"
+      ],
+      "pos": [
+        "-w/2 + t + (i+1)*cell + i*tt + tt/2",
+        "t",
+        0
+      ],
+      "repeat": {
+        "n": "cols-1"
+      },
+      "mat": "inner"
+    },
+    {
+      "name": "shelf",
+      "shape": "box",
+      "size": [
+        "w-2*t",
+        "tt",
+        "d-0.004"
+      ],
+      "pos": [
+        0,
+        "t + (j+1)*cell + j*tt",
+        0
+      ],
+      "repeat": {
+        "n": "rows-1",
+        "var": "j"
+      },
+      "mat": "inner"
+    }
+  ]
+}

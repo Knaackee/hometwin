@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HomeTwin einrichten",
+        "description": "Fügt das 3D-Dashboard „HomeTwin“ in die Seitenleiste ein. Den KI-Assistenten richtest du danach unter „Konfigurieren“ ein.",
+        "data": {
+          "title": "Titel in der Seitenleiste",
+          "demo_when_empty": "Mit Beispielhaus starten, solange noch kein Plan existiert"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "HomeTwin ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HomeTwin Optionen",
+        "description": "Der Assistent nutzt einen OpenAI-kompatiblen Endpunkt (z. B. OpenRouter, OpenAI, Ollama, LM Studio). Ohne Modell bleibt er ausgeschaltet. Der API-Key bleibt auf dem Home-Assistant-Server.",
+        "data": {
+          "title": "Titel in der Seitenleiste",
+          "demo_when_empty": "Mit Beispielhaus starten, solange noch kein Plan existiert",
+          "base_url": "Basis-URL des Endpunkts",
+          "model": "Modell",
+          "api_key": "API-Key",
+          "reasoning_effort": "Reasoning-Level",
+          "max_steps": "Maximale Werkzeug-Schritte pro Anfrage",
+          "system_prompt": "Zusätzliche Anweisungen (optional)"
+        },
+        "data_description": {
+          "base_url": "z. B. https://openrouter.ai/api/v1, https://api.openai.com/v1 oder http://ollama.local:11434/v1",
+          "model": "Empfohlen: google/gemini-3.8-flash über OpenRouter (schnell, liest Bilder; Grundriss in ca. 1–2 min) mit Reasoning „Aus“ oder „Low“. Jedes Modell mit Bildverständnis geht.",
+          "reasoning_effort": "„Aus“ oder „Low“ ist deutlich schneller. „High“ kann mehrere Minuten pro Anfrage dauern.",
+          "system_prompt": "Werden an die eingebauten Regeln des Assistenten angehängt, z. B. „Räume englisch benennen“ oder „Unser Haus hat keinen Keller“."
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Die Adresse muss mit http:// oder https:// beginnen."
+    }
+  },
+  "selector": {
+    "reasoning": {
+      "options": {
+        "none": "Aus (nicht senden)",
+        "low": "Niedrig",
+        "medium": "Mittel",
+        "high": "Hoch"
+      }
+    }
+  }
+}

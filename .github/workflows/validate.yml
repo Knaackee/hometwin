@@ -1,0 +1,66 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m py_compile custom_components/hometwin/*.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: frontend
+      - run: node build.mjs
+        working-directory: frontend
+      - name: Built panel is committed and up to date
+        run: git diff --exit-code -- custom_components/hometwin/frontend || (echo "::error::Run 'cd frontend && node build.mjs' and commit the result" && exit 1)
+
+  library:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci && npx playwright install --with-deps chromium
+      - name: Validate all objects
+        run: npm run validate -- --strict
+      - name: Render previews of changed objects
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          ids=$(git diff --name-only origin/${{ github.base_ref }} -- library | grep -E '/(object|recipe)\.json$' | xargs -r -n1 dirname | sed 's#^library/##' | sort -u)
+          if [ -n "$ids" ]; then npm run preview -- $ids; fi
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
+        with:
+          name: previews
+          path: .preview/
+          if-no-files-found: ignore

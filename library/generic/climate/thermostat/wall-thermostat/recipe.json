@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "params": {
+    "color": {
+      "default": "#eceae5",
+      "type": "color",
+      "label": {
+        "en": "Colour",
+        "de": "Farbe"
+      }
+    }
+  },
+  "derived": {
+    "w": 0.086,
+    "h": 0.086,
+    "d": 0.024
+  },
+  "materials": {
+    "body": {
+      "base": "plastic_white",
+      "color": "$color"
+    },
+    "screen": {
+      "base": "screen"
+    },
+    "digits": {
+      "color": "#9fd0ff",
+      "rough": 0.4,
+      "emissive": "#6fb4ff",
+      "emissiveIntensity": 0.8
+    }
+  },
+  "parts": [
+    {
+      "name": "body",
+      "shape": "box",
+      "size": [
+        "w",
+        "h",
+        "d"
+      ],
+      "pos": [
+        0,
+        0,
+        0
+      ],
+      "round": 0.008,
+      "mat": "body"
+    },
+    {
+      "name": "screen",
+      "shape": "box",
+      "size": [
+        0.052,
+        0.032,
+        0.002
+      ],
+      "pos": [
+        0,
+        0.042,
+        "d/2"
+      ],
+      "round": 0.0008,
+      "mat": "screen"
+    },
+    {
+      "name": "digits",
+      "shape": "box",
+      "size": [
+        0.026,
+        0.012,
+        0.001
+      ],
+      "pos": [
+        0,
+        0.052,
+        "d/2+0.001"
+      ],
+      "mat": "digits"
+    },
+    {
+      "name": "button",
+      "shape": "cylinder",
+      "r": 0.006,
+      "h": 0.002,
+      "rot": [
+        90,
+        0,
+        0
+      ],
+      "pos": [
+        0.014,
+        0.018,
+        "d/2-0.001"
+      ],
+      "mirror": "x",
+      "mat": "body"
+    }
+  ]
+}

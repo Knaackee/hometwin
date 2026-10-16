@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "id": "generic/climate/radiator/panel-radiator-type-22",
+  "name": {
+    "en": "Panel radiator type 22",
+    "de": "Flachheizkörper Typ 22"
+  },
+  "category": "climate/radiator",
+  "manufacturer": null,
+  "model": null,
+  "variant": null,
+  "dimensions": {
+    "w": 1.0,
+    "d": 0.103,
+    "h": 0.6
+  },
+  "mount": "wall",
+  "ha": {
+    "domains": [
+      "climate"
+    ]
+  },
+  "tags": [
+    "radiator",
+    "heating",
+    "compact"
+  ],
+  "license": "CC0-1.0",
+  "author": "hometwin",
+  "generated_by": "hometwin example",
+  "sources": [],
+  "created": "2026-10-16"
+}

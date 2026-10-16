@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "id": "generic/climate/thermostat/wall-thermostat",
+  "name": {
+    "en": "Wall thermostat",
+    "de": "Wandthermostat"
+  },
+  "category": "climate/thermostat",
+  "manufacturer": null,
+  "model": null,
+  "variant": null,
+  "dimensions": {
+    "w": 0.086,
+    "d": 0.026,
+    "h": 0.086
+  },
+  "mount": "wall",
+  "ha": {
+    "domains": [
+      "climate",
+      "sensor"
+    ]
+  },
+  "tags": [
+    "thermostat",
+    "display"
+  ],
+  "license": "CC0-1.0",
+  "author": "hometwin",
+  "generated_by": "hometwin example",
+  "sources": [],
+  "created": "2026-10-16"
+}

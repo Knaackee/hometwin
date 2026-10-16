@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "params": {
+    "reach": {
+      "default": 1.9,
+      "min": 1.4,
+      "max": 2.3,
+      "label": {
+        "en": "Reach",
+        "de": "Ausladung"
+      }
+    },
+    "h": {
+      "default": 2.0,
+      "min": 1.7,
+      "max": 2.3,
+      "label": {
+        "en": "Height",
+        "de": "Höhe"
+      }
+    },
+    "color": {
+      "default": "#24272e",
+      "type": "color",
+      "label": {
+        "en": "Shade colour",
+        "de": "Schirmfarbe"
+      }
+    }
+  },
+  "derived": {
+    "x0": "-reach/2",
+    "x1": "reach/2",
+    "sr": 0.22
+  },
+  "materials": {
+    "base": {
+      "base": "marble"
+    },
+    "arm": {
+      "base": "steel"
+    },
+    "shade": {
+      "base": "metal_black",
+      "color": "$color",
+      "double": true
+    },
+    "bulb": {
+      "base": "led"
+    }
+  },
+  "parts": [
+    {
+      "name": "base",
+      "shape": "box",
+      "size": [
+        0.28,
+        0.08,
+        0.2
+      ],
+      "pos": [
+        "x0+0.14",
+        0,
+        0
+      ],
+      "round": 0.012,
+      "mat": "base"
+    },
+    {
+      "name": "arm",
+      "shape": "tube",
+      "r": 0.012,
+      "mat": "arm",
+      "path": [
+        [
+          "x0+0.14",
+          0.07,
+          0
+        ],
+        [
+          "x0+0.15",
+          "h*0.55",
+          0
+        ],
+        [
+          "x0+reach*0.24",
+          "h*0.88",
+          0
+        ],
+        [
+          "x0+reach*0.55",
+          "h-0.03",
+          0
+        ],
+        [
+          "x1-sr-0.06",
+          "h-0.13",
+          0
+        ],
+        [
+          "x1-sr",
+          "h-0.27",
+          0
+        ]
+      ]
+    },
+    {
+      "name": "shade",
+      "shape": "lathe",
+      "seg": 40,
+      "profile": [
+        [
+          "sr",
+          0
+        ],
+        [
+          "sr-0.02",
+          0.05
+        ],
+        [
+          0.12,
+          0.13
+        ],
+        [
+          0.04,
+          0.175
+        ],
+        [
+          0.012,
+          0.18
+        ]
+      ],
+      "pos": [
+        "x1-sr",
+        "h-0.45",
+        0
+      ],
+      "mat": "shade"
+    },
+    {
+      "name": "bulb",
+      "shape": "sphere",
+      "r": 0.045,
+      "pos": [
+        "x1-sr",
+        "h-0.38",
+        0
+      ],
+      "mat": "bulb"
+    }
+  ]
+}

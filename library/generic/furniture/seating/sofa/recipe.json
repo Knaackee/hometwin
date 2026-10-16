@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "params": {
+    "w": {
+      "default": 2.2,
+      "min": 1.4,
+      "max": 3.2,
+      "label": {
+        "en": "Width",
+        "de": "Breite"
+      }
+    },
+    "d": {
+      "default": 0.95,
+      "min": 0.8,
+      "max": 1.1,
+      "label": {
+        "en": "Depth",
+        "de": "Tiefe"
+      }
+    },
+    "seats": {
+      "default": 3,
+      "type": "int",
+      "min": 2,
+      "max": 4,
+      "label": {
+        "en": "Seats",
+        "de": "Sitzplätze"
+      }
+    },
+    "arms": {
+      "default": true,
+      "type": "bool",
+      "label": {
+        "en": "Armrests",
+        "de": "Armlehnen"
+      }
+    },
+    "color": {
+      "default": "#7d8597",
+      "type": "color",
+      "label": {
+        "en": "Fabric",
+        "de": "Bezug"
+      }
+    }
+  },
+  "derived": {
+    "aw": "arms ? 0.18 : 0",
+    "inner": "w - 2*aw",
+    "cw": "inner/seats"
+  },
+  "materials": {
+    "fabric": {
+      "base": "fabric",
+      "color": "$color"
+    },
+    "frame": {
+      "base": "fabric",
+      "color": "$color",
+      "shade": -0.12
+    },
+    "leg": {
+      "base": "metal_black"
+    }
+  },
+  "parts": [
+    {
+      "name": "leg",
+      "shape": "cylinder",
+      "r": 0.02,
+      "h": 0.08,
+      "seg": 12,
+      "pos": [
+        "w/2-0.1",
+        0,
+        "d/2-0.1"
+      ],
+      "mirror": "xz",
+      "mat": "leg"
+    },
+    {
+      "name": "base",
+      "shape": "box",
+      "size": [
+        "w",
+        0.2,
+        "d"
+      ],
+      "pos": [
+        0,
+        0.08,
+        0
+      ],
+      "round": 0.04,
+      "mat": "frame"
+    },
+    {
+      "name": "backrest",
+      "shape": "box",
+      "size": [
+        "w",
+        0.52,
+        0.22
+      ],
+      "pos": [
+        0,
+        0.2,
+        "-d/2+0.11"
+      ],
+      "round": 0.07,
+      "mat": "fabric"
+    },
+    {
+      "name": "armrest",
+      "shape": "box",
+      "size": [
+        0.18,
+        0.42,
+        "d"
+      ],
+      "pos": [
+        "w/2-0.09",
+        0.12,
+        0
+      ],
+      "mirror": "x",
+      "when": "arms",
+      "round": 0.07,
+      "mat": "fabric"
+    },
+    {
+      "name": "seat cushion",
+      "shape": "box",
+      "size": [
+        "cw-0.02",
+        0.14,
+        "d-0.26"
+      ],
+      "pos": [
+        "-inner/2 + cw*(i+0.5)",
+        0.28,
+        0.08
+      ],
+      "repeat": {
+        "n": "seats"
+      },
+      "round": 0.06,
+      "mat": "fabric"
+    },
+    {
+      "name": "back cushion",
+      "shape": "box",
+      "size": [
+        "cw-0.03",
+        0.4,
+        0.14
+      ],
+      "pos": [
+        "-inner/2 + cw*(i+0.5)",
+        0.4,
+        "-d/2+0.26"
+      ],
+      "rot": [
+        -10,
+        0,
+        0
+      ],
+      "repeat": {
+        "n": "seats"
+      },
+      "round": 0.06,
+      "mat": "fabric"
+    }
+  ]
+}

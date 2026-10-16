@@ -1,0 +1,22 @@
+{
+  "name": "hometwin",
+  "private": true,
+  "type": "module",
+  "description": "HomeTwin \u2013 your home in 3D for Home Assistant: object library tools and recipe engine",
+  "scripts": {
+    "validate": "node tools/validate.mjs",
+    "preview": "node tools/render-preview.mjs",
+    "new": "node tools/new-object.mjs",
+    "index": "node tools/build-index.mjs",
+    "pages": "node tools/build-index.mjs && node tools/build-pages.mjs",
+    "build": "cd frontend && node build.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.17.1",
+    "esbuild": "0.24.0",
+    "playwright": "1.56.0",
+    "three": "0.160.0"
+  },
+  "license": "MIT",
+  "repository": "github:knaackee/hometwin"
+}

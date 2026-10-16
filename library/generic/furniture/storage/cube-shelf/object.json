@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "id": "generic/furniture/storage/cube-shelf",
+  "name": {
+    "en": "Cube shelf",
+    "de": "Würfelregal"
+  },
+  "category": "furniture/storage",
+  "manufacturer": null,
+  "model": null,
+  "variant": null,
+  "dimensions": {
+    "w": 1.458,
+    "d": 0.39,
+    "h": 1.458
+  },
+  "mount": "floor",
+  "ha": {
+    "domains": []
+  },
+  "tags": [
+    "shelf",
+    "storage",
+    "open"
+  ],
+  "license": "CC0-1.0",
+  "author": "hometwin",
+  "generated_by": "hometwin example",
+  "sources": [],
+  "created": "2026-10-16"
+}
