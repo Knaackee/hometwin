@@ -114,6 +114,7 @@ Watch all PR checks through completion. Diagnose and fix object regressions; rep
 
 After an authorized merge, wait for the Website workflow and verify the object in the published gallery, remote library JSON and demo editor. Exercise insertion and confirm the recipe is stored in the plan for offline use. Merge, release and community posting require their own authorization. Give the user the PR link and actual check/deployment results.
 
+In the PR description, state the exact AI model name/version used to generate each object's recipe. If multiple models contributed, list their roles. Use the model reported by the runtime; if it is unavailable, write "unknown" rather than guessing.
 ## Rules
 
 - Measurements only from sources or the user. Mark estimates.

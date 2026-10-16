@@ -87,6 +87,7 @@ From **a single phone photo** the skill recognised a *Martin Ed Sheeran ÷ (Divi
 
 **Our ask:** walk through your home, check what's missing in the [gallery](https://knaackee.github.io/hometwin/#library), and send it in. Please **bundle several objects per pull request** (e.g. 3–10 from one room); they get merged much faster. Details: [CONTRIBUTING.md](CONTRIBUTING.md).
 
+**Recommended model for asset generation:** Opus 5.5. Include the model used to generate each asset in the pull request.
 ## 🗺️ Roadmap
 
 - 🌍 **English UI + i18n** (next), then community translations

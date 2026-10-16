@@ -9,6 +9,7 @@ Repeat the block below for every object.
 **Folder:** `library/<id>`
 **Category:** `<category>` · **Mount:** `<floor|wall|ceiling|…>` · **HA domains:** `<light, climate …>`
 
+**AI model used:** <exact model name/version used for recipe generation; list roles if multiple models contributed; unknown if unavailable>
 ### Dimensions
 
 | | real (source) | model |
