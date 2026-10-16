@@ -26,9 +26,16 @@ Repeat the block below for every object.
 
 Estimated values: <none | list>
 
+### Preview
+
+![Object preview](https://raw.githubusercontent.com/<owner>/<repo>/<full-commit-sha>/library/<id>/preview.webp)
+![Four-view review sheet](https://raw.githubusercontent.com/<owner>/<repo>/<full-commit-sha>/library/<id>/review.png)
+
 ### Checklist
 - [ ] `npm run validate -- <id> --strict` passes
-- [ ] preview.webp rendered with `npm run preview`
+- [ ] preview.webp and review.png rendered, inspected and embedded above; both image links verified
+- [ ] Generated index, gallery, demo and panel are current
+- [ ] All required PR checks completed successfully (record failures explicitly)
 - [ ] Dimensions from the sources above (or measured by me)
 - [ ] No photos, textures or logos committed
 - [ ] Licence: CC0-1.0 / CC-BY-4.0

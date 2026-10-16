@@ -11,7 +11,8 @@ You turn a product the user names or photographs into a library object for HomeT
 |---|---|
 | `object.json` | name, category, manufacturer/model, outer dimensions, mount, Home Assistant domains, licence, sources |
 | `recipe.json` | the 3D model as a declarative recipe of primitives (box, cylinder, lathe, extrude, tube …) |
-| `preview.webp` | rendered by the tools, never drawn by hand |
+| `preview.webp` | rendered thumbnail, never drawn by hand |
+| `review.png` | rendered four-view review sheet (3/4, front, side, top and dimensions) |
 
 No Blender, no image generation: you build the model from primitives, render it with the same Three.js engine the panel uses, look at the render, and correct it.
 
@@ -31,7 +32,7 @@ Contributors are encouraged to walk through their home and add what is missing. 
 
 ## Checkpoints with the user
 
-Stop and ask at exactly these points, otherwise keep going:
+Resolve these checkpoints only when not already answered or authorized in the conversation; reuse scoped approval:
 1. **Identification** is not certain → show 2–3 candidates (name, variant, link) and ask which one.
 2. **Dimensions** cannot be found from a reliable source → ask the user to measure (W × D × H). Never invent measurements.
 3. **Preview** is ready → show it and ask for approval or corrections.
@@ -40,10 +41,12 @@ Stop and ask at exactly these points, otherwise keep going:
 ## 0. Setup (once per machine)
 
 ```bash
-gh repo fork knaackee/hometwin --clone   # or: git clone your fork
+gh repo fork knaackee/hometwin --clone   # only if no suitable checkout and no upstream write access
 cd hometwin && npm install && npx playwright install chromium
 gh auth status                            # must be logged in for the PR
 ```
+Reuse the existing checkout and preserve user changes. Maintainers push a feature branch to the upstream repository; contributors without write access use a fork. Check the latest base-branch CI before editing and distinguish existing project failures from object regressions.
+
 Work from the repository root. All commands below assume it.
 
 ## 1. Identify the product
@@ -82,7 +85,7 @@ Read [references/recipe-format.md](references/recipe-format.md) (format) and [re
 
 ```bash
 npm run validate -- <id>     # schema, size vs. dimensions, centring, limits, duplicates
-npm run preview -- <id>      # writes preview.webp and .preview/<slug>-sheet.png
+npm run preview -- <id>      # writes preview.webp, review.png and .preview/<slug>-sheet.png
 ```
 - Open `.preview/<slug>-sheet.png` (3/4, front, side, top, measured size) and **compare it with the reference images**. Check proportions, part positions, missing or floating parts, colours.
 - Fix and repeat. Usually 2–4 rounds. Stop improving when the object is recognisable at thumbnail size and the dimensions match within 1 cm.
@@ -95,14 +98,21 @@ Send the sheet image and `preview.webp`, plus a short table: real dimensions vs.
 
 After approval (checkpoint 4):
 ```bash
-npm run validate -- <id> --strict
-git checkout -b library/<short-topic>          # e.g. library/living-room
+npm run validate -- --strict
+npm run pages
+(cd frontend && npm ci && node build.mjs)
+git checkout -b codex/library-<short-topic>    # follow the active harness branch convention
 git add library/<id-1> library/<id-2> …
+# Also stage reviewed generated index, gallery, demo and panel changes explicitly.
 git commit -m "library: add <n> objects (<topic>)" -m "Co-authored via hometwin-add-object skill"
-git push -u origin library/<short-topic>
+git push -u origin HEAD
 gh pr create --repo knaackee/hometwin --title "library: add <n> objects (<topic>)" --body-file <body.md>
 ```
-Write `<body.md>` from [references/pr-body.md](references/pr-body.md), one section per object. Give the user the PR link.
+Write `<body.md>` from [references/pr-body.md](references/pr-body.md), one section per object. Embed both `preview.webp` and `review.png` using raw.githubusercontent.com URLs pinned to the pushed full commit SHA; verify both URLs return images. An Actions artifact download link is not an inline image.
+
+Watch all PR checks through completion. Diagnose and fix object regressions; report pre-existing project failures separately and address them only within authorized scope. Do not describe a PR as ready while required checks are failing or pending. CI also uploads four-view sheets as review artifacts.
+
+After an authorized merge, wait for the Website workflow and verify the object in the published gallery, remote library JSON and demo editor. Exercise insertion and confirm the recipe is stored in the plan for offline use. Merge, release and community posting require their own authorization. Give the user the PR link and actual check/deployment results.
 
 ## Rules
 

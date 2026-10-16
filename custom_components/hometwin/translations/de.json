@@ -30,7 +30,7 @@
           "system_prompt": "Zusätzliche Anweisungen (optional)"
         },
         "data_description": {
-          "base_url": "z. B. https://openrouter.ai/api/v1, https://api.openai.com/v1 oder http://ollama.local:11434/v1",
+          "base_url": "z. B. {openrouter_url}, {openai_url} oder {ollama_url}",
           "model": "Empfohlen: google/gemini-3.8-flash über OpenRouter (schnell, liest Bilder; Grundriss in ca. 1–2 min) mit Reasoning „Aus“ oder „Low“. Jedes Modell mit Bildverständnis geht.",
           "reasoning_effort": "„Aus“ oder „Low“ ist deutlich schneller. „High“ kann mehrere Minuten pro Anfrage dauern.",
           "system_prompt": "Werden an die eingebauten Regeln des Assistenten angehängt, z. B. „Räume englisch benennen“ oder „Unser Haus hat keinen Keller“."

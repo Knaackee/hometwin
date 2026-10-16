@@ -9,5 +9,8 @@ const items = findObjects().map((dir) => {
   return { id: idOf(dir), name: o.name, category: o.category, manufacturer: o.manufacturer || null, model: o.model || null, variant: o.variant || null, dimensions: o.dimensions, mount: o.mount, ha: o.ha || {}, tags: o.tags || [], license: o.license, author: o.author, format: existsSync(join(dir, 'recipe.json')) ? 'recipe' : 'glb', preview: existsSync(join(dir, 'preview.webp')) ? `${idOf(dir)}/preview.webp` : null };
 });
 const categories = [...new Set(items.map((i) => i.category))].sort();
-writeFileSync(join(LIBRARY, 'index.json'), JSON.stringify({ schema: 1, generated: new Date().toISOString(), count: items.length, categories, items }, null, 1) + '\n');
+const indexPath = join(LIBRARY, 'index.json');
+const previous = existsSync(indexPath) ? readJson(indexPath) : null;
+const unchanged = JSON.stringify(previous?.items) === JSON.stringify(items);
+writeFileSync(indexPath, JSON.stringify({ schema: 1, generated: unchanged ? previous.generated : new Date().toISOString(), count: items.length, categories, items }, null, 1) + '\n');
 console.log(`index.json: ${items.length} objects in ${categories.length} categories`);
