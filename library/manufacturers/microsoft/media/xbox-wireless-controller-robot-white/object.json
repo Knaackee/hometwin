@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "manufacturers/microsoft/media/xbox-wireless-controller-robot-white",
+  "name": {
+    "en": "Xbox Wireless Controller — Robot White",
+    "de": "Xbox Wireless Controller — Robot White"
+  },
+  "description": {
+    "en": "Series X|S controller with asymmetric sticks, hybrid D-pad and Share button. Simplified photo-based geometry; small details estimated. Home button intentionally unbranded.",
+    "de": "Series-X|S-Controller mit versetzten Sticks, Hybrid-Steuerkreuz und Share-Taste. Vereinfachte Geometrie nach Foto; Details geschätzt. Home-Taste ohne Markenlogo."
+  },
+  "category": "media",
+  "manufacturer": "Microsoft",
+  "model": "Xbox Wireless Controller (Series X|S)",
+  "variant": "Robot White",
+  "dimensions": {
+    "w": 0.153,
+    "d": 0.102,
+    "h": 0.061
+  },
+  "mount": "table",
+  "ha": {
+    "domains": []
+  },
+  "tags": [
+    "controller",
+    "gamepad",
+    "xbox",
+    "gaming"
+  ],
+  "license": "CC0-1.0",
+  "author": "knaackee",
+  "generated_by": "Codex via hometwin-add-object",
+  "sources": [
+    {
+      "url": "https://www.xbox.com/en-AU/accessories/controllers/xbox-wireless-controller",
+      "type": "product",
+      "note": "Product family and Robot White variant; hybrid D-pad and Share button. User photo supplied in chat supplies colour/layout reference; not redistributed."
+    },
+    {
+      "url": "https://www.universalselectronics.com/products/xbox-wireless-controller-robot-white",
+      "type": "product",
+      "note": "Approximate outer dimensions 153 x 102 x 61 mm. Detail dimensions and contours estimated from user photo."
+    }
+  ],
+  "created": "2026-10-16"
+}
