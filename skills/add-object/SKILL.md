@@ -75,6 +75,8 @@ npm run new -- manufacturers/ikea/furniture/storage/kallax-4x4 --name "KALLAX sh
 
 ## 4. Model the recipe
 
+Recommended model: Opus 5.5 or a comparably capable model with image understanding.
+
 Read [references/recipe-format.md](references/recipe-format.md) (format) and [references/modeling-guide.md](references/modeling-guide.md) (how to decompose) before the first recipe. These files live in the repository at `skills/add-object/references/`.
 
 1. Write a **parts table** first (in your reasoning or to the user): every visible component with size and position, e.g. *frame side 0.035 × 1.47 × 0.39 at x = ±0.716*.

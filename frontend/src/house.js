@@ -7,11 +7,11 @@ import * as THREE from 'three';
 import { mergeByMaterial } from '../../engine/recipe.js';
 import { box, mat, surfaceMat, slatTex, garageTex, blockerMat, canvasTex, shade } from './kit.js';
 import { edges, lineOf, lineKey, pointInPolygon, bbox, centroid } from './geometry.js';
-import { slabThickness } from './plan.js';
+import { slabThickness, plinthHeight } from './plan.js';
 import { facadeMaterial, metricUV } from './roof.js';
 
 export const EXT_T = 0.24, INT_T = 0.11, CURB = 0.14;
-const EPS = 1e-4;
+const EPS = 1e-4, PLINTH_OUT = 0.0225; // plinth stands 2.25 cm proud of the facade
 const k3 = (v) => Math.round(v * 1000);
 
 export const isIndoor = (r) => !r.kind || r.kind === 'room' || r.kind === 'garage';
@@ -83,15 +83,18 @@ const wallBody = () => mat('#e7e3db', { rough: 0.95 });
 export const capMat = new THREE.MeshStandardMaterial({ color: '#262b3a', roughness: 0.8 });
 const frameMat = (c = '#2c3142') => mat(c, { rough: 0.6 });
 
-export function buildLevel(level, site = {}) {
+// opts.terrain: terrain height relative to this floor (only for the storey standing on the
+// terrain). Only that storey gets a plinth; it reaches from the terrain to plinth height.
+export function buildLevel(level, site = {}, opts = {}) {
   const fac = facadeMaterial(site.facade), plinthM = mat(site.facade?.plinth || '#5f636b', { rough: 0.9 }), frameColor = site.facade?.frame || '#2c3142';
   const H = level.height, Hi = Math.min(level.cutHeight ?? 1.2, H), slabDepth = slabThickness(level);
+  const terrain = Number.isFinite(opts.terrain) ? opts.terrain : null, plinthTop = terrain === null ? 0 : Math.max(terrain + plinthHeight(site), 0);
   const g = new THREE.Group();
   const floors = {}, overlays = {}, exterior = [], windows = {}, doors = {}, garages = {}, openingHits = [];
   const wb = wallBody(), cap = capMat;
   const wallMats = [wb, wb, cap, wb, wb, wb];
 
-  const voids = level.rooms.filter((r) => r.kind === 'void');
+  const voids = level.rooms.filter((r) => r.kind === 'void'), walled = level.rooms.filter(formsWalls);
   for (const r of level.rooms) {
     if (r.kind === 'void') continue;
     const outdoor = r.kind === 'outdoor';
@@ -126,7 +129,9 @@ export function buildLevel(level, site = {}) {
   for (const s of wallSegments(level)) {
     const ext = s.kind === 'exterior', t = ext ? EXT_T : INT_T, o = s.opening, type = o?.type;
     if (o && !opInfo[o.id]) opInfo[o.id] = { t, side: s.side, l: s.l };
-    const a = s.a - (s.freeA ? EXT_T / 2 : 0), b = s.b + (s.freeB ? EXT_T / 2 : 0);
+    // Free ends reach half their own thickness past the corner point: exterior corners close
+    // flush, interior walls end inside the wall they meet instead of poking through its face.
+    const a = s.a - (s.freeA ? t / 2 : 0), b = s.b + (s.freeB ? t / 2 : 0);
     const wallRot = Math.atan2(-s.l.uz, s.l.ux);
     const at = (tt, y = 0) => new THREE.Vector3(s.l.ux * tt + s.l.nx * s.l.off, y, s.l.uz * tt + s.l.nz * s.l.off);
 
@@ -154,7 +159,17 @@ export function buildLevel(level, site = {}) {
     // The floor plate reaches the exterior face. This closes the seam to the level below
     // without extending the room slab across interior stair voids.
     if (slabDepth > EPS) { piece(full, s, a, b, -slabDepth, 0, t, em); piece(curb, s, a, b, -slabDepth, 0, t, em); }
-    if (!type || (type === 'window' && (o.sill ?? 0.9) >= 0.35)) piece(full, s, a, b, 0, 0.3, t + 0.03, plinthM);
+    if (terrain !== null) {
+      // Plinth 2.25 cm proud of the facade; its inner face stays inside the wall. Below the floor it
+      // runs under every opening (step / foundation), above the floor only under solid wall.
+      const grow = (tt, dir) => { const l = s.l, px = l.ux * (tt + dir * 0.15) + l.nx * (l.off + s.side * 0.15), pz = l.uz * (tt + dir * 0.15) + l.nz * (l.off + s.side * 0.15);
+        return walled.some((r) => pointInPolygon([px, pz], r.points)) ? 0 : PLINTH_OUT; }; // only convex corners grow
+      const pa = a - (s.freeA ? grow(s.a, -1) : 0), pb = b + (s.freeB ? grow(s.b, 1) : 0);
+      const pl = (y0, y1) => piece(full, s, pa, pb, y0, y1, t + 0.02, plinthM, PLINTH_OUT - 0.01);
+      const low = Math.min(terrain - 0.05, -slabDepth);
+      if (!type || (type === 'window' && (o.sill ?? 0.9) >= plinthTop + 0.05)) pl(low, plinthTop);
+      else if (low < 0) pl(low, Math.min(plinthTop, 0));
+    }
     const blocker = (y0, y1) => piece(curb, s, a, b, y0, y1, t, blockerMat);
     if (type === 'door' || type === 'garage') {
       const head = o.head ?? (type === 'garage' ? 2.2 : 2.1);

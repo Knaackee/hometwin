@@ -122,7 +122,7 @@ def _tools(cat: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         _fn("list_entities", "Listet Home-Assistant-Entitäten mit Bereich, Etage und ob sie schon im Modell platziert sind.",
             {"area_id": {"type": "string"}, "domain": {"type": "string"}, "only_unplaced": {"type": "boolean"}}, []),
-        _fn("add_level", "Neue Etage anlegen.", {"name": {"type": "string"}, "elevation": {"type": "number", "description": "Fußbodenhöhe über Grund in m"}, "height": {"type": "number"}, "floor_id": {"type": "string"}}, ["name", "elevation"]),
+        _fn("add_level", "Neue Etage anlegen.", {"name": {"type": "string"}, "elevation": {"type": "number", "description": "Fußbodenhöhe über Grund in m"}, "height": {"type": "number", "description": "Lichte Raumhöhe in m"}, "slab": {"type": "number", "description": "Deckenstärke unter dieser Etage in m (Standard 0.25)"}, "floor_id": {"type": "string"}}, ["name", "elevation"]),
         _fn("add_room", "Raum oder Außenfläche anlegen. Entweder rect [x, z, breite, tiefe] oder points.",
             {"level_id": {"type": "string"}, "name": {"type": "string"}, "kind": {"type": "string", "enum": cat["room_kinds"]}, "surface": {"type": "string", "enum": list(cat["surfaces"])},
              "area_id": {"type": "string"}, "rect": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "points": {"type": "array", "items": _PT, "minItems": 3}}, ["level_id", "name"]),
@@ -302,7 +302,7 @@ class _Work:
             return self.check(a.get("level_id"))
         if name == "add_level":
             lid = self._id("l"); self.levels.add(lid)
-            self.ops.append({"op": "add_level", "id": lid, **{k: a[k] for k in ("name", "elevation", "height", "floor_id") if k in a}})
+            self.ops.append({"op": "add_level", "id": lid, **{k: a[k] for k in ("name", "elevation", "height", "slab", "floor_id") if k in a}})
             return {"ok": True, "id": lid}
         if name == "add_room":
             self._level(a)
@@ -528,7 +528,7 @@ Return:
   "openings": [{{"type": "door", "from": [px, py], "to": [px, py]}}],
   "stairs": [{{"points": [[px, py], ...], "up_from": [px, py], "up_to": [px, py], "width_m": 1.0}}],
   "dimensions": [{{"from": [px, py], "to": [px, py], "meters": 11.49}}],
-  "level": {{"name": "Erdgeschoss", "floor_elevation_m": 0.0, "room_height_m": 2.6}},
+  "level": {{"name": "Erdgeschoss", "floor_elevation_m": 0.0, "room_height_m": 2.6, "slab_thickness_m": null}},
   "roof": {{"type": "gable", "pitch_deg": 38, "ridge": "x", "main_building": [[px, py], ...]}},
   "notes": "short remarks on anything unclear"
 }}
@@ -543,7 +543,7 @@ Rules:
 - label_area_m2: the area printed in the plan for that room (e.g. "12,40 m²"), if any (number), else null.
 - clear_w / clear_d: the CLEAR interior dimensions printed for that room (inner dimension lines or labels like "3,51 x 2,76"), in metres: clear_w along the image x axis (left-right), clear_d along the image y axis (top-bottom). null if not printed. Read printed numbers exactly; do not estimate them.
 - stairs: footprint polygon of the flight, "up_from"/"up_to" = start and end of the walking line in the direction going UP (follow the arrow / "S" marks / step numbers), width_m = flight width.
-- level: the storey shown (name as printed, e.g. "Erdgeschoss", "Obergeschoss", "Kellergeschoss"), floor elevation (e.g. "OKFF ±0,00" or "+2,85") and clear room height if printed (e.g. "RH 2,50", "lichte Höhe"). null values if not printed.
+- level: the storey shown (name as printed, e.g. "Erdgeschoss", "Obergeschoss", "Kellergeschoss"), floor elevation (e.g. "OKFF ±0,00" or "+2,85") and clear room height if printed (e.g. "RH 2,50", "lichte Höhe"). floor_elevation_m is relative to the ground floor (±0,00), never metres above sea level. slab_thickness_m: thickness of the floor slab under this storey including screed, only if dimensioned (section, "Decke 22 cm + Estrich"). null values if not printed; never guess.
 - roof: only if the plan shows or states it (roof outline, "SD 38°", "Satteldach", ridge line "First"): type one of flat, shed, gable, hip; pitch in degrees; ridge "x" if the ridge runs left-right in the image, "y" if top-bottom; main_building = outline of the part the roof covers (without garage/carport). Otherwise null.
 - dimensions: up to 6 long printed dimension lines (outer chains preferred) with their two end points in pixels and the printed length in metres. They are used to verify the scale.
 - PRINTED DIMENSIONS BEAT PIXELS: place walls so that the printed dimensions are met.

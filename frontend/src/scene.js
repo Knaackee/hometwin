@@ -13,7 +13,7 @@ import { buildRoof, buildExtraRoof } from './roof.js';
 import { buildFurniture } from './furniture.js';
 import { MediaHub, bindScreen, screenMaterial } from './media.js';
 import { buildDevice } from './devices.js';
-import { planBounds, roomAt, coverPercent } from './plan.js';
+import { planBounds, roomAt, coverPercent, terrainOf } from './plan.js';
 import { bbox, pointInPolygon } from './geometry.js';
 import { sunVector } from './sun.js';
 
@@ -97,7 +97,8 @@ export class Stage {
     const level = this.app.plan.levels.find((l) => l.id === id); const old = this.levels.get(id);
     const underlay = old?.underlay; this.disposeLevel(id); if (!level) return;
     const group = new THREE.Group(); group.userData.level = id;
-    const house = buildLevel(this.walk ? { ...level, cutHeight: level.height } : level, this.app.plan.site); group.add(house.group); house.symbols.visible = !!this.topView;
+    const ter = terrainOf(this.app.plan);
+    const house = buildLevel(this.walk ? { ...level, cutHeight: level.height } : level, this.app.plan.site, { terrain: ter.groundId === id ? ter.y - level.elevation : undefined }); group.add(house.group); house.symbols.visible = !!this.topView;
     const furnGroup = new THREE.Group(), devGroup = new THREE.Group(); group.add(furnGroup, devGroup);
     const o = { level, group, house, furnGroup, devGroup, furn: new Map(), dev: new Map(), roof: null, underlay: null };
     this.levels.set(id, o); this.root.add(group);
@@ -210,8 +211,7 @@ export class Stage {
   }
   layout() {
     this._shadowDirty = true; this._next = 0;
-    const groundLevel = this.app.plan.levels.find(l => l.rooms.some(r => r.kind === "outdoor")) || [...this.app.plan.levels].sort((a, b) => Math.abs(a.elevation) - Math.abs(b.elevation))[0];
-    this.ground.position.y = (groundLevel?.elevation ?? 0) - 0.02;
+    this.ground.position.y = terrainOf(this.app.plan).y - 0.02;
     const plan = this.app.plan; const top = [...plan.levels].reverse().find((l) => l.rooms.some(isIndoor));
     for (const [id, o] of this.levels) {
       o.group.visible = this.isVisible(o.level); o.group.position.y = this.displayY(o.level);

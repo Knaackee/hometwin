@@ -67,7 +67,7 @@ You don't need AI: the same assistant lets you trace the rooms yourself.
 
 **Manual**: copy `custom_components/hometwin` into `/config/custom_components/`, or unpack `hometwin.zip` from the [latest release](https://github.com/knaackee/hometwin/releases) into `/config/custom_components/hometwin/`. Then restart.
 
-**AI (optional)**: in the integration options, set any OpenAI-compatible endpoint with image input. We recommend **`google/gemini-3.8-flash`** via [OpenRouter](https://openrouter.ai) with reasoning *off* or *low*. Reading a plan takes 30–120 s.
+**AI (optional)**: in the integration options, set any OpenAI-compatible endpoint with image input. We recommend **Opus 5.5 or a comparably capable model with image understanding**.
 
 > Coming from the preview called **Raumwerk**? HomeTwin takes over your plan, floor-plan images and AI settings automatically on first start. You can also use *Backup → export/import*. Remove Raumwerk afterwards.
 
@@ -89,7 +89,7 @@ From **a single phone photo** the skill recognised a *Martin Ed Sheeran ÷ (Divi
 
 **Our ask:** walk through your home, check what's missing in the [gallery](https://knaackee.github.io/hometwin/#library), and send it in. Please **bundle several objects per pull request** (e.g. 3–10 from one room); they get merged much faster. Details: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Recommended model for asset generation:** Opus 5.5. Include the model used to generate each asset in the pull request.
+**Recommended model for asset generation:** Opus 5.5 or a comparably capable model with image understanding. Include the model used to generate each asset in the pull request.
 **Translations welcome:** English and German are supported. AI-assisted translations are welcome only after a native speaker manually reviews every string and checks the UI. See the [translation contribution guide](CONTRIBUTING.md#translation-contributions) for files, checks and review requirements.
 ## 🗺️ Roadmap
 

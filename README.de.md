@@ -39,7 +39,7 @@ Im eigenen Test hat `google/gemini-3.8-flash` einen echten Architektenplan mit 1
 3. *Einstellungen → Geräte & Dienste → Integration hinzufügen → **HomeTwin***.
 4. **HomeTwin** in der Seitenleiste öffnen.
 
-KI (optional): ein OpenAI-kompatibler Endpunkt mit Bildverständnis, empfohlen **`google/gemini-3.8-flash`** über OpenRouter mit Reasoning „Aus“ oder „Low“.
+KI (optional): ein OpenAI-kompatibler Endpunkt mit Bildverständnis, empfohlen **Opus 5.5 oder ein vergleichbar leistungsfähiges Modell mit Bildverständnis**.
 
 > Von der Vorabversion **Raumwerk**? HomeTwin übernimmt Plan, Bauplan-Bilder und KI-Einstellungen beim ersten Start automatisch. Alternativ: *Backup → exportieren/importieren*.
 

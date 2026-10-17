@@ -285,6 +285,8 @@ details.sec > summary::-webkit-details-marker { display: none; }
 .wz-rooms li i { width: 10px; height: 10px; border-radius: 3px; } .wz-rooms li small { color: var(--muted); font-family: var(--f-num); font-size: 11px; text-align: right; }
 .wz-rooms input, .wz-rooms select { min-width: 0; background: #0d121c; border: 1px solid var(--line); border-radius: 7px; padding: 4px 6px; color: var(--fg); font: inherit; font-size: 12.5px; }
 .wz-rooms .ibtn { width: 28px; height: 28px; } .wz-rooms .ibtn svg { width: 14px; height: 14px; }
+.wz-heights { border-top: 1px solid var(--line); padding-top: 10px; } .wz-heights .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .wz-heights .field .wz-src { align-self: flex-start; margin: 4px 0 0; } .wz-elev { font-size: 13px; margin-top: 8px; } .wz-elev output { font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 4px; }
+.wz-src { text-transform: none; letter-spacing: normal; font-weight: 500; font-size: 10.5px; padding: 1px 5px; border-radius: 6px; margin-left: 4px; background: rgba(255,255,255,.07); color: var(--muted, #9aa3b5); white-space: nowrap; } .wz-src.default { background: rgba(255,179,92,.16); color: #ffcf8a; } .wz-src.plan, .wz-src.derived { background: rgba(92,200,140,.14); color: #8fe0b0; }
 .wz-apply { border-top: 1px solid var(--line) !important; padding-top: 10px !important; }
 .danger-zone { margin-top: 10px; } .danger-zone summary { cursor: pointer; font-size: 12px; color: var(--muted); } .danger-zone .btn { margin-top: 6px; }
 .wz-tip { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--edit-soft); border: 1px solid var(--edit); font-size: 13px; line-height: 1.45; }

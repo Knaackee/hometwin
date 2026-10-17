@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Storeys join cleanly: the plinth is only built on the storey standing on the terrain, interior walls end inside the exterior wall instead of poking through the facade, and plinth corners close flush.
+- Raised ground floors stand on the terrain: the plinth reaches down to the ground. The plinth height is adjustable (House → Facade).
+- Floor-plan assistant: new storeys are stacked without gaps. Room height and slab thickness come from the plan when stated, otherwise from defaults that are marked for review and can be corrected before applying. Basements keep the floor level of the storey above.
+- Recognition reads the slab thickness when the plan dimensions it and treats storey levels as relative to ±0.00.
+
 ## 0.6.0b1 (2026-10-17)
 
 - Default to English with complete German support, local welcome-language flags and independent Home Assistant UI-language options.

@@ -177,7 +177,7 @@ Der Skill wird gemeinsam ausgearbeitet und getestet, bevor das Repo öffentlich 
 - **Fortschritt sichtbar:** Sekundenzähler, Statuszeilen (Bild gesendet → Modell liest → Räume prüfen), Streaming der Antwort, Abbrechen-Knopf, Hinweis bei > 60 s, klare Fehlermeldung bei Timeout (Server-Timeout aktuell 240 s).
 - **Flächenvergleich korrigieren:** Polygone liegen auf Wandmitte, Plan-m² sind lichte Maße. Vergleich mit Netto-Fläche (Polygon um halbe Wandstärke nach innen versetzt: außen 12 cm, innen 5,5 cm); erst danach warnen (Test: 8 von 12 Räumen mit Warnung, z. B. Flur 15,1 statt 10,6 m² – teils echte Fehler).
 - **Maße aus dem Plan übernehmen:** Modell liefert pro Raum gelesene lichte Maße (z. B. 3,51 × 2,76) und m²; Server passt die Räume daran an (Rechtecke exakt, Wände auf Lichtmaß + Wandstärke), Nachbarn bleiben bündig. Nur bei Widersprüchen (Maß ↔ Fläche ↔ Nachbarräume) im Prüfschritt nachfragen.
-- **Empfohlenes Modell:** google/gemini-3.8-flash (Test: 12 Räume, 18 Öffnungen in ca. 2 min) in Optionen, README und Wizard nennen (schnell + Bildverständnis, z. B. aktuelles Gemini Flash auf OpenRouter), Reasoning „Aus/Low“ empfehlen; Modellprüfung (Bild-Fähigkeit) beim Speichern der Optionen.
+- **Empfohlenes Modell:** Opus 5.5 oder ein vergleichbar leistungsfähiges Modell mit Bildverständnis in Optionen, README und Wizard nennen; Modellprüfung (Bild-Fähigkeit) beim Speichern der Optionen.
 
 ## 16. Wizard als Haus-Assistent (Test 0.3.6)
 
