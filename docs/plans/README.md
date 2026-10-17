@@ -7,6 +7,7 @@ separate pull request (or patch).
 | # | Plan | Content | Size |
 |---|---|---|---|
 | 0 | [Hotfix: empty view after background](00-hotfix-blank-view.md) | Restore the 3D view after the browser was in the background (WebGL context loss), recovery card, "Reset view" | small |
+| 0b | [Recognition optimisation](04-recognition-optimization.md) | International, plan-agnostic: PDF text layer, exact scale from vector PDFs, region-of-interest proposal, notation parser (m/cm/mm/ft-in) chosen by consistency, openings pass with tiles, door swing, evaluation set | medium–large |
 | 1 | [Building envelope](01-building-envelope.md) | B: roofs as a list of equal parts · C: exterior photos and elevation drawings → facade, plinth, frames, roof covering | medium–large |
 | 2 | [Building parts and wall editor](02-building-parts-and-wall-editor.md) | D: library parts for windows, doors (then stairs, railings) · F: wall editor (wall face as a 2D canvas for lamps, posters, frames) | large |
 | 3 | [Walkthrough and view recovery](03-walkthrough-and-view-recovery.md) | E: twin-stick walkthrough with gamepad support and wall collision · fix: black screen / unrecoverable view | medium |

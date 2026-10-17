@@ -9,6 +9,7 @@ Detailed implementation plans are in [docs/plans/](docs/plans/README.md).
 ## Next
 
 0. **Hotfix: empty view after the browser was in the background** ([plan](docs/plans/00-hotfix-blank-view.md))
+0b. **Recognition optimisation** ([plan](docs/plans/04-recognition-optimization.md)): international and plan-agnostic; PDF text layer, exact scale, region proposal, notation parser, detailed openings with swing, evaluation set.
 1. **Building envelope** ([plan](docs/plans/01-building-envelope.md))
    - Roofs as a list of equal parts. "+ Roof" over selected rooms or a drawn rectangle, corner/edge/rotate handles for every roof, PV and roof windows on any roof. The assistant proposes one roof per building part.
    - "Exterior & materials": upload photos and elevation drawings. The AI suggests the side (N/E/S/W) and reads facade, plinth, window frame and roof colours/materials. From drawings it also reads heights and pitch. The user confirms each suggestion.
