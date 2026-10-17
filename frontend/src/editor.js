@@ -570,7 +570,8 @@ export class Editor {
             <div class="field"><label for="oK">${t('editor.opening.contact')}</label><select id="oK">${opt(contacts, item.contact)}</select></div>`) : '')
         + this.sec(t('editor.section.dimensions'), `<div class="row2"><div class="field"><label for="oT">${t('editor.common.type')}</label><select id="oT">${Object.entries(OPEN_TYPES).map(([k, key]) => `<option value="${k}" ${k === item.type ? 'selected' : ''}>${t(key)}</option>`).join('')}</select></div>${num('oW', t('editor.common.widthMeters'), width.toFixed(2), 0.05, 'min="0.3"')}</div>
           <div class="row2">${item.type === 'window' ? num('oS', t('editor.opening.sill'), item.sill ?? 0.9) : '<span></span>'}${num('oH', t('editor.opening.topEdge'), item.head ?? (item.type === 'garage' ? 2.2 : item.type === 'window' ? 2.2 : 2.1))}</div>
-          <p class="hint">${t('editor.opening.distancesHelp')}</p>`);
+          <p class="hint">${t('editor.opening.distancesHelp')}</p>
+          ${item.type === 'door' ? `<div class="actions"><button class="btn small" data-act="doorHinge">${t('editor.opening.flipHinge')}</button><button class="btn small" data-act="doorSwing">${t('editor.opening.flipSwing')}</button></div>` : ''}`);
     } else { app.sel = null; return this.renderInspector(); }
     h += `<div class="actions">${['device', 'furniture'].includes(type) ? `<button class="btn small" data-act="rot90">↻ 90°</button><button class="btn small" data-act="dup">${t('editor.common.duplicate')}</button>` : ''}<button class="btn small danger" data-act="del">${t('editor.common.delete')}</button></div>`;
     box.innerHTML = h;
@@ -689,6 +690,16 @@ export class Editor {
     const act = e.target.closest('[data-act]')?.dataset.act; if (!act) return;
     if (act === 'toolRoof') return this.setTool('roofrect');
     if (act === 'roomRoof' && s?.type === 'room') { const f = findItem(p, s.id); if (f) return this.addExtraRoof(f.item.points, { levelId: f.level.id, room: f.item }); return; }
+    if ((act === 'doorHinge' || act === 'doorSwing') && s?.type === 'opening') {
+      const f = findItem(p, s.id); if (!f) return; const o = f.item; app.pushUndo();
+      if (act === 'doorHinge') o.hinge = o.hinge === 'to' ? 'from' : 'to';
+      if (act === 'doorSwing' || o.swing == null) { // make the current direction explicit, then flip it for doorSwing
+        const N = app.stage.levels.get(f.level.id)?.house.doors[o.id]?.N; const L0 = Math.hypot(o.to[0] - o.from[0], o.to[1] - o.from[1]) || 1;
+        const cur = N ? (Math.sign(N[0] * -(o.to[1] - o.from[1]) / L0 + N[1] * (o.to[0] - o.from[0]) / L0) || 1) : 1;
+        o.swing = act === 'doorSwing' ? -cur : cur;
+      }
+      app.stage.rebuildLevel(f.level.id); app.markDirty(); return;
+    }
     if (act === 'xrRot90' || act === 'xrDup') { const x = (p.site.roofs || []).find((r) => r.id === s?.id); if (!x) return; app.pushUndo();
       if (act === 'xrRot90') { x.rect.rot = ((x.rect.rot + 90 + 540) % 360) - 180; const l = x.rect.length; x.rect.length = x.rect.width; x.rect.width = l; app.stage.layout(); app.markDirty(); return this.renderInspector(); }
       const c = structuredClone(x); c.id = newId('xr'); c.name = t('editor.common.copyName', { name: x.name }); c.rect.cx = r3(c.rect.cx + 1); p.site.roofs.push(c); app.stage.layout(); app.markDirty(); return this.select({ type: 'xroof', id: c.id }); }

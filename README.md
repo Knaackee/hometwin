@@ -87,7 +87,7 @@ You don't need AI: the same assistant lets you trace the rooms yourself.
 
 From **a single phone photo** the skill recognised a *Martin Ed Sheeran ÷ (Divide) Signature Edition*, researched it and built this object: 20 frets at their real positions, ÷ inlays, rosette, bridge and six tuners, **in about five minutes**.
 
-**Our ask:** walk through your home, check what's missing in the [gallery](https://knaackee.github.io/hometwin/#library), and send it in. Please **bundle several objects per pull request** (e.g. 3–10 from one room); they get merged much faster. Details: [CONTRIBUTING.md](CONTRIBUTING.md).
+**Got some tokens to spare? Put them to work for the community.** Look around your home: what furniture or devices are missing from HomeTwin? Grab some product photos and use our [contribution guide](CONTRIBUTING.md) with **Opus 5.5 or a comparably capable model**. Bring a whole room’s collection if you like, and bundle it in one pull request. Let’s make HomeTwin better together.
 
 **Recommended model for asset generation:** Opus 5.5 or a comparably capable model with image understanding. Include the model used to generate each asset in the pull request.
 **Translations welcome:** English and German are supported. AI-assisted translations are welcome only after a native speaker manually reviews every string and checks the UI. See the [translation contribution guide](CONTRIBUTING.md#translation-contributions) for files, checks and review requirements.

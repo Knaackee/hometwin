@@ -5,6 +5,8 @@ import { newId, fitNewLevel } from './plan.js';
 import { area as polyArea, bbox, pointInPolygon, distToSeg, projectOnSeg } from './geometry.js';
 import { newExtraRoof, rectOfPoints } from './roof.js';
 import { t, getLanguage, formatNumber } from './i18n.js';
+import { rotFrame, renderCrop, pageModel, pdfScale, labelsForModel, snapRegion } from './wizardpdf.js';
+import { mergeTextItems } from './dimtext.js';
 
 const steps = () => ['source', 'align', 'scale', 'recognize', 'review'].map((key) => t(`assistant.wizard.step.${key}`));
 const COLORS = ['#79a6ff', '#ffb35c', '#7fd18b', '#e57fd1', '#5fd3d0', '#f2d35b', '#ff7f7f', '#a68bff', '#9ad26a', '#ff9fcb'];
@@ -20,7 +22,57 @@ function roomsWithoutDoor(res) {
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+// Recognised door hinge/"opens into" → plan fields hinge ('from'|'to') and swing (±1 relative to the left normal of from→to).
+export function doorOrientation(o, from, to, rooms) {
+  const out = {}; if (o.hinge === 'from' || o.hinge === 'to') out.hinge = o.hinge;
+  if (!o.opens_into) return out;
+  const L = Math.hypot(to[0] - from[0], to[1] - from[1]) || 1, nx = -(to[1] - from[1]) / L, nz = (to[0] - from[0]) / L, mx = (from[0] + to[0]) / 2, mz = (from[1] + to[1]) / 2;
+  const roomAtSide = (sg) => rooms.find((r) => r.kind !== 'outdoor' && pointInPolygon([mx + nx * 0.3 * sg, mz + nz * 0.3 * sg], r.points));
+  const target = String(o.opens_into).trim().toLowerCase(), outside = /^(outside|outdoor|exterior|au(ss|ß)en|draußen|dehors|exterior)$/.test(target);
+  for (const sg of [1, -1]) { const r = roomAtSide(sg); if (outside ? !r : r && String(r.name).trim().toLowerCase() === target) { out.swing = sg; break; } }
+  return out;
+}
+
+const bboxHas = (pts, p, m) => { const b = bbox(pts); return p[0] > b.minX - m && p[0] < b.minX + b.w + m && p[1] > b.minZ - m && p[1] < b.minZ + b.d + m; };
+// Wall edges (metres) of the recognised rooms, deduplicated; ext = only one room on it.
+export function wallEdges(rooms) {
+  const out = [];
+  for (const r of rooms) for (let i = 0; i < r.points.length; i++) {
+    const a = r.points[i], b = r.points[(i + 1) % r.points.length]; const L = dist(a, b); if (L < 0.2) continue;
+    const dup = out.find((w) => (distToSeg(a, w.a, w.b) < 0.08 && distToSeg(b, w.a, w.b) < 0.08) || (distToSeg(w.a, a, b) < 0.08 && distToSeg(w.b, a, b) < 0.08));
+    if (dup) { dup.ext = false; if (L > dist(dup.a, dup.b)) { dup.a = a; dup.b = b; } } else out.push({ a, b, ext: true });
+  }
+  return out;
+}
+// Merges openings of the detail pass into those of the rooms pass. Detail openings are snapped to the
+// nearest wall; duplicates (same wall, > 50 % overlap) keep the printed/wider one. Rooms-pass openings
+// that the detail pass did not confirm are kept as uncertain.
+export function mergeOpenings(base, detail, walls) {
+  const snap = (o) => {
+    const m = [(o.from[0] + o.to[0]) / 2, (o.from[1] + o.to[1]) / 2]; let best = null, bd = 0.35;
+    for (const [i, w] of walls.entries()) { const d = distToSeg(m, w.a, w.b); if (d < bd) { bd = d; best = i; } }
+    if (best == null) return null; const w = walls[best]; const L = dist(w.a, w.b), ux = (w.b[0] - w.a[0]) / L, uz = (w.b[1] - w.a[1]) / L;
+    const t1 = clamp((o.from[0] - w.a[0]) * ux + (o.from[1] - w.a[1]) * uz, 0, L), t2 = clamp((o.to[0] - w.a[0]) * ux + (o.to[1] - w.a[1]) * uz, 0, L);
+    if (Math.abs(t2 - t1) < 0.3) return null;
+    return { ...o, from: [w.a[0] + ux * t1, w.a[1] + uz * t1], to: [w.a[0] + ux * t2, w.a[1] + uz * t2], _w: best, _t: [Math.min(t1, t2), Math.max(t1, t2)] };
+  };
+  const overlap = (p, q) => p._w === q._w ? Math.max(0, Math.min(p._t[1], q._t[1]) - Math.max(p._t[0], q._t[0])) / Math.min(p._t[1] - p._t[0], q._t[1] - q._t[0]) : 0;
+  const kept = [];
+  for (const o of detail.map(snap).filter(Boolean)) {
+    const twin = kept.find((k) => overlap(k, o) > 0.5);
+    if (!twin) kept.push(o); else if ((o.printed && !twin.printed) || (o.printed === twin.printed && o._t[1] - o._t[0] > twin._t[1] - twin._t[0])) kept[kept.indexOf(twin)] = o;
+  }
+  for (const o of base) { const sb = snap(o) || o; if (!kept.some((k) => sb._w != null && overlap(k, sb) > 0.3)) kept.push({ ...sb, uncertain: true }); }
+  return kept.map(({ _w, _t, wall, ...o }) => o);
+}
+
 /* ---------------- image helpers ---------------- */
+// Plans are mostly grey: few saturated pixels. Photos of paper plans and colour renderings are not.
+function isLineDrawing(c) {
+  const sm = limit(c, 200); const d = sm.getContext('2d').getImageData(0, 0, sm.width, sm.height).data; let col = 0, n = 0;
+  for (let i = 0; i < d.length; i += 16) { n++; if (Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]) > 40) col++; }
+  return col / n < 0.04;
+}
 function canvasOf(src, w = src.width, h = src.height) { const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(src, 0, 0, w, h); return c; }
 function limit(src, max) { const k = Math.min(1, max / Math.max(src.width, src.height)); return k < 1 ? canvasOf(src, Math.round(src.width * k), Math.round(src.height * k)) : canvasOf(src); }
 function rotateCanvas(src, deg) {
@@ -170,7 +222,7 @@ export class PlanWizard {
     const lv = app.plan.levels.find((l) => l.id === (levelId || app.activeLevelId)); const busyLevel = lv && lv.rooms.some((r) => r.kind !== 'void');
     this.st = { step: 0, src: null, srcName: '', pdf: null, page: 0, levelId: levelId === '__new' || busyLevel ? '__new' : levelId || app.activeLevelId, newLevel: '', rot90: 0, fine: 0, quad: null, bw: false, contrast: 0, img: null,
       measure: { a: null, b: null, m: '' }, check: { a: null, b: null, m: '' }, mpp: null, dims: null,
-      opts: { openings: true, stairs: true, names: true }, hints: '', result: null, sel: null, busy: false, mode: 'replace', keepUnderlay: true, mapAreas: true, overlayAlpha: 0.55, err: null };
+      opts: { openings: true, stairs: true, names: true, detail: true }, hints: '', result: null, sel: null, busy: false, mode: 'replace', keepUnderlay: true, mapAreas: true, overlayAlpha: 0.55, err: null };
     this.meas = null; this.rubber = null; this.gray = null; this._key2 = null; this.openTool = null;
     this.root = app.$('wizard'); this.root.hidden = false; this.root.innerHTML = '';
     this._paste = (e) => { const it = [...(e.clipboardData?.items || [])].find((x) => x.type.startsWith('image/')); if (it && this.st.step === 0) { e.preventDefault(); this.loadFile(it.getAsFile(), t('assistant.wizard.clipboard')); } };
@@ -179,12 +231,12 @@ export class PlanWizard {
       if (this.st.step === 4 && !e.target.closest?.('input,textarea,select')) { if ((e.key === 'Delete' || e.key === 'Backspace') && this.st.selOpen != null) { this.st.result.openings.splice(this.st.selOpen, 1); this.st.selOpen = null; this.render(); return; } if (e.key === 'Escape' && (this.openTool || this.st.selOpen != null)) { this.openTool = null; this.st.selOpen = null; this.render(); return; } }
       if (e.key === 'Escape' && !e.wzHandled && !this.root.hidden) this.close(); };
     window.addEventListener('keydown', this._key);
-    this.pending = null; this.detectRun = null; this.stopTicker?.();
+    this.pending = null; this.detectRun = null; this.layoutRun = null; this.stopTicker?.();
     app.hass.callWS({ type: 'hometwin/agent/info' }).then((i) => { this.ai = i; if (this.st.step >= 2) this.render(); if (i.configured) this.checkPendingJob(); }).catch(() => { this.ai = { configured: false }; });
     this.render();
   }
   close() { if (this.pendingRise) { const id = this.pendingRise; this.pendingRise = null; setTimeout(() => this.app.stage.riseLevel(id), 350); }
-    this.detectRun = null; this.stopTicker(); this.view?.destroy(); this.view = null; this.root.hidden = true; this.root.innerHTML = ''; window.removeEventListener('paste', this._paste); window.removeEventListener('keydown', this._key); }
+    this.detectRun = null; this.layoutRun = null; this.stopTicker(); this.view?.destroy(); this.view = null; this.root.hidden = true; this.root.innerHTML = ''; window.removeEventListener('paste', this._paste); window.removeEventListener('keydown', this._key); }
 
   /* ---------- frame ---------- */
   render() {
@@ -212,7 +264,7 @@ export class PlanWizard {
     const s = this.st;
     if (s.step === 0) return `<button class="btn primary" data-wz="next" ${s.src ? '' : 'disabled'}>${t('assistant.common.next')}</button>`;
     if (s.step === 1) return `<button class="btn primary" data-wz="next">${t('assistant.wizard.nextToScale')}</button>`;
-    if (s.step === 2) return `<button class="btn primary" data-wz="next" ${s.mpp || (this.ai?.configured && !s.busy) ? '' : 'disabled'}>${this.ai?.configured ? t(s.mpp ? 'assistant.wizard.recognizeRooms' : 'assistant.wizard.recognizeRoomsAndScale') : t('assistant.common.next')}</button>`;
+    if (s.step === 2) return `<button class="btn primary" data-wz="next" ${s.mpp || (this.ai?.configured && !s.busy && !s.pendingResult) ? '' : 'disabled'}>${this.ai?.configured ? t(s.mpp ? 'assistant.wizard.recognizeRooms' : 'assistant.wizard.recognizeRoomsAndScale') : t('assistant.common.next')}</button>`;
     if (s.step === 3) return '';
     return `<button class="btn primary" data-wz="next" ${s.result?.rooms.length ? '' : 'disabled'}>${t('assistant.common.apply')}</button>`;
   }
@@ -221,7 +273,13 @@ export class PlanWizard {
   async next() {
     const s = this.st;
     if (s.step === 0) { await this.prepareAlign(); return this.go(1); }
-    if (s.step === 1) { this.msg(t('assistant.wizard.preparingImage')); await new Promise((r) => setTimeout(r, 20)); this.process(); return this.go(2); }
+    if (s.step === 1) { this.msg(t('assistant.wizard.preparingImage')); await new Promise((r) => setTimeout(r, 20)); if (s.roi?.busy) s.roi.busy = false; await this.process(); return this.go(2); }
+    if (s.step === 2 && s.pendingResult && s.mpp) { // rescale the kept rooms with the measured scale, no new AI call
+      const { res, k, locked, seconds } = s.pendingResult; s.pendingResult = null; const f = (s.mpp * k) / (res.mpp || 0.01); const sc = (p) => [p[0] * f, p[1] * f];
+      const out = { ...res, mpp: s.mpp * k, scale_source: 'measured', rooms: res.rooms.map((r) => ({ ...r, points: r.points.map(sc), area: r.area * f * f, net_area: r.net_area * f * f })),
+        openings: (res.openings || []).map((o) => ({ ...o, from: sc(o.from), to: sc(o.to) })), stairs: (res.stairs || []).map((st) => ({ ...st, points: st.points.map(sc), up_from: st.up_from && sc(st.up_from), up_to: st.up_to && sc(st.up_to) })) };
+      return this.useResult(out, k, locked, seconds);
+    }
     if (s.step === 2) { this.go(3); if (this.ai?.configured) this.detect(); return; }
     if (s.step === 4) return this.apply();
   }
@@ -262,7 +320,7 @@ export class PlanWizard {
     R.querySelector('[data-act="dismissJob"]')?.addEventListener('click', () => { const j = this.pending; this.pending = null; this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: j.id }).catch(() => {}); this.render(); });
     R.querySelector('#wzLevel').onchange = (e) => { s.levelId = e.target.value; this.render(); };
     R.querySelector('#wzNewLevel')?.addEventListener('input', (e) => { s.newLevel = e.target.value; s.newLevelTouched = true; });
-    R.querySelector('#wzPages')?.addEventListener('click', async (e) => { const b = e.target.closest('[data-page]'); if (!b) return; s.page = +b.dataset.page; this.msg(t('assistant.wizard.loadingPage')); s.src = await s.pdf.render(s.page); this.render(); });
+    R.querySelector('#wzPages')?.addEventListener('click', async (e) => { const b = e.target.closest('[data-page]'); if (!b) return; s.page = +b.dataset.page; this.msg(t('assistant.wizard.loadingPage')); s.src = await s.pdf.render(s.page); s.quad = null; await this.analyzePdf(); this.render(); });
     if (s.pdf) this.pdfThumbs();
   }
   async pdfThumbs() { const s = this.st; for (let i = 0; i < Math.min(s.pdf.pages, 12); i++) { const c = await s.pdf.thumb(i); const b = this.root.querySelector(`[data-page="${i}"]`); if (b && !b.querySelector('img')) b.insertAdjacentHTML('afterbegin', `<img alt="" src="${c.toDataURL('image/jpeg', 0.7)}">`); } }
@@ -271,21 +329,52 @@ export class PlanWizard {
     try {
       if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
         this.msg(t('assistant.wizard.openingPdf')); const { openPdf } = await import('./pdfload.js');
-        s.pdf = await openPdf(file); s.page = 0; s.src = await s.pdf.render(0);
-      } else { s.pdf = null; const bmp = await createImageBitmap(file); s.src = limit(bmp, 4000); }
-      s.srcName = name || file.name || t('assistant.wizard.image'); s.quad = null; s.rot90 = 0; s.fine = 0; s.mpp = null; s.measure = { a: null, b: null, m: '' }; s.check = { a: null, b: null, m: '' }; s.result = null;
+        s.pdf = await openPdf(file); s.page = 0; s.src = await s.pdf.render(0); await this.analyzePdf();
+      } else { s.pdf = null; s.pdfPage = null; const bmp = await createImageBitmap(file); s.src = limit(bmp, 4000); }
+      s.srcName = name || file.name || t('assistant.wizard.image'); s.quad = null;  s.pendingResult = null; s.roi = null; s.rot90 = 0; s.fine = 0; s.mpp = null; s.measure = { a: null, b: null, m: '' }; s.check = { a: null, b: null, m: '' }; s.result = null;
       this.render();
     } catch (e) { console.error(e); this.msg(t('assistant.wizard.fileOpenFailed', { error: e.message || e }), true); }
   }
 
+  // Vector PDFs: text labels and line segments of the page (for exact scale and model context).
+  async analyzePdf() {
+    const s = this.st; s.pdfPage = null; s.roi = null;
+    try { const p = await s.pdf.analyze(s.page); if (p.items.length >= 5) { s.pdfPage = p; s.unitsPerSrcPx = p.width / s.src.width; s.pdfAll = mergeTextItems(p.items); } } catch (e) { console.warn('HomeTwin: PDF analysis failed', e); }
+  }
+
   /* ---------- step 2: align ---------- */
-  async prepareAlign() { const s = this.st; this.rotated = rotateCanvas(s.src, s.rot90 * 90 + s.fine); if (!s.quad) s.quad = this.fullQuad(); }
+  async prepareAlign() {
+    const s = this.st; this.rotated = rotateCanvas(s.src, s.rot90 * 90 + s.fine);
+    if (!s.quad) { s.quad = this.fullQuad(); if (this.ai?.configured && !s.roi) this.proposeRegion(); }
+  }
+  // Asks the model where the floor plan is on the sheet. Only a proposal: shown as the crop frame, editable.
+  async proposeRegion() {
+    const s = this.st; s.roi = { busy: true, plans: [] }; if (s.step === 1) this.render();
+    try {
+      const ov = limit(this.rotated, 1024); const k = this.rotated.width / ov.width;
+      const res = await this.runJob({ mode: 'layout', image: ov.toDataURL('image/jpeg', 0.85), width: ov.width, height: ov.height, language: getLanguage() }, { keepRun: true });
+      if (s.roi?.busy !== true) return;
+      const rf = s.pdfPage ? rotFrame(s.src.width, s.src.height, s.rot90 * 90 + s.fine) : null;
+      const items = rf ? s.pdfAll.map((it) => { const p = rf.fwd([it.x / s.unitsPerSrcPx, it.y / s.unitsPerSrcPx]); return { ...it, x: p[0], y: p[1], h: it.h / s.unitsPerSrcPx }; }) : [];
+      const W = this.rotated.width, H = this.rotated.height;
+      const plans = (res.drawings || []).filter((d) => d.type === 'floor_plan').map((d) => ({ label: d.label || '', box: snapRegion(d.box.map((v) => v * k), items, W, H) }))
+        .filter((d) => (d.box[2] - d.box[0]) * (d.box[3] - d.box[1]) < W * H * 0.97);
+      s.roi = { busy: false, plans, pick: 0 };
+      if (plans.length) this.useRegion(0); else if (s.step === 1) this.render();
+    } catch (e) { if (!e.cancelled) s.roi = { busy: false, plans: [], error: true }; if (s.step === 1) this.render(); }
+  }
+  useRegion(i) {
+    const s = this.st, b = s.roi?.plans?.[i]; if (!b) return; s.roi.pick = i;
+    const [x0, y0, x1, y1] = b.box; s.quad = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    if (s.step === 1) this.render();
+  }
   fullQuad() { const w = this.rotated.width, h = this.rotated.height; return [[0, 0], [w, 0], [w, h], [0, h]]; }
   step1() {
     const s = this.st;
     return `<div class="wz-two"><div class="wz-canvas" id="wzWrap"><canvas id="wzCv"></canvas><div class="wz-zoom"><button class="ibtn" data-z="in" title="${t('assistant.common.zoomIn')}">+</button><button class="ibtn" data-z="out" title="${t('assistant.common.zoomOut')}">−</button><button class="ibtn" data-z="fit" title="${t('assistant.common.fit')}">⤢</button></div></div>
       <div class="wz-side">
         <p class="hint">${t('assistant.wizard.alignHint')}</p>
+        ${s.roi?.busy ? `<p class="hint">${icon('sparkle')} ${t('assistant.wizard.regionSearching')}</p>` : s.roi?.plans?.length ? `<p class="ok">${t('assistant.wizard.regionSuggested')}</p>${s.roi.plans.length > 1 ? `<div class="actions">${s.roi.plans.map((p, i) => `<button class="btn small" data-roi="${i}" aria-pressed="${s.roi.pick === i}">${esc(p.label || t('assistant.wizard.floorPlanNumber', { number: i + 1 }))}</button>`).join('')}</div>` : ''}` : ''}
         <div class="field"><span class="lbl">${t('assistant.wizard.rotate')}</span><div class="actions"><button class="btn small" data-rot="-1">⟲ 90°</button><button class="btn small" data-rot="1">⟳ 90°</button></div></div>
         <div class="field"><label for="wzFine">${t('assistant.wizard.fineAlignment')} <output>${s.fine.toFixed(1)}°</output></label><input type="range" id="wzFine" min="-10" max="10" step="0.1" value="${s.fine}"></div>
         <label class="chk"><input type="checkbox" id="wzBw" ${s.bw ? 'checked' : ''}> ${t('assistant.wizard.blackAndWhite')}</label>
@@ -311,9 +400,24 @@ export class PlanWizard {
     let t; R.querySelector('#wzFine').oninput = (e) => { s.fine = +e.target.value; e.target.previousElementSibling.querySelector('output').textContent = `${s.fine.toFixed(1)}°`; clearTimeout(t); t = setTimeout(() => { this.rotated = rotateCanvas(s.src, s.rot90 * 90 + s.fine); s.quad = this.fullQuad(); preview(); }, 120); };
     R.querySelector('#wzBw').onchange = (e) => { s.bw = e.target.checked; preview(); };
     R.querySelector('#wzCon').oninput = (e) => { s.contrast = +e.target.value; e.target.previousElementSibling.querySelector('output').textContent = s.contrast; clearTimeout(t); t = setTimeout(preview, 120); };
-    R.querySelector('[data-act="resetQuad"]').onclick = () => { s.quad = this.fullQuad(); v.draw(); };
+    R.querySelector('[data-act="resetQuad"]').onclick = () => { s.quad = this.fullQuad(); if (s.roi) s.roi.busy = false; v.draw(); };
+    R.querySelectorAll('[data-roi]').forEach((b) => (b.onclick = () => this.useRegion(+b.dataset.roi)));
   }
-  process() { const s = this.st; s.img = enhance(warp(this.rotated, s.quad), s); this.gray = null; this.meas = null; this.rubber = null; s.autoScaled = false; s.mpp = null; s.measure = { a: null, b: null, m: s.measure.m }; s.check = { a: null, b: null, m: '' }; s.dims = null; }
+  async process() {
+    const s = this.st; let k = 1, img = null;
+    const rf = s.pdfPage ? rotFrame(s.src.width, s.src.height, s.rot90 * 90 + s.fine) : null;
+    if (rf) { try { const r = await renderCrop(s.pdf, s.page, s.unitsPerSrcPx, rf, s.quad); if (r) { img = r.canvas; k = r.k; } } catch (e) { console.warn('HomeTwin: sharp PDF crop failed', e); } }
+    this.processRaster(img);
+    s.pdfModel = null; s.scaleInfo = null;
+    if (rf) {
+      s.pdfModel = pageModel(s.pdfPage, s.unitsPerSrcPx, rf, s.quad, k, s.img.width, s.img.height);
+      const sc = pdfScale(s.pdfModel, s.pdfAll);
+      if (sc) { s.mpp = sc.mpp; s.scaleInfo = sc; s.autoScaled = true; }
+    }
+    // the detail pass pays off when the plan has more pixels than the model reads at once
+    if (!s.opts.detailTouched) s.opts.detail = !!s.pdfPage || Math.max(s.img.width, s.img.height) > (this.ai?.image_max_px || 1568) * 1.2;
+  }
+  processRaster(sharp) { const s = this.st; s.img = enhance(sharp || warp(this.rotated, s.quad), s); this.gray = null; this.meas = null; this.rubber = null; s.autoScaled = false; s.mpp = null; s.measure = { a: null, b: null, m: s.measure.m }; s.check = { a: null, b: null, m: '' }; s.dims = null; }
 
   /* ---------- step 3: scale ---------- */
   step2() {
@@ -323,8 +427,9 @@ export class PlanWizard {
     return `<div class="wz-two"><div class="wz-canvas" id="wzWrap"><canvas id="wzCv"></canvas><canvas class="wz-loupe" id="wzLoupe" width="150" height="150" hidden></canvas><div class="wz-stephint" id="wzStepHint"></div>
         <div class="wz-zoom"><button class="ibtn" data-z="in" title="${t('assistant.common.zoomIn')}">+</button><button class="ibtn" data-z="out" title="${t('assistant.common.zoomOut')}">−</button><button class="ibtn" data-z="fit" title="${t('assistant.common.fit')}">⤢</button></div></div>
       <div class="wz-side">
-        ${this.ai?.configured ? `<p class="wz-tip">${t('assistant.wizard.aiScaleTip')}</p>` : ''}${s.scaleSearching ? this.progressHtml(t('assistant.wizard.aiSearchingDimensions')) : ''}<p class="hint">${t('assistant.wizard.manualMeasureHint')}</p>
+        ${this.ai?.configured && !s.scaleInfo ? `<p class="wz-tip">${t('assistant.wizard.aiScaleTip')}</p>` : ''}${s.scaleSearching ? this.progressHtml(t('assistant.wizard.aiSearchingDimensions')) : ''}<p class="hint">${t('assistant.wizard.manualMeasureHint')}</p>
         <div class="field"><label for="wzLen">${t('assistant.wizard.blueLineLength')}</label><input type="text" inputmode="decimal" id="wzLen" placeholder="${t('assistant.wizard.lengthExample')}" value="${esc(m.m)}" ${m.a && m.b ? '' : 'disabled'}></div>
+        ${s.scaleInfo && s.mpp === s.scaleInfo.mpp ? `<p class="ok">✓ ${s.scaleInfo.source === 'pdf-verified' ? t('assistant.wizard.scaleFromPdfVerified', { ratio: s.scaleInfo.ratio, count: s.scaleInfo.support }) : s.scaleInfo.source === 'pdf-dimensions' ? t('assistant.wizard.scaleFromPdfDimensions', { count: s.scaleInfo.support }) : t('assistant.wizard.scaleFromPdfPrinted', { ratio: s.scaleInfo.ratio })}</p>` : ''}
         ${s.mpp ? `<p class="ok">${t('assistant.wizard.scaleSummary', { pixels: (1 / s.mpp).toFixed(1), width: (s.img.width * s.mpp).toFixed(2), height: (s.img.height * s.mpp).toFixed(2) })}</p>` : ''}
         ${s.mpp ? `<details ${c.a ? 'open' : ''}><summary>${t('assistant.wizard.checkDistance')}</summary>
           <p class="hint">${t('assistant.wizard.checkDistanceHint')}</p>
@@ -435,22 +540,34 @@ export class PlanWizard {
     return c.toDataURL('image/jpeg', 0.8);
   }
   // 1568 px is the largest side Claude reads without resampling; Gemini and GPT handle it as well.
-  modelImage() { const s = this.st; const img = limit(s.img, 1568); return { url: img.toDataURL('image/jpeg', 0.8), w: img.width, h: img.height, k: s.img.width / img.width }; }
+  // Image for the model: as large as the configured model reads without resampling (agent/info),
+  // line drawings as lossless greyscale PNG (thin lines and small text stay sharp), photos as JPEG.
+  modelImage() {
+    const s = this.st; const max = Math.max(512, Math.min(4096, this.ai?.image_max_px || 1568));
+    const img = limit(s.img, max); const k = s.img.width / img.width;
+    if (s.pdfPage || isLineDrawing(img)) {
+      const g = img.getContext('2d'); const d = g.getImageData(0, 0, img.width, img.height); const p = d.data;
+      for (let i = 0; i < p.length; i += 4) { const v = (p[i] * 0.3 + p[i + 1] * 0.59 + p[i + 2] * 0.11) | 0; p[i] = p[i + 1] = p[i + 2] = v; }
+      g.putImageData(d, 0, 0); const url = img.toDataURL('image/png');
+      if (url.length < 3.5e6) return { url, w: img.width, h: img.height, k };
+    }
+    return { url: img.toDataURL('image/jpeg', 0.9), w: img.width, h: img.height, k };
+  }
   // Runs a recognition job on the server and polls it; survives reconnects and closed dialogs.
-  async runJob(req) {
-    const app = this.app; const run = (this.detectRun = { id: null }); this.detectStart = Date.now(); this.job = { stage: 'upload', elapsed: 0 };
-    this.startTicker();
+  async runJob(req, { keepRun = false, shared = false } = {}) {
+    const app = this.app; const run = keepRun ? (this.layoutRun = { id: null }) : shared && this.detectRun ? this.detectRun : (this.detectRun = { id: null });
+    if (!keepRun && !shared) { this.detectStart = Date.now(); this.job = { stage: 'upload', elapsed: 0 }; this.startTicker(); }
     const { job_id } = await app.hass.callWS({ type: 'hometwin/agent/detect_start', ...req, level_id: this.st.levelId });
-    run.id = job_id; this.jobId = job_id;
+    if (!shared) run.id = job_id; if (!keepRun && !shared) this.jobId = job_id;
     let fails = 0;
     for (;;) {
       await new Promise((r) => setTimeout(r, 1200));
-      if (this.detectRun !== run) throw Object.assign(new Error('cancelled'), { cancelled: true });
+      if ((keepRun ? this.layoutRun : this.detectRun) !== run) throw Object.assign(new Error('cancelled'), { cancelled: true });
       let job;
       try { ({ job } = await app.hass.callWS({ type: 'hometwin/agent/job', job_id })); fails = 0; }
       catch (e) { if (++fails > 25) throw new Error(t('assistant.wizard.noHomeAssistantConnection')); continue; } // reconnecting
       if (!job) throw new Error(t('assistant.wizard.jobMissing'));
-      this.job = job; this.updateProgress();
+      if (!keepRun && !shared) { this.job = job; this.updateProgress(); }
       if (job.status === 'done') { app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id }).catch(() => {}); return job.result; }
       if (job.status === 'error') throw new Error(job.error);
     }
@@ -507,6 +624,7 @@ export class PlanWizard {
           <label class="chk"><input type="checkbox" checked disabled> ${t('assistant.wizard.roomsAndOutdoor')}</label>
           <label class="chk"><input type="checkbox" id="wzOpen" ${s.opts.openings ? 'checked' : ''}> ${t('assistant.wizard.doorsAndWindows')}</label>
           <label class="chk"><input type="checkbox" id="wzStairs" ${s.opts.stairs ? 'checked' : ''}> ${t('assistant.wizard.stairs')}</label>
+          <label class="chk"><input type="checkbox" id="wzDetail" ${s.opts.detail !== false ? 'checked' : ''}> ${t('assistant.wizard.detailOption')}</label>
           <label class="chk"><input type="checkbox" id="wzRefine" ${s.opts.refine !== false ? 'checked' : ''}> ${t('assistant.wizard.secondPassOption')}</label></fieldset>
         <div class="field"><label for="wzHints">${t('assistant.wizard.aiHints')}</label><textarea id="wzHints" rows="3" placeholder="${t('assistant.wizard.aiHintsPlaceholder')}" ${s.busy ? 'disabled' : ''}>${esc(s.hints)}</textarea></div>
         <div class="actions"><button class="btn small" data-wz="back2" ${s.busy ? 'disabled' : ''}>${t('assistant.wizard.backToScale')}</button><button class="btn primary small" data-act="detect" ${s.busy ? 'disabled' : ''}>${icon('sparkle')}${t(s.err ? 'assistant.common.tryAgain' : 'assistant.common.recognize')}</button></div>
@@ -520,11 +638,49 @@ export class PlanWizard {
     const v = this.mkView(); v.setImage(s.img);
     R.querySelector('#wzOpen').onchange = (e) => (s.opts.openings = e.target.checked);
     R.querySelector('#wzStairs').onchange = (e) => (s.opts.stairs = e.target.checked);
+    R.querySelector('#wzDetail').onchange = (e) => { s.opts.detail = e.target.checked; s.opts.detailTouched = true; };
     R.querySelector('#wzRefine').onchange = (e) => (s.opts.refine = e.target.checked);
     R.querySelector('#wzHints').oninput = (e) => (s.hints = e.target.value);
     R.querySelector('[data-act="detect"]').onclick = () => this.detect();
     R.querySelector('[data-act="copyRaw"]')?.addEventListener('click', () => this.copyRaw());
 
+  }
+  // Openings in detail: the plan is cut into tiles at full resolution; each tile is checked only for
+  // doors and windows on the known walls. Results replace the openings of the rooms pass where both found one.
+  async openingsPass(res, im) {
+    const s = this.st, mppImg = res.mpp / im.k, T = Math.max(768, Math.min(4096, this.ai?.image_max_px || 1568));
+    const rooms = res.rooms.filter((r) => r.kind !== 'outdoor'); if (!rooms.length) return;
+    const toPx = (p) => [p[0] / mppImg, p[1] / mppImg];
+    const walls = wallEdges(rooms);
+    const b = bbox(rooms.flatMap((r) => r.points).map(toPx)), pad = 1.2 / mppImg;
+    const X0 = Math.max(0, b.minX - pad), Y0 = Math.max(0, b.minZ - pad), X1 = Math.min(s.img.width, b.minX + b.w + pad), Y1 = Math.min(s.img.height, b.minZ + b.d + pad);
+    const nx = Math.max(1, Math.ceil((X1 - X0) / (T * 0.85))), ny = Math.max(1, Math.ceil((Y1 - Y0) / (T * 0.85)));
+    const tw = Math.min(T, Math.ceil((X1 - X0) / nx * 1.15)), th = Math.min(T, Math.ceil((Y1 - Y0) / ny * 1.15));
+    const labels = s.pdfModel ? labelsForModel(s.pdfModel, s.mpp, 1, 2000) : [];
+    const tiles = [];
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const tx = Math.round(Math.min(X1 - tw, X0 + ((X1 - X0 - tw) * i) / Math.max(1, nx - 1) || X0)), ty = Math.round(Math.min(Y1 - th, Y0 + ((Y1 - Y0 - th) * j) / Math.max(1, ny - 1) || Y0));
+      tiles.push({ tx: Math.max(0, tx), ty: Math.max(0, ty) });
+    }
+    const found = []; let done = 0;
+    this.passTitle = t('assistant.wizard.detailPassChecking', { done: 0, total: tiles.length }); this.render();
+    const work = tiles.map((tl) => async () => {
+      const c = document.createElement('canvas'); c.width = Math.min(tw, s.img.width - tl.tx); c.height = Math.min(th, s.img.height - tl.ty);
+      const g = c.getContext('2d'); g.drawImage(s.img, -tl.tx, -tl.ty); const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+      for (let k = 0; k < p.length; k += 4) { const v = (p[k] * 0.3 + p[k + 1] * 0.59 + p[k + 2] * 0.11) | 0; p[k] = p[k + 1] = p[k + 2] = v; } g.putImageData(d, 0, 0);
+      const inT = ([x, y]) => x >= -20 && y >= -20 && x <= c.width + 20 && y <= c.height + 20;
+      const tw2 = walls.map((w) => ({ ...w, a: [w.a[0] / mppImg - tl.tx, w.a[1] / mppImg - tl.ty], b: [w.b[0] / mppImg - tl.tx, w.b[1] / mppImg - tl.ty] })).filter((w) => inT(w.a) || inT(w.b));
+      if (!tw2.length) return;
+      const req = { mode: 'openings', image: c.toDataURL('image/png'), width: c.width, height: c.height, mpp: mppImg, x0: tl.tx * mppImg, z0: tl.ty * mppImg, language: getLanguage(),
+        walls: tw2.map((w) => [...w.a.map(Math.round), ...w.b.map(Math.round), w.ext ? 'exterior' : 'interior']),
+        rooms: rooms.map((r) => ({ name: r.name, points: r.points.map((q) => { const v = toPx(q); return [v[0] - tl.tx, v[1] - tl.ty]; }) })),
+        labels: labels.filter((l) => inT([l.x - tl.tx, l.y - tl.ty])).map((l) => ({ ...l, x: l.x - tl.tx, y: l.y - tl.ty })).slice(0, 300) };
+      const r = await this.runJob(req, { shared: true }); found.push(...(r.openings || []));
+      done++; this.passTitle = t('assistant.wizard.detailPassChecking', { done, total: tiles.length }); this.updateProgress();
+    });
+    for (let k = 0; k < work.length; k += 3) await Promise.all(work.slice(k, k + 3).map((f) => f()));
+    res.openings = mergeOpenings(res.openings || [], found, walls); res.detailed = true;
+    res.adjusted = [...(res.adjusted || []), t('assistant.wizard.detailPassDone', { count: res.openings.filter((o) => !o.uncertain).length, tiles: tiles.length })];
   }
   // Diagnostics for failed recognitions: model, error and the raw model answer (copied and shown).
   async copyRaw() {
@@ -544,9 +700,13 @@ export class PlanWizard {
     try {
       const im = this.modelImage();
       const res = await this.runJob({ mode: 'rooms', image: im.url, width: im.w, height: im.h, mpp: s.mpp ? s.mpp * im.k : null, x0: 0, z0: 0,
-        options: s.opts, hints: s.hints || undefined, language: getLanguage(), locked: locked.map((r) => ({ name: r.name, points: r.points })) });
+        options: s.opts, hints: s.hints || undefined, language: getLanguage(), locked: locked.map((r) => ({ name: r.name, points: r.points })), labels: s.pdfModel ? labelsForModel(s.pdfModel, s.mpp, im.k) : undefined });
       if (!res?.rooms?.length && !locked.length) throw new Error(t('assistant.wizard.noRoomsReturned'));
       const t0 = this.detectStart; let out = res;
+      if (s.opts.detail !== false && s.opts.openings && res.scale_source !== 'unknown') {
+        try { await this.openingsPass(res, im); } catch (e) { if (e.cancelled) { this.passTitle = null; return; } res.adjusted = [...(res.adjusted || []), t('assistant.wizard.detailPassFailed', { error: e.message || e })]; }
+        this.passTitle = null;
+      }
       if (s.opts.refine !== false && res.rooms?.length) { // pass 2: the model checks its own reading on an overlay
         this.passTitle = t('assistant.wizard.secondPassChecking'); this.render();
         try {
@@ -558,7 +718,7 @@ export class PlanWizard {
           const size = (x) => { const b = bbox((x.rooms || []).flatMap((r) => r.points)); return Math.sqrt(b.w * b.d); };
           const ratio = ref?.rooms?.length ? size(ref) / size(res) : 0, e1 = err(res), e2 = ref?.rooms ? err(ref) : 1;
           if (ref?.rooms?.length && (ratio < 0.92 || ratio > 1.08 || e2 > e1 + 0.02)) out = { ...res, adjusted: [...(res.adjusted || []), t('assistant.wizard.secondPassRejected', { secondError: Math.round(e2 * 100), firstError: Math.round(e1 * 100), ratio: ratio.toFixed(2) })] };
-          else if (ref?.rooms?.length >= Math.max(1, res.rooms.length * 0.6)) out = { ...ref, mpp: res.mpp, scale_source: res.scale_source, level: ref.level || res.level, roof: ref.roof || res.roof, adjusted: [t('assistant.wizard.secondPassAccepted'), ...(ref.adjusted || [])] };
+          else if (ref?.rooms?.length >= Math.max(1, res.rooms.length * 0.6)) out = { ...ref, ...(res.detailed ? { openings: res.openings } : {}), mpp: res.mpp, scale_source: res.scale_source, level: ref.level || res.level, roof: ref.roof || res.roof, adjusted: [t('assistant.wizard.secondPassAccepted'), ...(ref.adjusted || [])] };
           else out = { ...res, adjusted: [...(res.adjusted || []), t('assistant.wizard.secondPassUnusable')] };
         } catch (e) { if (e.cancelled) { this.passTitle = null; return; } out = { ...res, adjusted: [...(res.adjusted || []), t('assistant.wizard.secondPassFailed', { error: e.message || e })] }; }
       }
@@ -572,6 +732,9 @@ export class PlanWizard {
   useResult(res, k = 1, locked = [], seconds = null) {
     const s = this.st;
     if (!res?.rooms?.length && !locked.length) { s.busy = false; this.go(3); s.err = t('assistant.wizard.noRoomsReturned'); this.render(); return; }
+    if (res.scale_source === 'unknown') { // rooms recognised, scale not: keep them, ask for one measured length, then rescale
+      s.pendingResult = { res, k, locked, seconds }; s.busy = false; this.go(2); this.msg(t('assistant.wizard.roomsKeptMeasure')); return;
+    }
     if (!s.mpp && res.mpp) { s.mpp = res.mpp / k; s.measure = { a: null, b: null, m: '' }; s.scaleFromDims = true; }
     const rooms = res.rooms.map((r, i) => ({ ...r, id: newId('wr'), color: COLORS[(locked.length + i) % COLORS.length] }));
     const sc = res.scale_check && Math.abs(res.scale_check.factor - 1) > 0.025 ? res.scale_check : null;
@@ -605,6 +768,21 @@ export class PlanWizard {
     for (let i = 0; i < walled.length; i++) for (let k = i + 1; k < walled.length; k++) { const ov = overlap(walled[i].points, walled[k].points); if (ov > 0.05) out.push({ ids: [walled[i].id, walled[k].id], text: t('assistant.wizard.roomsOverlap', { first: walled[i].name, second: walled[k].name, area: ov.toFixed(2) }) }); }
     for (const o of R.filter((r) => r.kind === 'outdoor')) { const hit = walled.map((w) => [w, overlap(o.points, w.points)]).filter(([, ov]) => ov > 0.3); if (hit.length) out.push({ ids: [o.id, ...hit.map(([w]) => w.id)], trim: o.id, text: t('assistant.wizard.outdoorOverlap', { name: o.name, rooms: hit.map(([w]) => `“${w.name}”`).join(', '), area: hit.reduce((sum, [, ov]) => sum + ov, 0).toFixed(1) }) }); }
     for (const r of R) { const n = netArea(r, R); if (r.label_area && Math.abs(n / r.label_area - 1) > 0.08 && Math.abs(n - r.label_area) > 0.4) out.push({ ids: [r.id], text: t('assistant.wizard.areaMismatch', { name: r.name, actual: n.toFixed(1), planned: r.label_area }) }); }
+    // completeness: rooms with an exterior wall but no window; printed opening labels without an opening
+    const ops = this.st.result?.openings || [], walls = wallEdges(walled);
+    const onBoundary = (p, r) => r.points.some((a, i) => distToSeg(p, a, r.points[(i + 1) % r.points.length]) < 0.06);
+    const mid = (o) => [(o.from[0] + o.to[0]) / 2, (o.from[1] + o.to[1]) / 2];
+    for (const r of walled.filter((x) => x.kind === 'room')) {
+      const ext = walls.filter((w) => w.ext && dist(w.a, w.b) > 2 && onBoundary(w.a, r) && onBoundary(w.b, r));
+      if (ext.length && !ops.some((o) => o.type === 'window' && ext.some((w) => distToSeg(mid(o), w.a, w.b) < 0.25))) out.push({ ids: [r.id], text: t('assistant.wizard.noWindowFound', { name: r.name }) });
+    }
+    if (this.st.pdfModel && this.st.mpp) {
+      for (const l of labelsForModel(this.st.pdfModel, this.st.mpp, 1, 2000).filter((x) => x.kind === 'pair' && x.w)) {
+        const p = [l.x * this.st.mpp, l.y * this.st.mpp];
+        if (!R.some((r) => r.kind !== 'outdoor' && bboxHas(r.points, p, 1.5))) continue; // label far from the building
+        if (!ops.some((o) => dist(p, mid(o)) < 1.3)) out.push({ ids: [''], text: t('assistant.wizard.labelWithoutOpening', { label: l.text }) });
+      }
+    }
     for (const problem of this.st.result?.serverProblems || []) if (/Plan-Maß|Maß |plan dimension|dimension/i.test(problem)) { const r = R.find((x) => problem.includes(`„${x.name}“`) || problem.includes(`“${x.name}”`)); out.push({ ids: [r?.id || ''], text: problem }); }
     return out;
   }
@@ -670,7 +848,7 @@ export class PlanWizard {
       g.lineWidth = 4; g.lineCap = 'round';
       res.openings.forEach((o, i) => { const a1 = v.toScr(toPx(o.from)), b1 = v.toScr(toPx(o.to)); const sel = s.selOpen === i;
         if (sel) { g.strokeStyle = '#fff'; g.lineWidth = 9; g.beginPath(); g.moveTo(...a1); g.lineTo(...b1); g.stroke(); g.lineWidth = 4; }
-        g.strokeStyle = OPEN_COL[o.type] || '#fff'; g.beginPath(); g.moveTo(...a1); g.lineTo(...b1); g.stroke();
+        g.strokeStyle = OPEN_COL[o.type] || '#fff'; if (o.uncertain) g.setLineDash([6, 5]); g.beginPath(); g.moveTo(...a1); g.lineTo(...b1); g.stroke(); g.setLineDash([]);
         if (sel) for (const p of [a1, b1]) { g.fillStyle = '#fff'; g.beginPath(); g.arc(p[0], p[1], 6, 0, 7); g.fill(); } });
       for (const st of res.stairs) { const q = st.points.map((p) => v.toScr(toPx(p))); g.setLineDash([5, 4]); g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); q.forEach((p, i) => (i ? g.lineTo(...p) : g.moveTo(...p))); g.closePath(); g.stroke(); g.setLineDash([]); }
       if (this.newRect) { const a1 = v.toScr(toPx(this.newRect.a)), b1 = v.toScr(toPx(this.newRect.b)); g.strokeStyle = '#fff'; g.setLineDash([6, 4]); g.strokeRect(a1[0], a1[1], b1[0] - a1[0], b1[1] - a1[1]); g.setLineDash([]); }
@@ -848,7 +1026,9 @@ export class PlanWizard {
       for (const o of res.openings) {
         const f = onEdge(mv(o.from)), t = onEdge(mv(o.to)); if (!f || !t) continue; const len = dist(f.q, t.q); if (len < 0.4 || len > 6) continue;
         const op = { op: 'add_opening', level_id: levelId, type: o.type, from: f.q.map(r3), to: t.q.map(r3) };
-        if (o.type === 'window') Object.assign(op, { sill: 0.9, head: 2.2 });
+        if (o.type === 'window') Object.assign(op, { sill: o.sill ?? 0.9, head: o.head ?? 2.2 });
+        else if (o.head) op.head = o.head;
+        if (o.type === 'door') Object.assign(op, doorOrientation(o, op.from, op.to, res.rooms.map((r) => ({ ...r, points: r.points.map(mv) }))));
         ops.push(op);
       }
       for (const st of res.stairs) { // the stairs model rises towards its local -z
