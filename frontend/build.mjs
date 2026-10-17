@@ -21,3 +21,5 @@ const js = demo.outputFiles[0].text.replace(/<\/script/g, '<\\/script');
 const html = readFileSync('demo.template.html', 'utf8').replace('/*BUNDLE*/', () => js);
 mkdirSync('../docs/demo', { recursive: true }); writeFileSync('../docs/demo/index.html', html);
 console.log('built');
+// The website uses the same panel and simulated devices in an inline, reduced UI.
+await build({ entryPoints: ['src/entry-landing.js'], bundle: true, loader: { '.svg': 'dataurl' }, format: 'esm', minify: true, target: 'es2020', outfile: '../docs/landing.js', external: ['three', 'three/*', 'pdfjs-dist/*'], logLevel: 'warning', nodePaths, supported: { 'top-level-await': true } });

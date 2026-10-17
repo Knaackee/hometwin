@@ -70,7 +70,7 @@ footer { padding: 44px 0 60px; color: var(--muted); font-size: 14px; border-top:
 @media (max-width: 900px) { .grid3, .road { grid-template-columns: 1fr 1fr; } .grid2 { grid-template-columns: 1fr; } nav.top .links { display: none; } }
 @media (max-width: 560px) { .grid3, .road { grid-template-columns: 1fr; } section { padding: 60px 0; } .hero { padding-top: 44px; } }
 </style>
-</head>
+<link rel="stylesheet" href="landing.css"></head>
 <body>
 <nav class="top"><div class="wrap">
   <a class="brand" href="#"><img src="assets/logo.svg" alt="">HomeTwin</a>
@@ -79,17 +79,21 @@ footer { padding: 44px 0 60px; color: var(--muted); font-size: 14px; border-top:
   <a class="gh" href="https://github.com/knaackee/hometwin" aria-label="HomeTwin on GitHub"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Star <span class="stars" id="stars">★</span></a>
 </div></nav>
 
-<header class="hero"><div class="wrap">
-  <span class="pill">⚠️ Public beta · free &amp; open source</span>
-  <h1>Your home.<br>In 3D. In minutes.</h1>
-  <p class="lead">HomeTwin turns your floor plan into a live 3D twin of your home inside Home Assistant. Lights glow, blinds move, the sun casts real shadows, and every device is controlled right where it is.</p>
-  <div class="cta"><a class="btn primary" href="demo/">▶ Try the live demo</a><a class="btn" href="#install">Install with HACS</a><a class="btn" href="https://github.com/knaackee/hometwin">⭐ GitHub</a></div>
-  <div class="shot"><img src="assets/screenshot-house.png" alt="HomeTwin showing a two-storey house in 3D with the control panel" width="1600" height="1000"></div>
-</div></header>
+<main><header class="immersive" id="home">
+  <div class="hero-copy"><p class="eyebrow">HOME ASSISTANT, IN A NEW DIMENSION</p>
+    <h1>Your home.<br>In your hands.</h1>
+    <p class="hero-intro">Upload your floor plan. Let AI help build your 3D home. Control every device right where it belongs.</p>
+    <div class="hero-actions"><a class="btn primary" href="#install">Make it yours <span aria-hidden="true">↗</span></a><a href="#floorplan">See how it works ↓</a></div>
+    <p class="hero-note">Free &amp; open source · Public beta</p>
+  </div>
+  <div class="stage" id="house"><div id="liveHouse" aria-label="Interactive 3D demo house"></div><p class="loading" role="status">Preparing your demo home…</p><button id="interact">Tap to explore the house</button><button id="finish">Done exploring</button></div>
+  <div class="live-controls"><p><strong>Go ahead. Turn off a light.</strong><span>Click a lamp. Drag to look around.</span></p><div class="scene-buttons" aria-label="Demo scenes"><button data-scene="scene.abend" disabled aria-pressed="false">Evening</button><button data-scene="scene.film" disabled aria-pressed="false">Movie night</button><button data-scene="scene.alles_aus" disabled aria-pressed="false">All off</button><button data-lamp disabled aria-label="Toggle floor lamp">Lamp ↕</button></div><div class="scene-caption"><span id="sceneStatus" aria-live="polite">Demo home · Simulated devices</span><a href="demo/">Full demo ↗</a></div></div>
+  <div class="hero-bottom"><span>Built for Home Assistant</span><span>At home on your wall display</span><span>English &amp; German</span><a href="#library">A library built together ↓</a></div>
+</header>
 
 <section id="how"><div class="wrap">
   <div class="kicker">How it works</div>
-  <h2>From floor plan to living 3D home</h2>
+  <h2>From floor plan to living 3D home</h2><p class="sub">The idea of a 3D home dashboard isn’t new. The head start is. AI takes on the painstaking first pass, so you can review and refine instead of rebuilding every room by hand.</p>
   <div class="grid3" style="margin-top:28px">
     <div class="card step"><div class="n">01</div><h3>📐 Upload your floor plan</h3><p>Image, PDF, photo or paste from the clipboard. Draw a room yourself if you prefer.</p></div>
     <div class="card step"><div class="n">02</div><h3>🤖 AI reads the rooms</h3><p>Walls, rooms, doors, windows and dimensions are read from the plan and checked against the printed m².</p></div>
@@ -99,7 +103,7 @@ footer { padding: 44px 0 60px; color: var(--muted); font-size: 14px; border-top:
 
 <section class="alt" id="features"><div class="wrap">
   <div class="kicker">Features</div>
-  <h2>Everything your dashboard was missing</h2>
+  <h2>A home you recognise.<br>Devices you can reach.</h2>
   <p class="sub">A dashboard that feels like your home, not like a spreadsheet of switches.</p>
   <div class="grid3">
     <div class="card"><div class="ic">💡</div><h3>Live devices</h3><p>Lights glow in their colour, blinds and garage doors move, windows show when they're open. Tap to toggle, long-press for details.</p></div>
@@ -114,15 +118,15 @@ footer { padding: 44px 0 60px; color: var(--muted); font-size: 14px; border-top:
 <section id="floorplan"><div class="wrap grid2">
   <div>
     <div class="kicker">Floor plan AI</div>
-    <h2>2 minutes from architect's plan to 3D rooms</h2>
-    <p class="sub" style="margin-bottom:0">In our own test, a real architect's plan with 12 rooms was read in about two minutes — rooms, doors and windows, with the scale taken from the printed dimension chains. No measuring needed.</p>
+    <h2>Your floor plan does<br>the heavy lifting.</h2>
+    <p class="sub" style="margin-bottom:0">In our own test, a real architect's plan with 12 rooms was read in about two minutes — rooms, doors and windows, with the scale taken from the printed dimension chains. Review the scale and dimensions before you continue; you can set the scale manually when the plan needs it.</p>
     <ul class="check">
       <li><b>Dimension chains</b> set the scale automatically</li>
       <li><b>Second pass</b>: the AI checks its own result on an overlay</li>
       <li><b>Review step</b> with area warnings, drag corners, add doors &amp; windows by click</li>
       <li><b>Storeys, stairs and roof</b> in one guided flow — then the walls rise</li>
     </ul>
-    <div class="stat"><div>~2 min<small>for 12 rooms</small></div><div>5<small>guided steps</small></div><div>Any<small>OpenAI-compatible model</small></div></div>
+    <div class="stat"><div>~2 min<small>for 12 rooms</small></div><div>5<small>guided steps</small></div><div>Your choice<small>OpenAI-compatible vision model</small></div></div>
   </div>
   <div class="figure"><img src="assets/screenshot-wizard.png" alt="Floor plan assistant review step" loading="lazy"></div>
 </div></section>
@@ -163,7 +167,7 @@ footer { padding: 44px 0 60px; color: var(--muted); font-size: 14px; border-top:
   <div class="figure"><img src="assets/guitar-sheet.png" alt="Preview sheet of the guitar object: three-quarter, front, side and top view with dimensions" loading="lazy"></div>
 </div></section>
 
-<section id="install"><div class="wrap grid2" style="align-items:start">
+<section class="open-source"><div class="wrap"><div><div class="kicker">Free. Open source. Yours.</div><h2>No subscription.<br>Just your home.</h2></div><div><p>HomeTwin is a community project built for people who want their home to feel like their home—even on a screen.</p><p class="gal-note">The code is free under MIT. Optional AI providers may charge for usage. You can also build your plan by hand.</p><a class="btn" href="https://github.com/knaackee/hometwin">Explore the source on GitHub ↗</a></div></div></section><section id="install"><div class="wrap grid2" style="align-items:start">
   <div>
     <div class="kicker">Install</div>
     <h2>Up and running in a few clicks</h2>
@@ -191,7 +195,7 @@ unzip hometwin.zip -d hometwin &amp;&amp; rm hometwin.zip
   <div class="road" style="margin-top:24px">
     <div class="card"><span class="tag">NEXT</span><h3>🌍 Community translations</h3><p>English and German are supported. More languages will follow with community review.</p></div>
     <div class="card"><span class="tag">NEXT</span><h3>🔔 Needs attention</h3><p>Low batteries, offline devices, leaks and alarms — pulsing right where they are.</p></div>
-    <div class="card"><span class="tag">PLANNED</span><h3>🎛️ Device sheets</h3><p>Colour wheel, blinds tilt, thermostat and media controls in one tap.</p></div>
+    <div class="card"><span class="tag">CONTINUING</span><h3>Device controls</h3><p>Media controls are already here. We’re continuing to refine colour, blinds and thermostat interactions.</p></div>
     <div class="card"><span class="tag">PLANNED</span><h3>🛋️ Parametric objects</h3><p>Resize and restyle generic furniture — even "adjust from photo".</p></div>
   </div>
 </div></section>
@@ -205,10 +209,10 @@ unzip hometwin.zip -d hometwin &amp;&amp; rm hometwin.zip
   <details><summary>Is HomeTwin affiliated with Home Assistant?</summary><p>No. HomeTwin is an independent community project built for Home Assistant.</p></details>
 </div></section>
 
-<footer><div class="wrap">
+</main><footer><div class="wrap">
   <a class="brand" href="#" style="font-size:16px"><img src="assets/logo.svg" alt="" style="width:22px;height:22px">HomeTwin</a>
-  <span>Code MIT · Library CC0 · made with ❤️ by the community</span><span class="sp"></span>
-  <a href="https://github.com/knaackee/hometwin">GitHub</a><a href="https://github.com/knaackee/hometwin/issues">Issues</a><a href="https://github.com/knaackee/hometwin/blob/main/CHANGELOG.md">Changelog</a><a href="demo/">Demo</a>
+  <span>Code MIT · Library CC0 · built with the community</span><span class="sp"></span>
+  <a href="https://github.com/knaackee/hometwin">GitHub</a><a href="https://github.com/knaackee/hometwin/issues">Issues</a><a href="https://knaack.it">By Denis Knaack ↗</a><a href="https://github.com/knaackee/hometwin/blob/main/CHANGELOG.md">Changelog</a><a href="demo/">Demo</a>
 </div></footer>
 
 <script>
@@ -235,5 +239,5 @@ fetch('https://api.github.com/repos/knaackee/hometwin').then((r) => r.ok ? r.jso
   } catch { g.innerHTML = '<p class="gal-note">The library could not be loaded.</p>'; }
 })();
 </script>
-</body>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/examples/jsm/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","pdfjs-dist/":"https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/"}}</script><script type="module" src="landing.js"></script></body>
 </html>

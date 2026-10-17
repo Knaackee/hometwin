@@ -11,7 +11,7 @@ Bauplan hochladen, KI liest die Räume, jedes Gerät dort bedienen, wo es ist.</
   <a href="README.md">🇬🇧 English</a>
 </p>
 
-<p align="center"><img src="docs/assets/screenshot-house.png" alt="HomeTwin: zweigeschossiges Haus in 3D mit Bedienfeld" width="100%"></p>
+<p align="center"><img src="docs/assets/screenshot-room.png" alt="HomeTwin: beleuchteter Raum in der interaktiven 3D-Ansicht" width="100%"></p>
 
 > [!WARNING]
 > **HomeTwin ist eine öffentliche Beta.** Es läuft im Alltag, Datenformate können sich aber noch ändern. Bitte ab und zu ein Backup exportieren (*Bearbeiten → Haus → Backup*). HomeTwin unterstützt derzeit **Englisch und Deutsch**. Englisch ist die Standardsprache; Deutsch wählst du in den Integrationsoptionen. Hilfe bei der Einrichtung findest du unter [Installation](#-installation). Du möchtest HomeTwin verbessern? Dann lies [In 5 Minuten beitragen](#-in-5-minuten-beitragen).
