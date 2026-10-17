@@ -8,7 +8,7 @@ import { FURNITURE, furnitureParams, stairInfo, registerLibrary, LIBRARY } from 
 export const LIBRARY_URL = 'https://knaackee.github.io/hometwin/library/library.json';
 import { KINDS, KIND_STYLES, deviceDefaults, entityMatchesKind, kindForEntity, FRAME_STYLES, FRAME_SIZES } from './devices.js';
 import { SURFACES } from './kit.js';
-import { findItem, roomAt, roomOfOpening, usedEntities, newId, newLevel, roomCenter, demoPlan, emptyPlan, migrate, computeElevations, slabThickness } from './plan.js';
+import { findItem, roomAt, roomOfOpening, usedEntities, newId, newLevel, roomCenter, demoPlan, emptyPlan, migrate, computeElevations, slabThickness, plinthHeight, DEFAULT_BASEMENT_HEIGHT, DEFAULT_ROOM_HEIGHT } from './plan.js';
 import { ROOF_TYPES, ROOF_COVERS, FACADES, FACADE_PRESETS, roofRect, rectCorners, rectAxes, HEAD_SHAPES, SOFFITS, BARGES, WOOD_PRESETS, DEFAULT_DETAILS, ROOF_STYLES, applyStyle, headSvg, ROOF_WINDOWS, newExtraRoof, rectOfPoints } from './roof.js';
 import { isIndoor } from './house.js';
 const WINDOW_PRESETS = { std: { w: 1.2, sill: 0.9, head: 2.2 }, floor: { w: 1.2, sill: 0.05, head: 2.2 }, terrace: { w: 2.0, sill: 0.02, head: 2.2 }, wide: { w: 2.4, sill: 0.5, head: 2.2 }, bath: { w: 0.8, sill: 1.4, head: 2.1 }, top: { w: 1.0, sill: 1.6, head: 2.2 } };
@@ -428,7 +428,8 @@ export class Editor {
           <div class="field"><label for="stNorth">${t('editor.site.northDirection')} <output>${Math.round(site.north || 0)}°</output></label><input type="range" id="stNorth" min="-180" max="180" step="1" value="${site.north || 0}"></div><p class="hint">${t('editor.site.northHelp')}</p>`)
         + this.sec(t('editor.section.facade'), `<div class="field"><label for="faMat">${t('editor.common.material')}</label><select id="faMat">${Object.entries(FACADES).map(([k, v]) => `<option value="${k}" ${fac.material === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
           <div class="field"><span class="lbl">${t('editor.common.color')}</span><div class="swatches">${FACADE_PRESETS.map((c) => `<button data-fcol="${c}" style="background:${c}" aria-pressed="${fac.color === c}" aria-label="${t('editor.common.colorValue', { value: c })}"></button>`).join('')}<input type="color" id="faColor" value="${fac.color}" aria-label="${t('editor.common.customColor')}" style="width:30px;height:30px;padding:0;border:0;background:none"></div></div>
-          <div class="row2"><div class="field"><label for="faPlinth">${t('editor.facade.plinth')}</label><input type="color" id="faPlinth" value="${fac.plinth}"></div><div class="field"><label for="faFrame">${t('editor.facade.windowFrame')}</label><input type="color" id="faFrame" value="${fac.frame}"></div></div>`)
+          <div class="row2"><div class="field"><label for="faPlinth">${t('editor.facade.plinth')}</label><input type="color" id="faPlinth" value="${fac.plinth}"></div><div class="field"><label for="faFrame">${t('editor.facade.windowFrame')}</label><input type="color" id="faFrame" value="${fac.frame}"></div></div>
+          ${num('faPlinthH', t('editor.facade.plinthHeight'), plinthHeight(site), 0.05, 'min="0" max="1.5"')}<p class="hint">${t('editor.facade.plinthHelp')}</p>`)
         + roofSecs + (geoHtml ? this.sec(t('editor.section.roofLocationDimensions'), geoHtml) : '') + this.sec(t('editor.section.photovoltaics'), solarHtml)
         + this.sec(t('editor.section.backup'), `<p class="hint">${t('editor.backup.help')}</p><div class="actions"><button class="btn small primary" data-act="backupExport">${icon('save')}${t('editor.backup.export')}</button><label class="btn small">${icon('upload')}${t('editor.backup.import')}<input type="file" id="backupFile" accept=".json,application/json" hidden></label></div>`)
         + this.sec(t('editor.section.file'), `<div class="actions"><button class="btn small" data-act="export">${icon('code')}${t('editor.file.planAsJson')}</button><label class="btn small">${t('editor.file.loadJson')}<input type="file" id="jsonFile" accept=".json,application/json" hidden></label><label class="btn small">Sweet Home 3D<input type="file" id="sh3dFile" accept=".sh3d" hidden></label></div>
@@ -589,6 +590,7 @@ export class Editor {
     if (id === 'stName') { p.name = v; app.markDirty(); this.renderLeft(); return; }
     if (id === 'stLat' || id === 'stLon') { site[id === 'stLat' ? 'lat' : 'lon'] = v === '' ? null : +v; app.updateSun(); app.markDirty(); return; }
     if (id === 'stNorth') { site.north = +v; out(`${v}°`); app.updateSun(); if (!live) app.stage.layout(); app.markDirty(); return; }
+    if (id === 'faPlinthH') { const h = parseFloat(v); if (Number.isFinite(h) && h >= 0) site.facade.plinthHeight = Math.min(h, 1.5); else delete site.facade.plinthHeight; clearTimeout(this._facT); this._facT = setTimeout(() => app.stage.rebuildAll(), live ? 150 : 0); app.markDirty(); return; }
     if (['faMat', 'faColor', 'faPlinth', 'faFrame'].includes(id)) { site.facade[{ faMat: 'material', faColor: 'color', faPlinth: 'plinth', faFrame: 'frame' }[id]] = v; clearTimeout(this._facT); this._facT = setTimeout(() => { app.stage.rebuildAll(); this.showRoofIfOff(); }, live ? 150 : 0); app.markDirty(); if (!live) this.renderInspector(); return; }
     if (['rfRot', 'rfRotN', 'rfLen', 'rfWid', 'rfCx', 'rfCz'].includes(id)) {
       const r = site.roof; r.rect = { ...this.roofRectNow() }; const R = r.rect;
@@ -730,7 +732,7 @@ export class Editor {
     if (act === 'ulRemove') { app.pushUndo(); L.underlay = null; app.stage.setUnderlay(L.id, null); app.markDirty(); this.renderInspector(); this.renderBar(); return; }
     if (act === 'addLevel' || act === 'addBasement') {
       app.pushUndo(); const top = p.levels[p.levels.length - 1], bottom = p.levels[0];
-      const nl = act === 'addLevel' ? newLevel(p.levels.length === 1 ? t('editor.level.upperFloor') : t('editor.level.numbered', { number: p.levels.length }), top.elevation + top.height + 0.25, { height: 2.5 }) : newLevel(t('editor.level.basement'), r3(bottom.elevation - 2.35 - 0.25), { height: 2.35 });
+      const nl = act === 'addLevel' ? newLevel(p.levels.length === 1 ? t('editor.level.upperFloor') : t('editor.level.numbered', { number: p.levels.length }), top.elevation + top.height + slabThickness({}), { height: DEFAULT_ROOM_HEIGHT }) : newLevel(t('editor.level.basement'), r3(bottom.elevation - DEFAULT_BASEMENT_HEIGHT - slabThickness(bottom)), { height: DEFAULT_BASEMENT_HEIGHT });
       const src = act === 'addLevel' ? top : bottom;
       nl.rooms = src.rooms.filter((r) => r.kind === 'room' || r.kind === 'garage').map((r) => ({ id: newId('r'), name: act === 'addLevel' ? t('editor.level.upperRoomName', { name: r.name }) : t('editor.level.basementRoom'), kind: 'room', surface: act === 'addLevel' ? 'oak' : 'concrete', area_id: null, points: r.points.map((q) => [...q]) }));
       if (act === 'addBasement') { nl.autoElevation = false; bottom.autoElevation = bottom.autoElevation ?? undefined; }

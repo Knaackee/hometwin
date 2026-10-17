@@ -1,10 +1,10 @@
 // Floor-plan wizard: source → align → scale → recognise → review & apply, in one dialog.
 import { icon } from './icons.js';
 import { esc } from './panel.js';
-import { newId } from './plan.js';
+import { newId, fitNewLevel } from './plan.js';
 import { area as polyArea, bbox, pointInPolygon, distToSeg, projectOnSeg } from './geometry.js';
 import { newExtraRoof, rectOfPoints } from './roof.js';
-import { t, getLanguage } from './i18n.js';
+import { t, getLanguage, formatNumber } from './i18n.js';
 
 const steps = () => ['source', 'align', 'scale', 'recognize', 'review'].map((key) => t(`assistant.wizard.step.${key}`));
 const COLORS = ['#79a6ff', '#ffb35c', '#7fd18b', '#e57fd1', '#5fd3d0', '#f2d35b', '#ff7f7f', '#a68bff', '#9ad26a', '#ff9fcb'];
@@ -429,12 +429,13 @@ export class PlanWizard {
   // Model image with the current reading drawn on top (numbered polygons) for the self-check pass.
   overlayImage(im, rooms) {
     const c = document.createElement('canvas'); c.width = im.w; c.height = im.h; const g = c.getContext('2d');
-    g.drawImage(limit(this.st.img, 1600), 0, 0); g.lineWidth = Math.max(2, im.w / 500); g.font = `bold ${Math.round(Math.max(14, im.w / 70))}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.drawImage(this.st.img, 0, 0, im.w, im.h); g.lineWidth = Math.max(2, im.w / 500); g.font = `bold ${Math.round(Math.max(14, im.w / 70))}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
     rooms.forEach((r, i) => { const col = COLORS[i % COLORS.length]; g.beginPath(); r.points.forEach(([x, y], j) => (j ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.globalAlpha = 0.18; g.fillStyle = col; g.fill(); g.globalAlpha = 1; g.strokeStyle = col; g.stroke();
       const cx = r.points.reduce((a, p) => a + p[0], 0) / r.points.length, cy = r.points.reduce((a, p) => a + p[1], 0) / r.points.length; g.fillStyle = '#fff'; g.beginPath(); g.arc(cx, cy, g.lineWidth * 6, 0, 7); g.fill(); g.fillStyle = '#000'; g.fillText(String(r.nr), cx, cy); });
     return c.toDataURL('image/jpeg', 0.8);
   }
-  modelImage() { const s = this.st; const img = limit(s.img, 1600); return { url: img.toDataURL('image/jpeg', 0.8), w: img.width, h: img.height, k: s.img.width / img.width }; }
+  // 1568 px is the largest side Claude reads without resampling; Gemini and GPT handle it as well.
+  modelImage() { const s = this.st; const img = limit(s.img, 1568); return { url: img.toDataURL('image/jpeg', 0.8), w: img.width, h: img.height, k: s.img.width / img.width }; }
   // Runs a recognition job on the server and polls it; survives reconnects and closed dialogs.
   async runJob(req) {
     const app = this.app; const run = (this.detectRun = { id: null }); this.detectStart = Date.now(); this.job = { stage: 'upload', elapsed: 0 };
@@ -501,7 +502,7 @@ export class PlanWizard {
       <div class="actions"><button class="btn" data-wz="back2">${t('assistant.common.back')}</button><button class="btn primary" data-act="manual">${t('assistant.wizard.useAsTemplate')}</button></div></div>`;
     return `<div class="wz-two"><div class="wz-canvas scanning" id="wzWrap"><canvas id="wzCv"></canvas>${s.busy ? '<div class="wz-scan"></div>' : ''}</div>
       <div class="wz-side">
-        ${s.busy ? this.progressHtml(this.passTitle || t(s.opts.refine !== false ? 'assistant.wizard.firstPassRecognizing' : 'assistant.wizard.recognizingRooms')) : `<h3>${t('assistant.wizard.recognition')}</h3>${s.err ? `<p class="warn">${esc(s.err)}</p>` : ''}<p class="hint">${t('assistant.wizard.modelRecommendation', { model: esc(this.ai?.model || '–'), scale: s.mpp ? '' : t('assistant.wizard.scaleReadDuringRecognition') })}</p>`}
+        ${s.busy ? this.progressHtml(this.passTitle || t(s.opts.refine !== false ? 'assistant.wizard.firstPassRecognizing' : 'assistant.wizard.recognizingRooms')) : `<h3>${t('assistant.wizard.recognition')}</h3>${s.err ? `<p class="warn">${esc(s.err)}</p>${this.jobId ? `<div class="actions"><button class="btn small" data-act="copyRaw">${icon('code')}${t('assistant.wizard.copyModelAnswer')}</button></div><textarea class="wz-raw" id="wzRaw" rows="6" readonly hidden></textarea>` : ''}` : ''}<p class="hint">${t('assistant.wizard.modelRecommendation', { model: esc(this.ai?.model || '–'), scale: s.mpp ? '' : t('assistant.wizard.scaleReadDuringRecognition') })}</p>`}
         <fieldset ${s.busy ? 'disabled' : ''}><legend class="lbl">${t('assistant.wizard.whatToRecognize')}</legend>
           <label class="chk"><input type="checkbox" checked disabled> ${t('assistant.wizard.roomsAndOutdoor')}</label>
           <label class="chk"><input type="checkbox" id="wzOpen" ${s.opts.openings ? 'checked' : ''}> ${t('assistant.wizard.doorsAndWindows')}</label>
@@ -522,7 +523,19 @@ export class PlanWizard {
     R.querySelector('#wzRefine').onchange = (e) => (s.opts.refine = e.target.checked);
     R.querySelector('#wzHints').oninput = (e) => (s.hints = e.target.value);
     R.querySelector('[data-act="detect"]').onclick = () => this.detect();
+    R.querySelector('[data-act="copyRaw"]')?.addEventListener('click', () => this.copyRaw());
 
+  }
+  // Diagnostics for failed recognitions: model, error and the raw model answer (copied and shown).
+  async copyRaw() {
+    const box = this.root.querySelector('#wzRaw'); if (!box) return;
+    let text;
+    try {
+      const { job } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: this.jobId, with_raw: true });
+      text = `HomeTwin ${t('assistant.wizard.recognition')}\nmodel: ${job?.model || this.ai?.model || '?'}\nstatus: ${job?.status}\nerror: ${job?.error || this.st.err || ''}\nrooms: ${job?.rooms_raw ?? '?'} → ${job?.rooms_used ?? '?'} ${JSON.stringify(job?.dropped || {})}\n\n${job?.raw || t('assistant.wizard.noModelAnswer')}`;
+    } catch (e) { text = String(e.message || e); }
+    box.value = text; box.hidden = false; box.select();
+    try { await navigator.clipboard.writeText(text); this.msg(t('assistant.wizard.modelAnswerCopied')); } catch { /* selection stays for manual copy */ }
   }
   async detect({ keepLocked = false } = {}) {
     const s = this.st; if (s.busy) return;
@@ -532,6 +545,7 @@ export class PlanWizard {
       const im = this.modelImage();
       const res = await this.runJob({ mode: 'rooms', image: im.url, width: im.w, height: im.h, mpp: s.mpp ? s.mpp * im.k : null, x0: 0, z0: 0,
         options: s.opts, hints: s.hints || undefined, language: getLanguage(), locked: locked.map((r) => ({ name: r.name, points: r.points })) });
+      if (!res?.rooms?.length && !locked.length) throw new Error(t('assistant.wizard.noRoomsReturned'));
       const t0 = this.detectStart; let out = res;
       if (s.opts.refine !== false && res.rooms?.length) { // pass 2: the model checks its own reading on an overlay
         this.passTitle = t('assistant.wizard.secondPassChecking'); this.render();
@@ -550,11 +564,14 @@ export class PlanWizard {
       }
       this.passTitle = null; this.detectStart = t0;
       this.stopTicker(); this.useResult(out, im.k, locked, Math.round((Date.now() - t0) / 1000));
-    } catch (e) { this.passTitle = null; if (e.cancelled) return; this.stopTicker(); s.busy = false; s.err = t('assistant.wizard.recognitionFailed', { error: e.message || e.code || e }); if (keepLocked) this.go(4); else this.go(3); }
+    } catch (e) { this.passTitle = null; if (e.cancelled) return; this.stopTicker(); s.busy = false;
+      // go() clears the error, so set it afterwards: a failed recognition must never look like an empty result.
+      const err = t('assistant.wizard.recognitionFailed', { error: e.message || e.code || e }); this.go(keepLocked ? 4 : 3); s.err = err; this.render(); this.msg(err, true); }
   }
   // Takes a recognition result (metres; model image scale k) into the review step.
   useResult(res, k = 1, locked = [], seconds = null) {
     const s = this.st;
+    if (!res?.rooms?.length && !locked.length) { s.busy = false; this.go(3); s.err = t('assistant.wizard.noRoomsReturned'); this.render(); return; }
     if (!s.mpp && res.mpp) { s.mpp = res.mpp / k; s.measure = { a: null, b: null, m: '' }; s.scaleFromDims = true; }
     const rooms = res.rooms.map((r, i) => ({ ...r, id: newId('wr'), color: COLORS[(locked.length + i) % COLORS.length] }));
     const sc = res.scale_check && Math.abs(res.scale_check.factor - 1) > 0.025 ? res.scale_check : null;
@@ -570,11 +587,11 @@ export class PlanWizard {
   async resumeJob() {
     const s = this.st, job = this.pending; this.pending = null; if (!job) return;
     try {
-      const { job: full } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: job.id, with_image: true });
+      const { job: full } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: job.id, with_image: true }); this.jobId = full.id;
       const img = new Image(); img.src = full.image; await img.decode(); s.img = canvasOf(img); s.src = s.img; s.srcName = t('assistant.wizard.lastDetection'); this.rotated = s.img; s.quad = [[0, 0], [s.img.width, 0], [s.img.width, s.img.height], [0, s.img.height]];
       if (full.level_id && this.app.plan.levels.some((l) => l.id === full.level_id)) s.levelId = full.level_id;
       if (full.status === 'running') { s.step = 3; s.busy = true; this.render(); const run = (this.detectRun = { id: full.id }); this.detectStart = Date.now() - full.elapsed * 1000; this.job = full; this.startTicker();
-        for (;;) { await new Promise((r) => setTimeout(r, 1200)); if (this.detectRun !== run) return; const { job: j } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: full.id }); this.job = j; if (j.status === 'done') { this.stopTicker(); this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {}); return this.useResult(j.result, 1, [], Math.round(j.elapsed)); } if (j.status === 'error') { this.stopTicker(); s.busy = false; s.err = j.error; return this.go(3); } } }
+        for (;;) { await new Promise((r) => setTimeout(r, 1200)); if (this.detectRun !== run) return; const { job: j } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: full.id }); this.job = j; if (j.status === 'done') { this.stopTicker(); this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {}); return this.useResult(j.result, 1, [], Math.round(j.elapsed)); } if (j.status === 'error') { this.stopTicker(); s.busy = false; this.go(3); s.err = j.error; return this.render(); } } }
       this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {});
       this.useResult(full.result, 1, [], Math.round(full.elapsed));
     } catch (e) { this.msg(t('assistant.wizard.resultLoadFailed', { error: e.message || e }), true); }
@@ -593,7 +610,7 @@ export class PlanWizard {
   }
   step4() {
     const s = this.st, R = s.result; const probs = this.problems();
-    const levelName = s.levelId === '__new' ? s.newLevel || t('assistant.wizard.defaultNewLevel') : this.app.plan.levels.find((l) => l.id === s.levelId)?.name;
+    const levelName = s.levelId === '__new' ? (s.newLevelTouched && s.newLevel) || R.level?.name || s.newLevel || t('assistant.wizard.defaultNewLevel') : this.app.plan.levels.find((l) => l.id === s.levelId)?.name;
     const hasRooms = s.levelId !== '__new' && this.app.plan.levels.find((l) => l.id === s.levelId)?.rooms.length;
     return `<div class="wz-two"><div class="wz-canvas" id="wzWrap"><canvas id="wzCv"></canvas>
         <div class="wz-zoom"><button class="ibtn" data-z="in" title="${t('assistant.common.zoomIn')}">+</button><button class="ibtn" data-z="out" title="${t('assistant.common.zoomOut')}">−</button><button class="ibtn" data-z="fit" title="${t('assistant.common.fit')}">⤢</button></div>
@@ -616,6 +633,7 @@ export class PlanWizard {
           <p class="hint">${t('assistant.wizard.recognizeAgainHint')}</p>
           <textarea id="wzHints2" rows="2" placeholder="${t('assistant.wizard.recognizeAgainPlaceholder')}">${esc(s.hints)}</textarea>
           <div class="actions"><button class="btn small" data-act="redetect" ${s.busy ? 'disabled' : ''}>${icon('sparkle')}${t(s.busy ? 'assistant.wizard.recognizing' : 'assistant.wizard.recognizeUnlocked')}</button></div></details>
+        ${s.levelId === '__new' ? this.heightsHtml() : ''}
         <fieldset class="wz-apply"><legend class="lbl">${t('assistant.wizard.applyToLevel', { name: esc(levelName) })}</legend>
           ${hasRooms ? `<label class="chk"><input type="radio" name="wzMode" value="replace" ${s.mode === 'replace' ? 'checked' : ''}> ${t('assistant.wizard.replaceRooms')}</label><label class="chk"><input type="radio" name="wzMode" value="add" ${s.mode === 'add' ? 'checked' : ''}> ${t('assistant.common.add')}</label>` : ''}
           <label class="chk"><input type="checkbox" id="wzKeep" ${s.keepUnderlay ? 'checked' : ''}> ${t('assistant.wizard.keepTemplate')}</label>
@@ -727,6 +745,7 @@ export class PlanWizard {
     R.querySelector('#wzHints2').oninput = (e) => (s.hints = e.target.value);
     R.querySelector('[data-act="redetect"]').onclick = () => this.detect({ keepLocked: true });
     R.querySelectorAll('[name="wzMode"]').forEach((x) => (x.onchange = () => (s.mode = x.value)));
+    for (const [sel, key] of [['#wzLvH', 'lvH'], ['#wzLvSlab', 'lvSlab']]) R.querySelector(sel)?.addEventListener('input', (e) => { const v = parseFloat(e.target.value); s[key] = Number.isFinite(v) ? v : undefined; this.updateHeights(); });
     R.querySelector('#wzKeep').onchange = (e) => (s.keepUnderlay = e.target.checked);
     R.querySelector('#wzMap').onchange = (e) => (s.mapAreas = e.target.checked);
     this._v4 = v;
@@ -743,15 +762,49 @@ export class PlanWizard {
   }
   syncList() { this.root.querySelectorAll('.wz-rooms li').forEach((li) => li.classList.toggle('sel', li.dataset.rid === this.st.sel)); this.root.querySelector(`.wz-rooms li[data-rid="${this.st.sel}"]`)?.scrollIntoView({ block: 'nearest' }); }
 
+  // Height of the new storey: plan values when plausible, otherwise defaults the user can correct.
+  levelFit() {
+    const s = this.st, li = s.result?.level || {};
+    const fit = fitNewLevel(this.app.plan, { elevation: li.floor_elevation_m, height: s.lvH ?? li.room_height_m, slab: s.lvSlab ?? li.slab_thickness_m });
+    if (s.lvH !== undefined && fit.source.height === 'plan') fit.source.height = 'manual';
+    if (s.lvSlab !== undefined && fit.source.slab === 'plan') fit.source.slab = 'manual';
+    return fit;
+  }
+  heightsHtml() {
+    const fit = this.levelFit(), stacked = this.app.plan.levels.length > 0;
+    const tag = (k) => `<small class="wz-src ${fit.source[k]}">${t(`assistant.wizard.heightSource.${fit.source[k]}`)}</small>`;
+    return `<div class="wz-heights"><div class="lbl">${t('assistant.wizard.heights')}</div>
+      <div class="row2"><div class="field"><label for="wzLvH">${t('assistant.wizard.roomHeight')}</label><input type="number" id="wzLvH" step="0.05" min="1.9" max="4.5" value="${fit.height}">${tag('height')}</div>
+      ${stacked ? `<div class="field"><label for="wzLvSlab">${t('assistant.wizard.slabThickness')}</label><input type="number" id="wzLvSlab" step="0.01" min="0" max="0.6" value="${fit.slab}">${tag('slab')}</div>` : '<span></span>'}</div>
+      <div class="wz-elev">${t('assistant.wizard.floorElevation')} <output id="wzLvElev">${this.elevText(fit)}</output></div>
+      <p class="hint" id="wzLvNote">${this.heightsNote(fit)}</p></div>`;
+  }
+  elevText(fit) { return `${fit.elevation > 0 ? '+' : fit.elevation < 0 ? '−' : '±'}${formatNumber(Math.abs(fit.elevation), { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`; }
+  heightsNote(fit) {
+    const li = this.st.result?.level || {};
+    if (fit.mismatch) return t('assistant.wizard.heightsMismatch', { plan: formatNumber(li.floor_elevation_m, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), elevation: this.elevText(fit) });
+    if (Object.values(fit.source).includes('default')) return t('assistant.wizard.heightsDefaultHint');
+    return t(fit.position === 'below' ? 'assistant.wizard.heightsBelowHint' : 'assistant.wizard.heightsStackHint');
+  }
+  updateHeights() {
+    const fit = this.levelFit(), R = this.root;
+    const el = R.querySelector('#wzLvElev'); if (el) el.textContent = this.elevText(fit);
+    const note = R.querySelector('#wzLvNote'); if (note) note.textContent = this.heightsNote(fit);
+    for (const [sel, k] of [['#wzLvH', 'height'], ['#wzLvSlab', 'slab']]) { const tag = R.querySelector(sel)?.parentElement.querySelector('.wz-src'); if (tag) { tag.className = `wz-src ${fit.source[k]}`; tag.textContent = t(`assistant.wizard.heightSource.${fit.source[k]}`); } }
+  }
+
   /* ---------- apply ---------- */
   async targetLevel() {
     const s = this.st, app = this.app;
     if (s.levelId !== '__new') return s.levelId;
-    const top = app.plan.levels[app.plan.levels.length - 1]; const id = newId('l'); const li = s.result?.level || {};
+    const id = newId('l'); const li = s.result?.level || {};
     let name = (s.newLevelTouched && s.newLevel) || li.name || s.newLevel || t('assistant.wizard.defaultNewLevel');
     if (app.plan.levels.some((l) => l.name === name)) { let n = 2; while (app.plan.levels.some((l) => l.name === `${name} ${n}`)) n++; name = `${name} ${n}`; }
-    const op = { op: 'add_level', id, name, elevation: Number.isFinite(li.floor_elevation_m) && app.plan.levels.every((l) => Math.abs(l.elevation - li.floor_elevation_m) > 0.5) ? li.floor_elevation_m : top ? top.elevation + top.height + 0.25 : 0 };
-    if (Number.isFinite(li.room_height_m) && li.room_height_m > 2.1 && li.room_height_m < 3.6) op.height = li.room_height_m;
+    // Storeys are stacked without gaps: floor = floor below + its room height + this slab.
+    const fit = this.levelFit();
+    const op = { op: 'add_level', id, name, elevation: fit.elevation, height: fit.height };
+    if (fit.source.slab !== 'default') op.slab = fit.slab;
+    if (fit.autoElevation === false) op.autoElevation = false;
     app.apply([op]); s.levelId = id; return id;
   }
   async saveUnderlay(levelId, offset = [0, 0]) {
@@ -764,6 +817,9 @@ export class PlanWizard {
     const bmp = await createImageBitmap(img); app.editor.images.set(levelId, bmp); app.stage.setUnderlay(levelId, bmp);
   }
   async apply() {
+    for (const input of this.root.querySelectorAll('#wzLvH, #wzLvSlab')) {
+      if (input.validity.rangeUnderflow || input.validity.rangeOverflow || input.validity.badInput) { input.reportValidity(); return; }
+    }
     const s = this.st, app = this.app, res = s.result; this.msg(t('assistant.common.applying'));
     try {
       app.pushUndo();

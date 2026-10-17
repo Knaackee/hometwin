@@ -112,6 +112,8 @@
   "editor.frame.uploadHelp": "Stays local in Home Assistant, up to 1600 px.",
   "editor.facade.plinth": "Plinth",
   "editor.facade.windowFrame": "Window frame",
+  "editor.facade.plinthHeight": "Plinth height above terrain (m)",
+  "editor.facade.plinthHelp": "Only the storey on the terrain gets a plinth. If its floor is raised, the plinth reaches down to the terrain.",
   "editor.file.loadExample": "Load example house",
   "editor.file.loadJson": "Load JSON",
   "editor.file.planAsJson": "Plan as JSON",

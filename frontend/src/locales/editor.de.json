@@ -112,6 +112,8 @@
   "editor.frame.uploadHelp": "Bleibt lokal in Home Assistant, maximal 1600 px.",
   "editor.facade.plinth": "Sockel",
   "editor.facade.windowFrame": "Fensterrahmen",
+  "editor.facade.plinthHeight": "Sockelhöhe über Gelände (m)",
+  "editor.facade.plinthHelp": "Nur die Etage auf dem Gelände bekommt einen Sockel. Liegt ihr Fußboden höher, reicht der Sockel bis zum Gelände.",
   "editor.file.loadExample": "Beispielhaus laden",
   "editor.file.loadJson": "JSON laden",
   "editor.file.planAsJson": "Plan als JSON",

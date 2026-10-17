@@ -17,6 +17,53 @@ export function slabThickness(level) {
   return Number.isFinite(level?.slab) && level.slab >= 0 ? level.slab : DEFAULT_SLAB;
 }
 
+export const DEFAULT_ROOM_HEIGHT = 2.6, DEFAULT_BASEMENT_HEIGHT = 2.4, DEFAULT_PLINTH = 0.3;
+export const plinthHeight = (site) => (Number.isFinite(site?.facade?.plinthHeight) && site.facade.plinthHeight >= 0 ? site.facade.plinthHeight : DEFAULT_PLINTH);
+const hasIndoor = (l) => (l.rooms || []).some((r) => !r.kind || r.kind === 'room' || r.kind === 'garage');
+
+// Terrain height (world y) and the storey that stands on it. That storey gets the plinth,
+// which reaches down to the terrain when its floor is raised (e.g. a raised ground floor).
+export function terrainOf(p) {
+  const L = [...(p?.levels || [])].sort((a, b) => a.elevation - b.elevation);
+  if (!L.length) return { y: 0, groundId: null };
+  let y;
+  if (Number.isFinite(p.site?.terrain)) y = p.site.terrain;
+  else {
+    const outdoor = L.find((l) => l.rooms?.some((r) => r.kind === 'outdoor'));
+    const near = [...L].sort((a, b) => Math.abs(a.elevation) - Math.abs(b.elevation))[0];
+    // A floor slightly above ±0 is a raised ground floor; larger values are absolute heights.
+    y = outdoor ? outdoor.elevation : near.elevation > 0 && near.elevation <= 1.5 ? 0 : near.elevation;
+  }
+  const ground = L.find((l) => l.elevation >= y - 0.6 && hasIndoor(l));
+  return { y, groundId: ground?.id ?? null };
+}
+
+// Fits a new storey into the stack. Plan values (floor elevation relative to the ground
+// floor, clear room height, slab) are used when they are plausible; otherwise defaults.
+// Returns the level fields plus `source` per value ('plan' | 'default' | 'derived').
+export function fitNewLevel(p, { elevation, height, slab } = {}) {
+  const ok = (v, lo, hi) => Number.isFinite(v) && v >= lo && v <= hi;
+  const L = [...(p?.levels || [])].sort((a, b) => a.elevation - b.elevation);
+  const src = { height: ok(height, 1.9, 4.5) ? 'plan' : 'default', slab: ok(slab, 0, 0.6) ? 'plan' : 'default', elevation: 'derived' };
+  let h = src.height === 'plan' ? height : DEFAULT_ROOM_HEIGHT, s = src.slab === 'plan' ? slab : DEFAULT_SLAB;
+  if (!L.length) {
+    const e = ok(elevation, -4, 1.5) ? elevation : 0; src.elevation = ok(elevation, -4, 1.5) ? 'plan' : 'default';
+    return { position: 'only', elevation: r3(e), height: h, slab: s, autoElevation: undefined, source: src };
+  }
+  const bottom = L[0], top = L[L.length - 1];
+  if (Number.isFinite(elevation) && elevation < bottom.elevation - 1.5) {
+    // Basement: the storey above keeps its floor; the basement height closes the gap.
+    if (src.height === 'default') h = DEFAULT_BASEMENT_HEIGHT;
+    const fit = bottom.elevation - elevation - slabThickness(bottom);
+    if (src.height === 'default' && ok(fit, 1.9, 4.5)) { h = r3(fit); src.height = 'derived'; }
+    return { position: 'below', elevation: r3(bottom.elevation - h - slabThickness(bottom)), height: h, slab: s, autoElevation: false, source: src };
+  }
+  // Above the top storey: a plan elevation tells the slab thickness (floor minus wall top).
+  const gap = Number.isFinite(elevation) ? elevation - top.elevation - top.height : NaN;
+  if (src.slab === 'default' && ok(gap, 0.12, 0.5)) { s = r3(gap); src.slab = 'derived'; }
+  return { position: 'above', elevation: r3(top.elevation + top.height + s), height: h, slab: s, autoElevation: undefined, mismatch: Number.isFinite(gap) && !ok(gap - s, -0.05, 0.05), source: src };
+}
+
 export function emptyPlan() {
   return { version: PLAN_VERSION, name: t('data.defaults.home'), site: DEFAULT_SITE(), levels: [newLevel(t('data.defaults.groundFloor'), 0)] };
 }
@@ -149,7 +196,7 @@ export function applyOps(plan, ops) {
     try {
       const f = (id) => { const x = findItem(plan, id); if (!x) throw new Error(t('data.error.unknownId', { id })); return x; };
       switch (op.op) {
-        case 'add_level': { const l = newLevel(op.name || t('data.defaults.newLevel'), num(op.elevation, 0), pick(op, ['floor_id'])); if (op.id) l.id = op.id; if (op.height) l.height = num(op.height, 2.6); plan.levels.push(l); computeElevations(plan); results.push({ ok: true, id: l.id }); break; }
+        case 'add_level': { const l = newLevel(op.name || t('data.defaults.newLevel'), num(op.elevation, 0), pick(op, ['floor_id'])); if (op.id) l.id = op.id; if (op.height) l.height = num(op.height, DEFAULT_ROOM_HEIGHT); if (Number.isFinite(op.slab) && op.slab >= 0) l.slab = op.slab; if (op.autoElevation === false) l.autoElevation = false; plan.levels.push(l); computeElevations(plan); results.push({ ok: true, id: l.id }); break; }
         case 'update_level': { const { item } = f(op.level_id); Object.assign(item, pick(op, ['name', 'floor_id'])); for (const k of ['elevation', 'height', 'cutHeight']) if (op[k] !== undefined) item[k] = num(op[k], item[k]); if (op.elevation !== undefined) item.autoElevation = false; computeElevations(plan); results.push({ ok: true }); break; }
         case 'add_room': { const points = pointsFrom(op); if (!points) throw new Error(t('data.error.roomGeometry')); const r = { id: op.id || newId('r'), name: op.name || t('data.defaults.room'), kind: op.kind || 'room', surface: op.surface || (op.kind === 'outdoor' ? 'lawn' : 'oak'), area_id: op.area_id || null, points }; lvl(op).rooms.push(r); results.push({ ok: true, id: r.id }); break; }
         case 'update_room': { const { item } = f(op.room_id); Object.assign(item, pick(op, ['name', 'kind', 'surface', 'area_id'])); const p = pointsFrom(op); if (p) item.points = p; results.push({ ok: true }); break; }

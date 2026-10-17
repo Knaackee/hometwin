@@ -10,6 +10,7 @@ import base64
 import math
 import time as _time_mod
 import json
+import re
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -122,7 +123,7 @@ def _tools(cat: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         _fn("list_entities", "Listet Home-Assistant-Entitäten mit Bereich, Etage und ob sie schon im Modell platziert sind.",
             {"area_id": {"type": "string"}, "domain": {"type": "string"}, "only_unplaced": {"type": "boolean"}}, []),
-        _fn("add_level", "Neue Etage anlegen.", {"name": {"type": "string"}, "elevation": {"type": "number", "description": "Fußbodenhöhe über Grund in m"}, "height": {"type": "number"}, "floor_id": {"type": "string"}}, ["name", "elevation"]),
+        _fn("add_level", "Neue Etage anlegen.", {"name": {"type": "string"}, "elevation": {"type": "number", "description": "Fußbodenhöhe über Grund in m"}, "height": {"type": "number", "description": "Lichte Raumhöhe in m"}, "slab": {"type": "number", "description": "Deckenstärke unter dieser Etage in m (Standard 0.25)"}, "floor_id": {"type": "string"}}, ["name", "elevation"]),
         _fn("add_room", "Raum oder Außenfläche anlegen. Entweder rect [x, z, breite, tiefe] oder points.",
             {"level_id": {"type": "string"}, "name": {"type": "string"}, "kind": {"type": "string", "enum": cat["room_kinds"]}, "surface": {"type": "string", "enum": list(cat["surfaces"])},
              "area_id": {"type": "string"}, "rect": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}, "points": {"type": "array", "items": _PT, "minItems": 3}}, ["level_id", "name"]),
@@ -302,7 +303,7 @@ class _Work:
             return self.check(a.get("level_id"))
         if name == "add_level":
             lid = self._id("l"); self.levels.add(lid)
-            self.ops.append({"op": "add_level", "id": lid, **{k: a[k] for k in ("name", "elevation", "height", "floor_id") if k in a}})
+            self.ops.append({"op": "add_level", "id": lid, **{k: a[k] for k in ("name", "elevation", "height", "slab", "floor_id") if k in a}})
             return {"ok": True, "id": lid}
         if name == "add_room":
             self._level(a)
@@ -528,7 +529,7 @@ Return:
   "openings": [{{"type": "door", "from": [px, py], "to": [px, py]}}],
   "stairs": [{{"points": [[px, py], ...], "up_from": [px, py], "up_to": [px, py], "width_m": 1.0}}],
   "dimensions": [{{"from": [px, py], "to": [px, py], "meters": 11.49}}],
-  "level": {{"name": "Erdgeschoss", "floor_elevation_m": 0.0, "room_height_m": 2.6}},
+  "level": {{"name": "Erdgeschoss", "floor_elevation_m": 0.0, "room_height_m": 2.6, "slab_thickness_m": null}},
   "roof": {{"type": "gable", "pitch_deg": 38, "ridge": "x", "main_building": [[px, py], ...]}},
   "notes": "short remarks on anything unclear"
 }}
@@ -543,7 +544,7 @@ Rules:
 - label_area_m2: the area printed in the plan for that room (e.g. "12,40 m²"), if any (number), else null.
 - clear_w / clear_d: the CLEAR interior dimensions printed for that room (inner dimension lines or labels like "3,51 x 2,76"), in metres: clear_w along the image x axis (left-right), clear_d along the image y axis (top-bottom). null if not printed. Read printed numbers exactly; do not estimate them.
 - stairs: footprint polygon of the flight, "up_from"/"up_to" = start and end of the walking line in the direction going UP (follow the arrow / "S" marks / step numbers), width_m = flight width.
-- level: the storey shown (name as printed, e.g. "Erdgeschoss", "Obergeschoss", "Kellergeschoss"), floor elevation (e.g. "OKFF ±0,00" or "+2,85") and clear room height if printed (e.g. "RH 2,50", "lichte Höhe"). null values if not printed.
+- level: the storey shown (name as printed, e.g. "Erdgeschoss", "Obergeschoss", "Kellergeschoss"), floor elevation (e.g. "OKFF ±0,00" or "+2,85") and clear room height if printed (e.g. "RH 2,50", "lichte Höhe"). floor_elevation_m is relative to the ground floor (±0,00), never metres above sea level. slab_thickness_m: thickness of the floor slab under this storey including screed, only if dimensioned (section, "Decke 22 cm + Estrich"). null values if not printed; never guess.
 - roof: only if the plan shows or states it (roof outline, "SD 38°", "Satteldach", ridge line "First"): type one of flat, shed, gable, hip; pitch in degrees; ridge "x" if the ridge runs left-right in the image, "y" if top-bottom; main_building = outline of the part the roof covers (without garage/carport). Otherwise null.
 - dimensions: up to 6 long printed dimension lines (outer chains preferred) with their two end points in pixels and the printed length in metres. They are used to verify the scale.
 - PRINTED DIMENSIONS BEAT PIXELS: place walls so that the printed dimensions are met.
@@ -563,8 +564,23 @@ Return: {{"dimensions": [{{"from": [px, py], "to": [px, py], "meters": 4.25, "la
 "from"/"to" are the two ends of the dimension line that the number refers to. Convert cm or mm to metres. If you find none, return {{"dimensions": []}}."""
 
 
+_FENCE = re.compile(r"```(?:json|JSON)?\s*(\{.*?\})\s*```", re.S)
+
+
 def _json_from(text: str, language: str = "en") -> dict[str, Any]:
     text = (text or "").strip()
+    # Some models (e.g. Claude) wrap the JSON in prose and a ```json fence; take the fenced object
+    # that contains the answer, preferring one with "rooms".
+    fenced = []
+    for block in _FENCE.findall(text):
+        try:
+            obj = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            fenced.append(obj)
+    if fenced:
+        return next((o for o in fenced if "rooms" in o or "dimensions" in o), fenced[0])
     if text.startswith("```"):
         text = text.strip("`")
         text = text[text.find("{"):]
@@ -769,7 +785,7 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
     t0 = _time_mod.monotonic()
     content = await _post_stream(hass, cfg, payload, on_text)
     _LOGGER.info("HomeTwin: model answered in %.1f s (%d characters)", _time_mod.monotonic() - t0, len(content))
-    report("parsing", chars=len(content))
+    report("parsing", chars=len(content), raw=content[:20000])
     if req.get("mode") != "scale":
         # geometry work runs in a worker thread so Home Assistant stays responsive
         return await hass.async_add_executor_job(_detect_post, content, {**req, "_ui_language": language}, report)
@@ -789,19 +805,92 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
 
 
 
+def _num(v: Any) -> float:
+    """Number from a JSON number or a string such as "11,49" / "11.49 m"."""
+    if isinstance(v, bool):
+        raise ValueError("bool")
+    if isinstance(v, (int, float)):
+        n = float(v)
+        if math.isfinite(n):
+            return n
+        raise ValueError("non-finite number")
+    if isinstance(v, str):
+        m = re.search(r"-?\d+(?:[.,]\d+)?", v)
+        if m:
+            n = float(m.group(0).replace(",", "."))
+            if math.isfinite(n):
+                return n
+    raise ValueError(f"not a number: {v!r}")
+
+
+def _pt(p: Any) -> list[float]:
+    """Point from [x, y], {"x": .., "y": ..} (also px/py) or "x,y"."""
+    if isinstance(p, (list, tuple)) and len(p) >= 2:
+        return [_num(p[0]), _num(p[1])]
+    if isinstance(p, dict):
+        for kx, ky in (("x", "y"), ("px", "py"), ("X", "Y")):
+            if kx in p and ky in p:
+                return [_num(p[kx]), _num(p[ky])]
+    if isinstance(p, str):
+        parts = re.findall(r"-?\d+(?:\.\d+)?", p)
+        if len(parts) >= 2:
+            return [_num(parts[0]), _num(parts[1])]
+    raise ValueError(f"not a point: {p!r}")
+
+
+def _room_points(r: dict[str, Any]) -> Any:
+    for key in ("points", "polygon", "vertices", "corners", "outline"):
+        if r.get(key):
+            return r[key]
+    return None
+
+
+def _coord_scale(out: dict[str, Any], w: int, h: int) -> tuple[float, float, str | None]:
+    """Detects answers in normalised coordinates (0..1 or 0..1000) instead of image pixels."""
+    xs, ys = [], []
+    for r in out.get("rooms") or []:
+        for p in (_room_points(r) if isinstance(r, dict) else None) or []:
+            try:
+                x, y = _pt(p)
+            except (ValueError, TypeError):
+                continue
+            xs.append(x)
+            ys.append(y)
+    if len(xs) < 3:
+        return 1.0, 1.0, None
+    mx, my = max(xs), max(ys)
+    if mx <= 1.0001 and my <= 1.0001:
+        return float(w), float(h), "unit"
+    # 0..1000 grid (Gemini style) on an image that is clearly not ~1000 px: points run past the image
+    # or the drawing only fills a corner of it.
+    if mx <= 1000.5 and my <= 1000.5 and (mx > w * 1.05 or my > h * 1.05) and max(w, h) < 950:
+        return w / 1000.0, h / 1000.0, "per_mille"
+    return 1.0, 1.0, None
+
+
 def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, Any]:
     """Turns the model's JSON into rooms in metres, fitted to the printed dimensions (worker thread)."""
     language = normalize_language(req.get("_ui_language") or req.get("language"))
     out = _json_from(content, language)
+    if not isinstance(out.get("rooms"), list):  # some models nest the answer
+        for v in out.values():
+            if isinstance(v, dict) and isinstance(v.get("rooms"), list):
+                out = v
+                break
+    sx, sy, frame = _coord_scale(out, int(req.get("width") or 0), int(req.get("height") or 0))
+    if frame:
+        _LOGGER.warning("HomeTwin: model answered in %s coordinates; converted to pixels", frame)
+    px = lambda p: (lambda q: [q[0] * sx, q[1] * sy])(_pt(p))  # noqa: E731
     mpp, x0, z0 = float(req.get("mpp") or 0), float(req.get("x0") or 0), float(req.get("z0") or 0)
     if not mpp:  # scale from the printed dimension chains
         cands = []
         for d in out.get("dimensions") or []:
             try:
-                px = math.hypot(d["to"][0] - d["from"][0], d["to"][1] - d["from"][1])
-                m = float(d["meters"])
-                if px > 40 and 0.5 < m < 100:
-                    cands.append(m / px)
+                a, b = px(d["from"]), px(d["to"])
+                dist = math.hypot(b[0] - a[0], b[1] - a[1])
+                m = _num(d.get("meters", d.get("m")))
+                if dist > 40 and 0.5 < m < 100:
+                    cands.append(m / dist)
             except (KeyError, TypeError, ValueError, IndexError):
                 continue
         if not cands:
@@ -810,17 +899,33 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
         mpp = cands[len(cands) // 2]
         req = {**req, "mpp": mpp, "_auto": True}
     report("fitting")
-    tm = lambda p: [x0 + float(p[0]) * mpp, z0 + float(p[1]) * mpp]  # noqa: E731
+    tm = lambda p: (lambda q: [x0 + q[0] * mpp, z0 + q[1] * mpp])(px(p))  # noqa: E731
     kinds = {"room", "garage", "outdoor"}
     rooms = []
-    for r in out.get("rooms") or []:
+    raw_rooms = [r for r in (out.get("rooms") or []) if isinstance(r, dict)]
+    dropped: dict[str, int] = {}
+    for r in raw_rooms:
         try:
-            pts = [tm(p) for p in r["points"]]
+            pts = [tm(p) for p in _room_points(r) or []]
         except (KeyError, TypeError, ValueError, IndexError):
+            dropped["points"] = dropped.get("points", 0) + 1
             continue
-        if len(pts) >= 3 and geo.area(pts) >= 0.5:
-            rooms.append({"name": str(r.get("name") or message(language, "room"))[:60], "kind": r.get("kind") if r.get("kind") in kinds else "room",
+        if len(pts) < 3:
+            dropped["corners"] = dropped.get("corners", 0) + 1
+        elif not math.isfinite(geo.area(pts)):
+            dropped["points"] = dropped.get("points", 0) + 1
+        elif geo.area(pts) < 0.5:
+            dropped["tiny"] = dropped.get("tiny", 0) + 1
+        else:
+            kind = r.get("kind") if r.get("kind") in kinds else r.get("type") if r.get("type") in kinds else "room"
+            rooms.append({"name": str(r.get("name") or message(language, "room"))[:60], "kind": kind,
                           "points": pts, "label_area": r.get("label_area_m2") if isinstance(r.get("label_area_m2"), (int, float)) else None})
+    report("fitting", rooms_raw=len(raw_rooms), rooms_used=len(rooms), dropped=dropped, frame=frame)
+    if not rooms and not req.get("locked"):
+        _LOGGER.warning("HomeTwin: no usable rooms (%d returned, dropped %s). Model answer starts with: %s", len(raw_rooms), dropped, content[:1500])
+        if raw_rooms:
+            raise HomeAssistantError(message(language, "rooms_unusable", count=len(raw_rooms), reason=", ".join(f"{k}: {v}" for k, v in dropped.items())))
+        raise HomeAssistantError(message(language, "rooms_none"))
     locked_m = [{"name": r.get("name"), "kind": "room", "points": r["points"], "locked": True} for r in (req.get("locked") or [])]
     if locked_m:  # pull new rooms onto the walls of the locked rooms, which keep their exact shape
         for r in rooms:
@@ -837,7 +942,7 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
     stairs = []
     for st in out.get("stairs") or []:
         try:
-            pts = [tm(p) for p in st["points"]]
+            pts = [tm(p) for p in _room_points(st) or []]
             if len(pts) >= 3:
                 item: dict[str, Any] = {"points": pts}
                 if st.get("up_from") and st.get("up_to"):
@@ -869,10 +974,11 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
     ratios = []
     for d in out.get("dimensions") or []:
         try:
-            px = math.hypot(d["to"][0] - d["from"][0], d["to"][1] - d["from"][1])
-            m = float(d["meters"])
-            if px > 40 and 0.5 < m < 100:
-                ratios.append(m / (px * mpp))
+            a, b = px(d["from"]), px(d["to"])
+            dist = math.hypot(b[0] - a[0], b[1] - a[1])
+            m = _num(d.get("meters", d.get("m")))
+            if dist > 40 and 0.5 < m < 100:
+                ratios.append(m / (dist * mpp))
         except (KeyError, TypeError, ValueError, IndexError):
             continue
     if ratios and not req.get("_auto"):
@@ -899,7 +1005,7 @@ def start_detect_job(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any])
     jid = _uuid.uuid4().hex[:12]
     job: dict[str, Any] = {"id": jid, "mode": req.get("mode", "rooms"), "status": "running", "started": _time.time(), "stage": "queued",
                            "chars": 0, "rooms": 0, "kb": 0, "result": None, "error": None, "image": req["image"],
-                           "width": req["width"], "height": req["height"], "level_id": req.get("level_id"), "consumed": False}
+                           "width": req["width"], "height": req["height"], "level_id": req.get("level_id"), "consumed": False, "model": cfg.model}
     jobs[jid] = job
 
     def progress(stage: str, **info: Any) -> None:
@@ -927,7 +1033,7 @@ def start_detect_job(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any])
     return jid
 
 
-def job_state(hass: HomeAssistant, jid: str | None, with_image: bool = False) -> dict[str, Any] | None:
+def job_state(hass: HomeAssistant, jid: str | None, with_image: bool = False, with_raw: bool = False) -> dict[str, Any] | None:
     from .const import DOMAIN  # noqa: PLC0415
     jobs = hass.data.get(DOMAIN, {}).get("jobs", {})
     if not jid:
@@ -935,8 +1041,11 @@ def job_state(hass: HomeAssistant, jid: str | None, with_image: bool = False) ->
     job = jobs.get(jid) if jid else None
     if not job:
         return None
-    out = {k: v for k, v in job.items() if k != "image"}
+    out = {k: v for k, v in job.items() if k not in ("image", "raw")}
     out["elapsed"] = round((job.get("finished") or _time.time()) - job["started"], 1)
     if with_image:
         out["image"] = job["image"]
+    if with_raw:
+        out["raw"] = job.get("raw", "")
+        out["model"] = job.get("model")
     return out

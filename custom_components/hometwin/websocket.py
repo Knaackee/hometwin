@@ -179,11 +179,11 @@ def ws_detect_start(hass: HomeAssistant, connection: websocket_api.ActiveConnect
     connection.send_result(msg["id"], {"job_id": start_detect_job(hass, cfg, req)})
 
 
-@websocket_api.websocket_command({vol.Required("type"): "hometwin/agent/job", vol.Optional("job_id"): vol.Any(str, None), vol.Optional("with_image", default=False): bool})
+@websocket_api.websocket_command({vol.Required("type"): "hometwin/agent/job", vol.Optional("job_id"): vol.Any(str, None), vol.Optional("with_image", default=False): bool, vol.Optional("with_raw", default=False): bool})
 @websocket_api.require_admin
 @callback
 def ws_job(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    connection.send_result(msg["id"], {"job": job_state(hass, msg.get("job_id"), msg["with_image"])})
+    connection.send_result(msg["id"], {"job": job_state(hass, msg.get("job_id"), msg["with_image"], msg["with_raw"])})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "hometwin/agent/job_consume", vol.Required("job_id"): str})

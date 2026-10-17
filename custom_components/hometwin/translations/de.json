@@ -32,7 +32,7 @@
         },
         "data_description": {
           "base_url": "z. B. {openrouter_url}, {openai_url} oder {ollama_url}",
-          "model": "Empfohlen: google/gemini-3.8-flash über OpenRouter (schnell, liest Bilder; Grundriss in ca. 1–2 min) mit Reasoning „Aus“ oder „Low“. Jedes Modell mit Bildverständnis geht.",
+          "model": "Empfohlen: Opus 5.5 oder ein vergleichbar leistungsfähiges Modell mit Bildverständnis. Verwende einen OpenAI-kompatiblen Endpunkt mit Bildeingabe.",
           "reasoning_effort": "„Aus“ oder „Low“ ist deutlich schneller. „High“ kann mehrere Minuten pro Anfrage dauern.",
           "system_prompt": "Werden an die eingebauten Regeln des Assistenten angehängt, z. B. „Räume englisch benennen“ oder „Unser Haus hat keinen Keller“."
         }

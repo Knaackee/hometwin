@@ -37,6 +37,8 @@
   "unexpected_response": "Unexpected response: {response}",
   "model_no_json": "The model did not return JSON. Use a model with vision support.",
   "model_invalid_json": "The model response is not valid JSON ({error}). Please try again.",
+  "rooms_unusable": "The model returned {count} rooms, but none could be used ({reason}). Use “Copy model answer” and report it, or try another model.",
+  "rooms_none": "The model did not return any rooms. Try again, add hints, or use another model with image support.",
   "image_missing": "Image is missing",
   "dimensions_missing": "No readable dimension chains were found in the plan. Measure a distance in the Scale step.",
   "dimension_mismatch": "“{room}”: the {wanted:.2f} m plan dimension does not match the drawing ({actual:.2f} m) — please check it",
