@@ -49,7 +49,7 @@ KI (optional): ein OpenAI-kompatibler Endpunkt mit Bildverständnis, empfohlen *
 
 Gib deinem Agenten (Claude, Codex …) den Skill [`skills/add-object/SKILL.md`](skills/add-object/SKILL.md) und ein Produkt oder ein Foto. Er recherchiert die Maße, baut das Objekt, zeigt dir eine Vorschau und stellt den Pull Request. Aus **einem Handyfoto** entstand so in etwa **fünf Minuten** eine maßgenaue *Martin Ed Sheeran ÷ Signature Edition*.
 
-Geh durchs Haus, schau in der [Galerie](https://knaackee.github.io/hometwin/#library), was fehlt, und reich es ein. Am liebsten **mehrere Objekte pro Pull Request**, z. B. 3–10 aus einem Raum. Das geht beim Mergen viel schneller. Mehr dazu in [CONTRIBUTING.md](CONTRIBUTING.md).
+**Noch ein paar Tokens übrig? Mach etwas für die Community daraus.** Schau dich zu Hause um: Welche Möbel und Geräte fehlen noch in HomeTwin? Mit ein paar Produktfotos, unserem [Contribution-Guide](CONTRIBUTING.md) und **Opus 5.5 oder einem vergleichbar leistungsfähigen Modell** kannst du sie zur Bibliothek beitragen. Gerne gleich als Sammlung für einen ganzen Raum, gebündelt in einem Pull Request. So machen wir HomeTwin gemeinsam besser.
 
 **Übersetzungen willkommen:** Englisch und Deutsch werden unterstützt. KI darf beim Übersetzen helfen; vor der Aufnahme muss ein Native Speaker jeden Text manuell prüfen und die Oberfläche testen. Dateien, Prüfungen und Review-Anforderungen stehen im [Leitfaden für Übersetzungen](CONTRIBUTING.md#translation-contributions).
 ## 🗺️ Roadmap
