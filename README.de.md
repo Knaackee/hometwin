@@ -14,7 +14,7 @@ Bauplan hochladen, KI liest die Räume, jedes Gerät dort bedienen, wo es ist.</
 <p align="center"><img src="docs/assets/screenshot-house.png" alt="HomeTwin: zweigeschossiges Haus in 3D mit Bedienfeld" width="100%"></p>
 
 > [!WARNING]
-> **HomeTwin ist eine öffentliche Beta.** Es läuft im Alltag, Datenformate können sich aber noch ändern. Bitte ab und zu ein Backup exportieren (*Bearbeiten → Haus → Backup*).
+> **HomeTwin ist eine öffentliche Beta.** Es läuft im Alltag, Datenformate können sich aber noch ändern. Bitte ab und zu ein Backup exportieren (*Bearbeiten → Haus → Backup*). HomeTwin unterstützt derzeit **Englisch und Deutsch**. Englisch ist die Standardsprache; Deutsch wählst du in den Integrationsoptionen. Hilfe bei der Einrichtung findest du unter [Installation](#-installation). Du möchtest HomeTwin verbessern? Dann lies [In 5 Minuten beitragen](#-in-5-minuten-beitragen).
 
 ## ✨ Was es kann
 
@@ -43,15 +43,18 @@ KI (optional): ein OpenAI-kompatibler Endpunkt mit Bildverständnis, empfohlen *
 
 > Von der Vorabversion **Raumwerk**? HomeTwin übernimmt Plan, Bauplan-Bilder und KI-Einstellungen beim ersten Start automatisch. Alternativ: *Backup → exportieren/importieren*.
 
+**Oberflächensprache:** Einstellungen → Geräte & Dienste → HomeTwin → Konfigurieren → Oberflächensprache. Englisch ist der Standard; Deutsch bleibt auswählbar. Die Auswahl gilt unabhängig von der Home-Assistant-Profilsprache. Eigene Raum- und Gerätenamen bleiben unverändert.
+
 ## 🧩 In 5 Minuten beitragen
 
 Gib deinem Agenten (Claude, Codex …) den Skill [`skills/add-object/SKILL.md`](skills/add-object/SKILL.md) und ein Produkt oder ein Foto. Er recherchiert die Maße, baut das Objekt, zeigt dir eine Vorschau und stellt den Pull Request. Aus **einem Handyfoto** entstand so in etwa **fünf Minuten** eine maßgenaue *Martin Ed Sheeran ÷ Signature Edition*.
 
 Geh durchs Haus, schau in der [Galerie](https://knaackee.github.io/hometwin/#library), was fehlt, und reich es ein. Am liebsten **mehrere Objekte pro Pull Request**, z. B. 3–10 aus einem Raum. Das geht beim Mergen viel schneller. Mehr dazu in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+**Übersetzungen willkommen:** Englisch und Deutsch werden unterstützt. KI darf beim Übersetzen helfen; vor der Aufnahme muss ein Native Speaker jeden Text manuell prüfen und die Oberfläche testen. Dateien, Prüfungen und Review-Anforderungen stehen im [Leitfaden für Übersetzungen](CONTRIBUTING.md#translation-contributions).
 ## 🗺️ Roadmap
 
-Englische Oberfläche und i18n · „Braucht Aufmerksamkeit“ (Batterie, Ausfälle, Alarme) · Geräte-Sheets · parametrische Objekte · Kiosk-Modus.
+Weitere Community-Übersetzungen neben Englisch und Deutsch · „Braucht Aufmerksamkeit“ (Batterie, Ausfälle, Alarme) · Geräte-Sheets · parametrische Objekte · Kiosk-Modus.
 
 ## 📜 Lizenz
 

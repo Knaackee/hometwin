@@ -27,19 +27,23 @@ from .const import (
     CONF_DEMO,
     CONF_MAX_STEPS,
     CONF_MODEL,
+    CONF_UI_LANGUAGE,
     CONF_REASONING,
     CONF_SYSTEM_PROMPT,
     CONF_TITLE,
     DEFAULT_BASE_URL,
     DEFAULT_MAX_STEPS,
     DEFAULT_MODEL,
+    DEFAULT_UI_LANGUAGE,
     DEFAULT_REASONING,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TITLE,
     DOMAIN,
     LEGACY_PROMPT_PREFIX,
     REASONING_LEVELS,
+    UI_LANGUAGES,
 )
+from .options import normalize_options
 
 
 def _extra(v: Any) -> str:
@@ -76,16 +80,15 @@ class HomeTwinOptionsFlow(OptionsFlow):
         errors: dict[str, str] = {}
         o = self.config_entry.options
         if user_input is not None:
-            url = (user_input.get(CONF_BASE_URL) or "").strip()
-            if url and not url.startswith(("http://", "https://")):
-                errors[CONF_BASE_URL] = "invalid_url"
-            else:
-                return self.async_create_entry(data={**user_input, CONF_BASE_URL: url.rstrip("/")})
+            data, errors = normalize_options(user_input)
+            if not errors:
+                return self.async_create_entry(data=data)
         schema = vol.Schema({
             vol.Optional(CONF_TITLE, default=o.get(CONF_TITLE, DEFAULT_TITLE)): TextSelector(),
             vol.Optional(CONF_DEMO, default=o.get(CONF_DEMO, True)): BooleanSelector(),
             vol.Optional(CONF_BASE_URL, default=o.get(CONF_BASE_URL, DEFAULT_BASE_URL)): TextSelector(TextSelectorConfig(type=TextSelectorType.URL)),
             vol.Optional(CONF_MODEL, default=o.get(CONF_MODEL, DEFAULT_MODEL)): TextSelector(),
+            vol.Optional(CONF_UI_LANGUAGE, default=o.get(CONF_UI_LANGUAGE) if o.get(CONF_UI_LANGUAGE) in UI_LANGUAGES else DEFAULT_UI_LANGUAGE): SelectSelector(SelectSelectorConfig(options=UI_LANGUAGES, mode=SelectSelectorMode.DROPDOWN, translation_key="ui_language")),
             vol.Optional(CONF_API_KEY, default=o.get(CONF_API_KEY, "")): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
             vol.Optional(CONF_REASONING, default=o.get(CONF_REASONING, DEFAULT_REASONING)): SelectSelector(SelectSelectorConfig(options=REASONING_LEVELS, mode=SelectSelectorMode.DROPDOWN, translation_key="reasoning")),
             vol.Optional(CONF_MAX_STEPS, default=o.get(CONF_MAX_STEPS, DEFAULT_MAX_STEPS)): NumberSelector(NumberSelectorConfig(min=1, max=30, step=1, mode=NumberSelectorMode.BOX)),

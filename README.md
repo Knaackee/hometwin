@@ -27,7 +27,7 @@ Upload your floor plan, let AI read the rooms, control every device right where 
 <p align="center"><img src="docs/assets/screenshot-house.png" alt="HomeTwin: a two-storey house in 3D with the control panel" width="100%"></p>
 
 > [!WARNING]
-> **HomeTwin is a public beta.** It runs in daily use, but data formats can still change. Export a backup now and then (*Edit → House → Backup*). The user interface is currently **German**; English is the next milestone ([help welcome](#-roadmap)).
+> **HomeTwin is a public beta.** It runs in daily use, but data formats can still change. Export a backup now and then (*Edit → House → Backup*). HomeTwin currently supports **English and German**. The interface defaults to English; choose German in the integration options. For setup help, see [Installation](#-installation). Want to improve HomeTwin? See [Contribute in 5 minutes](#-contribute-in-5-minutes).
 
 ## ✨ What it does
 
@@ -71,6 +71,8 @@ You don't need AI: the same assistant lets you trace the rooms yourself.
 
 > Coming from the preview called **Raumwerk**? HomeTwin takes over your plan, floor-plan images and AI settings automatically on first start. You can also use *Backup → export/import*. Remove Raumwerk afterwards.
 
+**UI language:** Settings → Devices & services → HomeTwin → Configure → UI language. English is the default; German is also available. The choice applies to the HomeTwin panel independently of your Home Assistant profile language. Existing room and device names stay unchanged.
+
 ## 🧩 Contribute in 5 minutes
 
 **You don't need 3D skills to add objects.** Give your coding agent (Claude, Codex or any agent that supports the open skill format) the skill [`skills/add-object/SKILL.md`](skills/add-object/SKILL.md) and a product name or a photo. The agent:
@@ -88,9 +90,10 @@ From **a single phone photo** the skill recognised a *Martin Ed Sheeran ÷ (Divi
 **Our ask:** walk through your home, check what's missing in the [gallery](https://knaackee.github.io/hometwin/#library), and send it in. Please **bundle several objects per pull request** (e.g. 3–10 from one room); they get merged much faster. Details: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Recommended model for asset generation:** Opus 5.5. Include the model used to generate each asset in the pull request.
+**Translations welcome:** English and German are supported. AI-assisted translations are welcome only after a native speaker manually reviews every string and checks the UI. See the [translation contribution guide](CONTRIBUTING.md#translation-contributions) for files, checks and review requirements.
 ## 🗺️ Roadmap
 
-- 🌍 **English UI + i18n** (next), then community translations
+- 🌍 **Community translations** beyond English and German
 - 🔔 **Needs attention**: low batteries, offline devices, leaks and alarms, pulsing where they are
 - 🎛️ **Device sheets**: colour wheel, blind tilt, thermostat, media controls
 - 🛋️ **Parametric generic objects**: resize and restyle, later "adjust from photo"

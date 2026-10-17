@@ -15,6 +15,8 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     CONF_DEMO,
     CONF_TITLE,
+    CONF_UI_LANGUAGE,
+    DEFAULT_UI_LANGUAGE,
     DEFAULT_TITLE,
     DOMAIN,
     LEGACY_DOMAIN,
@@ -67,7 +69,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         module_url=f"{STATIC_URL}/hometwin-panel.js?v={VERSION}-{mtime}",
         embed_iframe=False,
         require_admin=False,
-        config={"demo": entry.options.get(CONF_DEMO, True)},
+        config={
+            "demo": entry.options.get(CONF_DEMO, True),
+            "ui_language": entry.options.get(CONF_UI_LANGUAGE)
+            if entry.options.get(CONF_UI_LANGUAGE) in {"en", "de"}
+            else DEFAULT_UI_LANGUAGE,
+        },
     )
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True

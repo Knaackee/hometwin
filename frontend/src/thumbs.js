@@ -2,16 +2,18 @@
 import * as THREE from 'three';
 import { buildFurniture, FURNITURE, FURNITURE_CATS } from './furniture.js';
 import { buildDevice, KINDS, LIGHT_STYLES, RADIATOR_STYLES, deviceDefaults } from './devices.js';
+import { t } from './i18n.js';
 
 export function assetCatalog() {
   const out = [];
-  for (const [style, label] of Object.entries(LIGHT_STYLES)) out.push({ key: `light:${style}`, cat: 'Licht', label, spec: { kind: 'light', style, ...deviceDefaults('light', style) } });
-  for (const [style, label] of Object.entries(RADIATOR_STYLES)) out.push({ key: `radiator:${style}`, cat: 'Klima', label, spec: { kind: 'radiator', style } });
-  for (const [kind, k] of Object.entries(KINDS)) if (!['light', 'radiator'].includes(kind)) out.push({ key: kind, cat: k.cat === 'Garten' ? 'Garten' : k.cat === 'Sicherheit' ? 'Sensoren' : k.cat, label: k.label, spec: { kind, ...deviceDefaults(kind) } });
+  for (const [style, label] of Object.entries(LIGHT_STYLES)) out.push({ key: `light:${style}`, cat: t('data.category.light'), label, spec: { kind: 'light', style, ...deviceDefaults('light', style) } });
+  for (const [style, label] of Object.entries(RADIATOR_STYLES)) out.push({ key: `radiator:${style}`, cat: t('data.category.climate'), label, spec: { kind: 'radiator', style } });
+  for (const [kind, k] of Object.entries(KINDS)) if (!['light', 'radiator'].includes(kind)) out.push({ key: kind, cat: k.cat === t('data.category.garden') ? t('data.category.garden') : k.cat === t('data.category.security') ? t('data.category.sensors') : k.cat, label: k.label, spec: { kind, ...deviceDefaults(kind) } });
   for (const [type, f] of Object.entries(FURNITURE)) out.push({ key: `f:${type}`, cat: f.cat, label: f.label, spec: { type }, furniture: true });
   return out;
 }
-export const CATALOG_CATS = ['Licht', 'Klima', 'Sensoren', 'Geräte', 'Medien', ...FURNITURE_CATS];
+const CATALOG_CAT_KEYS = ['light', 'climate', 'sensors', 'devices', 'media'];
+export const CATALOG_CATS = new Proxy([...CATALOG_CAT_KEYS, ...FURNITURE_CATS], { get: (keys, prop) => /^\d+$/.test(String(prop)) ? (prop < CATALOG_CAT_KEYS.length ? t(`data.category.${keys[prop]}`) : FURNITURE_CATS[prop - CATALOG_CAT_KEYS.length]) : Reflect.get(keys, prop) });
 
 const cache = new Map();
 export function thumbFor(key) { return cache.get(key); }

@@ -7,6 +7,7 @@
 //   Wall-mounted objects: back face at z = -d/2 (touches the wall).
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export const RECIPE_SCHEMA_VERSION = 1;
 
@@ -131,28 +132,35 @@ function makeMaterials(recipe, params) {
 }
 
 /* ---------------- shapes ---------------- */
-export const SHAPES = ['box', 'cylinder', 'cone', 'sphere', 'dome', 'torus', 'lathe', 'extrude', 'tube', 'group'];
-const SEG = (s, scope, d) => Math.max(3, Math.min(64, Math.round(evalExpr(s ?? d, scope))));
+export const SHAPES = ['box', 'cylinder', 'cone', 'sphere', 'dome', 'torus', 'lathe', 'extrude', 'tube', 'screen', 'group'];
+// Adaptive tessellation: segments follow the real size (max chord length CHORD), never more than requested.
+// A 5 mm knob does not need 24 segments; a 60 cm lamp shade keeps them. Keeps small objects light.
+export const CHORD = 0.006;
+const SEG = (s, scope, d, r = null, arc = Math.PI * 2, min = 6, adaptive = true) => {
+  const req = Math.max(3, Math.min(64, Math.round(evalExpr(s ?? d, scope))));
+  if (!adaptive || r == null || !(r > 0)) return req;
+  return Math.max(Math.min(req, min), Math.min(req, Math.ceil((Math.abs(arc) * r) / CHORD)));
+};
 const pts2 = (a, scope) => a.map((q) => new THREE.Vector2(evalExpr(q[0], scope), evalExpr(q[1], scope)));
 
-function geometryOf(part, scope) {
+function geometryOf(part, scope, adaptive) {
   const E = (v, d) => evalExpr(v ?? d, scope);
   switch (part.shape) {
     case 'box': { // bottom centre at origin
       const [w, h, d] = vec(part.size, scope).map((x) => Math.max(0.001, x)); const r = Math.max(0, Math.min(E(part.round, 0), Math.min(w, h, d) / 2 - 0.0005));
-      const g = r > 0.0015 ? new RoundedBoxGeometry(w, h, d, 2, r) : new THREE.BoxGeometry(w, h, d); g.translate(0, h / 2, 0); return g;
+      const g = r > 0.0015 ? new RoundedBoxGeometry(w, h, d, adaptive && r < 0.005 ? 1 : 2, r) : new THREE.BoxGeometry(w, h, d); g.translate(0, h / 2, 0); return g;
     }
     case 'cylinder': { // bottom centre at origin
       const r = E(part.r, 0.05), rt = E(part.rTop, r), rb = E(part.rBottom, r), h = Math.max(0.001, E(part.h, 0.1));
-      const g = new THREE.CylinderGeometry(rt, rb, h, SEG(part.seg, scope, 24), 1, !!part.open); g.translate(0, h / 2, 0); return g;
+      const g = new THREE.CylinderGeometry(rt, rb, h, SEG(part.seg, scope, 24, Math.max(rt, rb), Math.PI * 2, 6, adaptive), 1, !!part.open); g.translate(0, h / 2, 0); return g;
     }
-    case 'cone': { const r = E(part.r, 0.05), h = E(part.h, 0.1); const g = new THREE.ConeGeometry(r, h, SEG(part.seg, scope, 24), 1, !!part.open); g.translate(0, h / 2, 0); return g; }
-    case 'sphere': return new THREE.SphereGeometry(E(part.r, 0.05), SEG(part.seg, scope, 24), SEG(part.seg, scope, 24) * 0.66 | 0); // centre at origin
-    case 'dome': return new THREE.SphereGeometry(E(part.r, 0.05), SEG(part.seg, scope, 24), 12, 0, Math.PI * 2, 0, Math.PI / 2); // flat side on y = 0
-    case 'torus': return new THREE.TorusGeometry(E(part.r, 0.05), E(part.tube, 0.01), 10, SEG(part.seg, scope, 32), (E(part.arc, 360) * Math.PI) / 180); // in the x/y plane, centre at origin
+    case 'cone': { const r = E(part.r, 0.05), h = E(part.h, 0.1); const g = new THREE.ConeGeometry(r, h, SEG(part.seg, scope, 24, r, Math.PI * 2, 6, adaptive), 1, !!part.open); g.translate(0, h / 2, 0); return g; }
+    case 'sphere': { const r = E(part.r, 0.05), n = SEG(part.seg, scope, 24, r, Math.PI * 2, 6, adaptive); return new THREE.SphereGeometry(r, n, Math.max(4, n * 0.66 | 0)); } // centre at origin
+    case 'dome': { const r = E(part.r, 0.05), n = SEG(part.seg, scope, 24, r, Math.PI * 2, 6, adaptive); return new THREE.SphereGeometry(r, n, Math.max(3, Math.min(12, n / 2 | 0)), 0, Math.PI * 2, 0, Math.PI / 2); } // flat side on y = 0
+    case 'torus': { const r = E(part.r, 0.05), tb = E(part.tube, 0.01), arc = (E(part.arc, 360) * Math.PI) / 180; return new THREE.TorusGeometry(r, tb, SEG(10, scope, 10, tb, Math.PI * 2, 4, adaptive), SEG(part.seg, scope, 32, r, arc, 6, adaptive), arc); } // in the x/y plane, centre at origin
     case 'lathe': { // profile [[radius, y], ...] revolved around y
       if (!Array.isArray(part.profile) || part.profile.length < 2) throw new Error('lathe needs a profile with at least 2 points');
-      return new THREE.LatheGeometry(pts2(part.profile, scope), SEG(part.seg, scope, 32));
+      const pr = pts2(part.profile, scope); return new THREE.LatheGeometry(pr, SEG(part.seg, scope, 32, Math.max(...pr.map((q) => Math.abs(q.x))), Math.PI * 2, 6, adaptive));
     }
     case 'extrude': { // profile [[x, y], ...] in the x/y plane, extruded along z, centred on z
       if (!Array.isArray(part.profile) || part.profile.length < 3) throw new Error('extrude needs a profile with at least 3 points');
@@ -164,10 +172,23 @@ function geometryOf(part, scope) {
       if (!Array.isArray(part.path) || part.path.length < 2) throw new Error('tube needs a path with at least 2 points');
       const ps = part.path.map((q) => new THREE.Vector3(...vec(q, scope)));
       let curve; if (part.smooth !== false && ps.length > 2) curve = new THREE.CatmullRomCurve3(ps); else { curve = new THREE.CurvePath(); for (let i = 1; i < ps.length; i++) curve.add(new THREE.LineCurve3(ps[i - 1], ps[i])); }
-      return new THREE.TubeGeometry(curve, Math.max(8, ps.length * 12), E(part.r, 0.01), 10, false);
+      const tr = E(part.r, 0.01), len = curve.getLength(), straight = part.smooth === false || ps.length === 2; const tub = !adaptive ? Math.max(8, ps.length * 12) : straight ? ps.length - 1 : Math.max(Math.min(8, ps.length * 4), Math.min(ps.length * 12, Math.ceil(len / (CHORD * 2))));
+      return new THREE.TubeGeometry(curve, tub, tr, SEG(10, scope, 10, tr, Math.PI * 2, tr < 0.002 ? 4 : 5, adaptive), false);
+    }
+    case 'screen': { // display surface for live content (TV, monitor, frame): w × h, bottom centre at origin, faces +z.
+      // radius > 0 curves it (concave towards the viewer, like a curved TV). UVs always span 0..1 over the visible area.
+      return screenGeometry(Math.max(0.01, E(part.w, 1)), Math.max(0.01, E(part.h, 0.5625)), E(part.radius, 0), adaptive);
     }
     default: throw new Error(`Unknown shape "${part.shape}" (allowed: ${SHAPES.join(', ')})`);
   }
+}
+
+// Display surface w × h (bottom centre at origin, faces +z); radius > 0 bends it concave towards the viewer.
+export function screenGeometry(w, h, R = 0, adaptive = true) {
+  if (!(R > 0)) { const g = new THREE.PlaneGeometry(w, h); g.translate(0, h / 2, 0); return g; }
+  const th = Math.min(Math.PI * 0.9, w / R), n = adaptive ? Math.max(8, Math.min(48, Math.ceil(w / CHORD))) : 48; const g = new THREE.PlaneGeometry(1, h, n, 1); const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) { const a = pos.getX(i) * th; pos.setXYZ(i, R * Math.sin(a), pos.getY(i) + h / 2, R * (1 - Math.cos(a))); }
+  g.computeVertexNormals(); return g;
 }
 
 /* ---------------- builder ---------------- */
@@ -189,7 +210,7 @@ export function resolveParams(recipe, overrides = {}) {
   return scope;
 }
 
-function addParts(parent, parts, scope, getMat, stats) {
+function addParts(parent, parts, scope, getMat, stats, adaptive) {
   for (const part of parts || []) {
     const reps = part.repeat ? Math.max(0, Math.min(500, Math.round(evalExpr(part.repeat.n, scope)))) : 1;
     const v = part.repeat?.var || 'i';
@@ -200,9 +221,9 @@ function addParts(parent, parts, scope, getMat, stats) {
       const mirrors = { x: [[1, 1], [-1, 1]], z: [[1, 1], [1, -1]], xz: [[1, 1], [-1, 1], [1, -1], [-1, -1]] }[part.mirror || ''] || [[1, 1]];
       for (const [mx, mz] of mirrors) {
         let obj;
-        if (part.shape === 'group') { obj = new THREE.Group(); addParts(obj, part.parts, s, getMat, stats); }
+        if (part.shape === 'group') { obj = new THREE.Group(); addParts(obj, part.parts, s, getMat, stats, adaptive); }
         else {
-          const g = geometryOf(part, s); stats.triangles += (g.index ? g.index.count : g.attributes.position.count) / 3;
+          const g = geometryOf(part, s, adaptive); stats.triangles += (g.index ? g.index.count : g.attributes.position.count) / 3;
           obj = new THREE.Mesh(g, getMat(part.mat || 'plastic_white')); obj.castShadow = true; obj.receiveShadow = true;
           if (obj.material.userData.glow) obj.userData.glow = true;
         }
@@ -211,6 +232,7 @@ function addParts(parent, parts, scope, getMat, stats) {
         obj.rotation.set((rx * Math.PI) / 180, (ry * Math.PI) / 180, (rz * Math.PI) / 180, 'YXZ');
         if (mx < 0 || mz < 0) obj.scale.set(mx, 1, mz); // mirrored copy (Three.js fixes the face winding)
         if (part.name) obj.name = part.name;
+        const role = part.role || (part.shape === 'screen' ? 'screen' : null); if (role) { obj.userData.role = role; obj.castShadow = false; }
         parent.add(obj); stats.parts++;
         if (stats.parts > 2000) throw new Error('Too many parts (limit 2000)');
       }
@@ -219,21 +241,69 @@ function addParts(parent, parts, scope, getMat, stats) {
 }
 
 // Builds the recipe. Returns { object, scope, stats }.
-export function buildRecipe(recipe, overrides = {}) {
+// opts.merge (default true): merge all static parts with the same material into one mesh
+// (a 50-part object becomes ~10 draw calls). Parts with a `role` (e.g. screen) stay separate.
+// opts.adaptive (default true): size-dependent tessellation (see CHORD).
+export function buildRecipe(recipe, overrides = {}, opts = {}) {
   if (!recipe || typeof recipe !== 'object') throw new Error('Recipe must be an object');
+  const adaptive = opts.adaptive !== false;
   const scope = resolveParams(recipe, overrides);
   const colorParams = Object.fromEntries(Object.entries(recipe.params || {}).filter(([, d]) => d?.type === 'color').map(([k]) => [k, scope[k]]));
   const getMat = makeMaterials(recipe, colorParams);
   const root = new THREE.Group(); root.name = 'recipe';
   const stats = { parts: 0, triangles: 0 };
-  addParts(root, recipe.parts, scope, getMat, stats);
+  addParts(root, recipe.parts, scope, getMat, stats, adaptive);
   root.updateMatrixWorld(true);
-  return { object: root, scope, stats: { ...stats, triangles: Math.round(stats.triangles) } };
+  const object = opts.merge === false ? root : mergeByMaterial(root);
+  let drawCalls = 0; object.traverse((o) => { if (o.isMesh) drawCalls++; });
+  return { object, scope, stats: { ...stats, triangles: Math.round(stats.triangles), drawCalls } };
+}
+
+// Bakes every mesh without a role into one geometry per material (world space of the root).
+export function mergeByMaterial(root) {
+  const out = new THREE.Group().copy(root, false); const groups = new Map(), keep = [];
+  root.updateWorldMatrix(true, true);
+  const toRoot = root.matrixWorld.clone().invert();
+  const localMatrix = (o) => toRoot.clone().multiply(o.matrixWorld);
+  const visit = (o) => {
+    const semanticData = Object.keys(o.userData).some((k) => k !== 'glow');
+    const animatedMesh = o.isMesh && (o.isSkinnedMesh || o.isInstancedMesh || o.morphTargetInfluences || Object.keys(o.geometry?.morphAttributes || {}).length);
+    if (o !== root && (!o.visible || semanticData || o.animations?.length || o.isLight || o.isSprite || o.isLine || o.isPoints || animatedMesh)) { keep.push([o, localMatrix(o)]); return; } // kept whole, with children
+    o.children.forEach(visit);
+    if (!o.isMesh) return;
+    // multi-material meshes (e.g. walls with a different face material) are split per material group
+    const parts = Array.isArray(o.material) ? (o.geometry.groups.length ? o.geometry.groups : [{ start: 0, count: Infinity, materialIndex: 0 }]).map((gr) => [subGeometry(o.geometry, gr), o.material[gr.materialIndex]]).filter(([, m]) => m) : [[null, o.material]];
+    for (const [sub, material] of parts) add(o, sub, material);
+  };
+  const add = (o, sub, material) => {
+    let g = sub || (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone());
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((g.attributes.position.count) * 2), 2));
+    if (!g.attributes.normal) g.computeVertexNormals();
+    const matrix = localMatrix(o); g.applyMatrix4(matrix);
+    if (matrix.determinant() < 0) { // mirrored copy: restore the face winding
+      for (const a of Object.values(g.attributes)) { const n = a.itemSize, arr = a.array; for (let t = 0; t < a.count; t += 3) for (let c = 0; c < n; c++) { const i1 = (t + 1) * n + c, i2 = (t + 2) * n + c, v = arr[i1]; arr[i1] = arr[i2]; arr[i2] = v; } }
+    }
+    g.clearGroups(); const k = `${material.uuid}|${o.castShadow ? 1 : 0}|${o.receiveShadow ? 1 : 0}|${o.renderOrder}`; if (!groups.has(k)) groups.set(k, { mat: material, cast: o.castShadow, recv: o.receiveShadow, order: o.renderOrder, list: [] }); groups.get(k).list.push(g);
+  };
+  visit(root);
+  for (const { mat, cast, recv, order, list } of groups.values()) {
+    const m = new THREE.Mesh(list.length === 1 ? list[0] : mergeGeometries(list, false), mat); m.castShadow = cast; m.receiveShadow = recv; m.renderOrder = order; if (mat.userData.glow) m.userData.glow = true; out.add(m);
+    if (list.length > 1) list.forEach((x) => x.dispose());
+  }
+  for (const [o, matrix] of keep) { out.add(o); matrix.decompose(o.position, o.quaternion, o.scale); o.updateMatrix(); } // moved, not copied: outside references stay valid
+  return out;
+}
+function subGeometry(geo, gr) {
+  const g = geo.index ? geo.toNonIndexed() : geo; const start = geo.index ? gr.start : gr.start, end = Math.min(start + gr.count, g.attributes.position.count);
+  const out = new THREE.BufferGeometry();
+  for (const [k, a] of Object.entries(g.attributes)) out.setAttribute(k, new THREE.BufferAttribute(a.array.slice(start * a.itemSize, end * a.itemSize), a.itemSize, a.normalized));
+  return out;
 }
 
 export function boundsOf(object) {
   object.updateMatrixWorld(true);
-  const b = new THREE.Box3().setFromObject(object);
+  const b = new THREE.Box3().setFromObject(object, true);
   const size = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
   return { min: b.min.toArray(), max: b.max.toArray(), size: size.toArray(), center: c.toArray() };
 }

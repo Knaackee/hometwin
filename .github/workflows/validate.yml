@@ -27,6 +27,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: python -m py_compile custom_components/hometwin/*.py
+      - run: python tools/test-language-options.py
 
   frontend:
     runs-on: ubuntu-latest
@@ -54,6 +55,12 @@ jobs:
       - name: Build is unchanged with library-tool dependencies installed
         run: |
           npm ci
+          npm run test:i18n
+          node tools/test-media-geometry.mjs
+          node tools/test-object-placement.mjs
+          node tools/test-furniture-composition.mjs
+          node tools/test-projector-split.mjs
+          node tools/test-level-slabs.mjs
           npm run build
           test -z "$(git status --porcelain -- custom_components/hometwin/frontend library/index.json frontend/src/library.gen.js docs/demo/index.html)"
 

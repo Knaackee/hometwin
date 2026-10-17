@@ -1,33 +1,32 @@
+import { automaticPlacement } from './object-placement.js';
 // Editor: library, floor-plan drawing (with image underlay), structure, entity mapping, inspector.
 import { icon } from './icons.js';
+import { markStandaloneProjectorScreen } from './projector-migration.js';
 import { esc } from './panel.js';
 import { assetCatalog, CATALOG_CATS, renderThumbs, thumbFor, setThumb } from './thumbs.js';
 import { FURNITURE, furnitureParams, stairInfo, registerLibrary, LIBRARY } from './furniture.js';
 export const LIBRARY_URL = 'https://knaackee.github.io/hometwin/library/library.json';
-import { KINDS, KIND_STYLES, deviceDefaults, entityMatchesKind, kindForEntity } from './devices.js';
+import { KINDS, KIND_STYLES, deviceDefaults, entityMatchesKind, kindForEntity, FRAME_STYLES, FRAME_SIZES } from './devices.js';
 import { SURFACES } from './kit.js';
-import { findItem, roomAt, roomOfOpening, usedEntities, newId, newLevel, roomCenter, demoPlan, emptyPlan, migrate, computeElevations } from './plan.js';
+import { findItem, roomAt, roomOfOpening, usedEntities, newId, newLevel, roomCenter, demoPlan, emptyPlan, migrate, computeElevations, slabThickness } from './plan.js';
 import { ROOF_TYPES, ROOF_COVERS, FACADES, FACADE_PRESETS, roofRect, rectCorners, rectAxes, HEAD_SHAPES, SOFFITS, BARGES, WOOD_PRESETS, DEFAULT_DETAILS, ROOF_STYLES, applyStyle, headSvg, ROOF_WINDOWS, newExtraRoof, rectOfPoints } from './roof.js';
 import { isIndoor } from './house.js';
-const WINDOW_PRESETS = { std: { label: 'Standardfenster', w: 1.2, sill: 0.9, head: 2.2 }, floor: { label: 'Bodentief', w: 1.2, sill: 0.05, head: 2.2 }, terrace: { label: 'Terrassentür', w: 2.0, sill: 0.02, head: 2.2 }, wide: { label: 'Panoramafenster', w: 2.4, sill: 0.5, head: 2.2 }, bath: { label: 'Badfenster', w: 0.8, sill: 1.4, head: 2.1 }, top: { label: 'Oberlicht', w: 1.0, sill: 1.6, head: 2.2 } };
+const WINDOW_PRESETS = { std: { w: 1.2, sill: 0.9, head: 2.2 }, floor: { w: 1.2, sill: 0.05, head: 2.2 }, terrace: { w: 2.0, sill: 0.02, head: 2.2 }, wide: { w: 2.4, sill: 0.5, head: 2.2 }, bath: { w: 0.8, sill: 1.4, head: 2.1 }, top: { w: 1.0, sill: 1.6, head: 2.2 } };
 import { snapCfg, snapPoint, snap, distToSeg, projectOnSeg, edges, area as polyArea, bbox, r3, rectPoints, pointInPolygon } from './geometry.js';
 import { importSh3d } from './sh3d.js';
 import { placeItem, wallSegments, wallCfg } from './walls.js';
 import { installTreeMenu } from './treemenu.js';
+import { t, formatNumber } from './i18n.js';
 
-const fmt = (v) => `${(Math.round(v * 100) / 100).toFixed(2).replace('.', ',')} m`;
-const DOMAIN_LABEL = { light: 'Licht', cover: 'Rollläden & Tore', climate: 'Klima', sensor: 'Sensoren', binary_sensor: 'Kontakte & Melder', media_player: 'Medien', vacuum: 'Sauger', lawn_mower: 'Mäher', camera: 'Kameras', fan: 'Ventilatoren', valve: 'Ventile', switch: 'Schalter' };
-const RELEVANT = ['light', 'cover', 'climate', 'sensor', 'binary_sensor', 'media_player', 'vacuum', 'lawn_mower', 'camera', 'fan', 'valve', 'switch'];
-const KIND_ROOM = { room: 'Innenraum', garage: 'Garage', outdoor: 'Außenfläche', void: 'Luftraum / Treppenloch' };
-const OPEN_TYPES = { door: 'Tür', window: 'Fenster', garage: 'Garagentor', open: 'Durchgang' };
-const TOOLS = [['select', 'Auswählen und verschieben (V)', 'cursor'], ['rect', 'Raum als Rechteck zeichnen', 'square'], ['poly', 'Raum als Polygon zeichnen', 'poly'], ['door', 'Tür setzen', 'door'], ['window', 'Fenster setzen', 'window'], ['garage', 'Garagentor setzen', 'garage'], ['open', 'Durchgang setzen', 'layers'], ['roofrect', 'Weiteres Dach aufziehen (Garage, Carport, Gartenhaus …)', 'roof'], ['calibrate', 'Maßstab am Bauplan messen', 'ruler']];
+const fmt = (v) => `${formatNumber(Math.round(v * 100) / 100, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`;
+const DOMAIN_LABEL = { light: 'editor.domain.light', cover: 'editor.domain.cover', climate: 'editor.domain.climate', sensor: 'editor.domain.sensor', binary_sensor: 'editor.domain.binarySensor', media_player: 'editor.domain.mediaPlayer', vacuum: 'editor.domain.vacuum', lawn_mower: 'editor.domain.lawnMower', camera: 'editor.domain.camera', fan: 'editor.domain.fan', valve: 'editor.domain.valve', switch: 'editor.domain.switch' };
+const RELEVANT = ['light', 'cover', 'climate', 'sensor', 'binary_sensor', 'media_player', 'vacuum', 'lawn_mower', 'camera', 'image', 'fan', 'valve', 'switch'];
+const KIND_ROOM = { room: 'editor.roomKind.room', garage: 'editor.roomKind.garage', outdoor: 'editor.roomKind.outdoor', void: 'editor.roomKind.void' };
+const OPEN_TYPES = { door: 'editor.openingType.door', window: 'editor.openingType.window', garage: 'editor.openingType.garage', open: 'editor.openingType.open' };
+const TOOLS = [['select', 'editor.tool.select', 'cursor'], ['rect', 'editor.tool.rect', 'square'], ['poly', 'editor.tool.poly', 'poly'], ['door', 'editor.tool.door', 'door'], ['window', 'editor.tool.window', 'window'], ['garage', 'editor.tool.garage', 'garage'], ['open', 'editor.tool.open', 'layers'], ['roofrect', 'editor.tool.roofrect', 'roof'], ['calibrate', 'editor.tool.calibrate', 'ruler']];
 const TOOL_HINT = {
-  rect: 'Raum aufziehen: drücken, ziehen, loslassen. Rastet an vorhandenen Ecken ein.',
-  poly: 'Punkte setzen. Auf den ersten Punkt klicken oder Enter schließt den Raum, Esc bricht ab.',
-  door: 'Auf eine Wand klicken, um eine Tür zu setzen.', window: 'Auf eine Wand klicken, um ein Fenster zu setzen.',
-  garage: 'Auf eine Wand klicken, um ein Garagentor zu setzen.', open: 'Auf eine Wand klicken, um einen offenen Durchgang zu setzen.',
-  calibrate: 'Zwei Punkte einer bekannten Strecke auf dem Bild anklicken.',
-  roofrect: 'Dach aufziehen: drücken, ziehen, loslassen. Tipp: Raum auswählen → „Dach auf diesen Raum“.',
+  rect: 'editor.toolHint.rect', poly: 'editor.toolHint.poly', door: 'editor.toolHint.door', window: 'editor.toolHint.window',
+  garage: 'editor.toolHint.garage', open: 'editor.toolHint.open', calibrate: 'editor.toolHint.calibrate', roofrect: 'editor.toolHint.roofrect',
 };
 
 export class Editor {
@@ -49,7 +48,7 @@ export class Editor {
     $('inspBody').addEventListener('toggle', (e) => { const d = e.target; if (d.tagName === 'DETAILS') d.open ? this.closedSecs.delete(d.dataset.sec) : this.closedSecs.add(d.dataset.sec); }, true);
     $('inspClose').addEventListener('click', () => this.select(null));
     $('edBar').addEventListener('click', (e) => {
-      const t = e.target.closest('[data-tool]'); if (t) return this.setTool(t.dataset.tool === this.tool && t.dataset.tool !== 'select' ? 'select' : t.dataset.tool);
+      const toolButton = e.target.closest('[data-tool]'); if (toolButton) return this.setTool(toolButton.dataset.tool === this.tool && toolButton.dataset.tool !== 'select' ? 'select' : toolButton.dataset.tool);
       const v = e.target.closest('[data-view]'); if (v) return this.setView2d(v.dataset.view === '2d');
       if (e.target.closest('#tUndo')) app.undo(); if (e.target.closest('#tRedo')) app.redo();
       if (e.target.closest('#tPlan')) { this.app.wizard.open({ levelId: this.level.id }); }
@@ -68,6 +67,10 @@ export class Editor {
   get level() { return this.app.activeLevel(); }
 
   open() { renderThumbs(this.catalog); this.loadRemoteLibrary(); this.renderLeft(); this.renderInspector(); this.renderBar(); this.renderStatus(); if (this.view2d) this.app.stage.setTopView(this.planLevel().id); this.roofHandles(); }
+  refreshLanguage() {
+    this.catalog = assetCatalog(); this.renderBar(); this.renderLeft(); this.renderInspector(); this.renderStatus();
+    const hint = this.app.$('toolHint'); if (hint && TOOL_HINT[this.tool]) hint.textContent = t(TOOL_HINT[this.tool]);
+  }
   close() { this.app.$('dims').replaceChildren(); this._dims = []; this.select(null); this.setTool('select'); this.app.stage.exitTopView(); this.app.stage.setPreview(null); this.app.$('agent').hidden = true; this.app.$('toolHint').hidden = true; }
   refresh(planChanged) { if (planChanged) { this.renderLeft(); this.renderInspector(); this.renderStatus(); } }
   onLevelChange() {
@@ -93,12 +96,12 @@ export class Editor {
     this.view2d = on; if (on) this.app.stage.setTopView(this.planLevel().id); else this.app.stage.exitTopView();
     this.markSelection(); this.dimsDirty = true; this.renderBar(); const s = this.app.sel; const L = this.level; this.app.stage.setHandles(L, s?.type === 'room' ? L.rooms.find((r) => r.id === s.id) : null); this.roofHandles();
   }
-  setTool(t) {
-    if (t !== 'select' && ['all', 'roof'].includes(this.app.levelSel)) this.app.setLevel(this.app.activeLevelId || this.app.plan.levels[0].id);
-    this.tool = t; this.draw = null; this.app.stage.setPreview(null); this.hover = null; this.app.stage.setMarks(null); this.dimsDirty = true;
-    const hint = this.app.$('toolHint'); hint.hidden = !TOOL_HINT[t]; hint.textContent = TOOL_HINT[t] || '';
-    if (['rect', 'poly', 'calibrate', 'roofrect'].includes(t) && !this.view2d) this.setView2d(true);
-    if (t !== 'select') this.app.stage.setHandles(null, null);
+  setTool(tool) {
+    if (tool !== 'select' && ['all', 'roof'].includes(this.app.levelSel)) this.app.setLevel(this.app.activeLevelId || this.app.plan.levels[0].id);
+    this.tool = tool; this.draw = null; this.app.stage.setPreview(null); this.hover = null; this.app.stage.setMarks(null); this.dimsDirty = true;
+    const hint = this.app.$('toolHint'); hint.hidden = !TOOL_HINT[tool]; hint.textContent = TOOL_HINT[tool] ? t(TOOL_HINT[tool]) : '';
+    if (['rect', 'poly', 'calibrate', 'roofrect'].includes(tool) && !this.view2d) this.setView2d(true);
+    if (tool !== 'select') this.app.stage.setHandles(null, null);
     this.renderBar(); this.renderStatus(); this.markSelection();
   }
   furnLabel(f) { return f.label || FURNITURE[f.type]?.label || f.type; }
@@ -106,15 +109,15 @@ export class Editor {
   /* ---------------- toolbar & status ---------------- */
   renderBar() {
     const app = this.app;
-    app.$('edBar').innerHTML = TOOLS.map(([k, l, ic]) => `<button class="ibtn tb" data-tool="${k}" aria-pressed="${this.tool === k}" title="${l}" aria-label="${l}" ${k === 'calibrate' && !this.level?.underlay ? 'disabled' : ''}>${icon(ic)}</button>`).join('')
-      + `<span class="sep"></span><button class="ibtn tb" id="tPlan" title="Bauplan-Assistent: Grundriss laden und Räume erkennen" aria-label="Bauplan-Assistent">${icon('image')}</button>`
+    app.$('edBar').innerHTML = TOOLS.map(([k, key, ic]) => { const label = t(key); return `<button class="ibtn tb" data-tool="${k}" aria-pressed="${this.tool === k}" title="${label}" aria-label="${label}" ${k === 'calibrate' && !this.level?.underlay ? 'disabled' : ''}>${icon(ic)}</button>`; }).join('')
+      + `<span class="sep"></span><button class="ibtn tb" id="tPlan" title="${t('editor.toolbar.floorPlanAssistantTitle')}" aria-label="${t('editor.toolbar.floorPlanAssistant')}">${icon('image')}</button>`
       + `<span class="sep"></span><div class="seg"><button data-view="3d" aria-pressed="${!this.view2d}">3D</button><button data-view="2d" aria-pressed="${this.view2d}">2D</button></div>`
-      + `<span class="sep"></span><button class="ibtn tb" id="tUndo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig" ${app.undoStack.length ? '' : 'disabled'}>${icon('undo')}</button><button class="ibtn tb" id="tRedo" title="Wiederholen (Strg+Umschalt+Z)" aria-label="Wiederholen" ${app.redoStack.length ? '' : 'disabled'}>${icon('redo')}</button>`;
+      + `<span class="sep"></span><button class="ibtn tb" id="tUndo" title="${t('editor.toolbar.undoTitle')}" aria-label="${t('editor.toolbar.undo')}" ${app.undoStack.length ? '' : 'disabled'}>${icon('undo')}</button><button class="ibtn tb" id="tRedo" title="${t('editor.toolbar.redoTitle')}" aria-label="${t('editor.toolbar.redo')}" ${app.redoStack.length ? '' : 'disabled'}>${icon('redo')}</button>`;
   }
   renderStatus() {
     const L = this.level; if (!L) return;
-    const tool = TOOLS.find((t) => t[0] === this.tool)?.[1].replace(/ \(.*\)/, '') || '';
-    this.app.$('edStatus').innerHTML = `<span><b>${esc(L.name)}</b> · +${L.elevation.toFixed(2)} m</span><span>${esc(tool)}</span>${this.tool === 'window' ? `<select id="winPre" class="fsel" style="width:auto">${Object.entries(WINDOW_PRESETS).map(([k, w]) => `<option value="${k}" ${this.windowPreset === k ? 'selected' : ''}>${w.label}</option>`).join('')}</select>` : ''}<label class="check"><input type="checkbox" id="snapOn" ${snapCfg.on ? 'checked' : ''}> Einrasten 5 cm</label><label class="check" title="Möbel stoßen an Wände, Wandgeräte rasten an der Wand ein"><input type="checkbox" id="wallOn" ${wallCfg.on ? 'checked' : ''}> An Wände anlegen</label><span id="stCoord" class="sunline"></span>`;
+    const tool = TOOLS.find((x) => x[0] === this.tool)?.[1];
+    this.app.$('edStatus').innerHTML = `<span><b>${esc(L.name)}</b> · +${formatNumber(L.elevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m</span><span>${tool ? esc(t(tool).replace(/ \(.*\)/, '')) : ''}</span>${this.tool === 'window' ? `<select id="winPre" class="fsel" style="width:auto">${Object.entries(WINDOW_PRESETS).map(([k]) => `<option value="${k}" ${this.windowPreset === k ? 'selected' : ''}>${t(`editor.windowPreset.${k}`)}</option>`).join('')}</select>` : ''}<label class="check"><input type="checkbox" id="snapOn" ${snapCfg.on ? 'checked' : ''}> ${t('editor.status.snap')}</label><label class="check" title="${t('editor.status.wallSnapTitle')}"><input type="checkbox" id="wallOn" ${wallCfg.on ? 'checked' : ''}> ${t('editor.status.wallSnap')}</label><span id="stCoord" class="sunline"></span>`;
   }
 
   /* ---------------- left panel ---------------- */
@@ -122,13 +125,13 @@ export class Editor {
     const app = this.app, b = app.$('lbody'), L = this.level; if (!L) return;
     app.$('ltabs').querySelectorAll('[data-ltab]').forEach((x) => x.setAttribute('aria-pressed', x.dataset.ltab === this.left));
     if (this.left === 'tree') { b.innerHTML = this.treeHtml(); const s = b.querySelector('#treeSearch'); if (this._focusTree) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); this._focusTree = false; } return; }
-    const seg = `<div class="seg" style="display:flex;margin:0 0 8px">${[['lib', 'Objekte'], ['ents', 'Entitäten']].map(([k, l]) => `<button data-sub="${k}" aria-pressed="${this.insertSub === k}" style="flex:1">${l}</button>`).join('')}</div>`;
+    const seg = `<div class="seg" style="display:flex;margin:0 0 8px">${[['lib', 'editor.insert.objects'], ['ents', 'editor.insert.entities']].map(([k, key]) => `<button data-sub="${k}" aria-pressed="${this.insertSub === k}" style="flex:1">${t(key)}</button>`).join('')}</div>`;
     if (this.insertSub === 'lib') {
       const q = this.query.toLowerCase();
       const items = this.catalog.filter((a) => !q || a.label.toLowerCase().includes(q) || a.cat.toLowerCase().includes(q));
-      b.innerHTML = seg + `<p class="hint" style="margin:0 0 8px">${icon('sparkle')} <b>Bibliothek</b>: ${LIBRARY.size} Community-Objekte${this._libState === 'loading' ? ' · lade neue …' : this._libState === 'ok' ? ' · aktuell' : ''}. Fehlt etwas? <a href="https://github.com/knaackee/hometwin/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Selbst beitragen</a></p><div class="search">${icon('search')}<input id="libSearch" type="search" placeholder="Suchen: Sofa, Spots, Kamera …" value="${esc(this.query)}"></div>` +
-        CATALOG_CATS.map((c) => { const list = items.filter((a) => a.cat === c); return list.length ? `<div class="cat">${c}</div><div class="assets">${list.map((a) => `<button class="asset" draggable="true" data-asset="${a.key}" title="Antippen oder ins Modell ziehen">${thumbFor(a.key) ? `<img src="${thumbFor(a.key)}" alt="" draggable="false">` : `<span class="ph">${icon('sofa')}</span>`}${esc(a.label)}</button>`).join('')}</div>` : ''; }).join('') +
-        `<p class="hint" style="margin-top:12px">Ins Modell ziehen oder antippen (landet im gewählten Raum). <span class="kbd">R</span> dreht, <span class="kbd">Entf</span> löscht.</p>`;
+      b.innerHTML = seg + `<p class="hint" style="margin:0 0 8px">${icon('sparkle')} ${t('editor.library.summary', { count: LIBRARY.size, state: this._libState === 'loading' ? t('editor.library.loading') : this._libState === 'ok' ? t('editor.library.current') : '', contribute: `<a href="https://github.com/knaackee/hometwin/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">${t('editor.library.contribute')}</a>` })}</p><div class="search">${icon('search')}<input id="libSearch" type="search" placeholder="${t('editor.library.searchPlaceholder')}" value="${esc(this.query)}"></div>` +
+        CATALOG_CATS.map((c) => { const list = items.filter((a) => a.cat === c); return list.length ? `<div class="cat">${c}</div><div class="assets">${list.map((a) => `<button class="asset" draggable="true" data-asset="${a.key}" title="${t('editor.common.tapOrDrag')}">${thumbFor(a.key) ? `<img src="${thumbFor(a.key)}" alt="" draggable="false">` : `<span class="ph">${icon('sofa')}</span>`}${esc(a.label)}</button>`).join('')}</div>` : ''; }).join('') +
+        `<p class="hint" style="margin-top:12px">${t('editor.library.instructions')}</p>`;
       const s = b.querySelector('#libSearch'); if (this._focusSearch) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); this._focusSearch = false; }
       return;
     }
@@ -140,67 +143,67 @@ export class Editor {
     const match = (id) => (!q || id.toLowerCase().includes(q) || app.nameOf(id).toLowerCase().includes(q)) && (F.area === '*' || (app.areaOf(id) || '') === F.area) && (!F.domain || id.startsWith(F.domain + '.'));
     const free = relevant.filter((id) => !used.has(id) && match(id)), placed = relevant.filter((id) => used.has(id) && match(id));
     const byArea = {}; for (const id of free) (byArea[app.areaOf(id) || ''] ||= []).push(id);
-    const row = (id, ok) => ok ? `<button class="listrow" data-selent="${id}"><span class="dot ok"></span><span class="nm">${esc(app.nameOf(id))}<br><small>${esc(id)}</small></span></button>` : `<button class="listrow" draggable="true" data-place="${id}" title="Antippen oder ins Modell ziehen"><span class="dot no"></span><span class="nm">${esc(app.nameOf(id))}<br><small>${esc(id)}</small></span>${icon('plus')}</button>`;
-    b.innerHTML = seg + `<div class="search">${icon('search')}<input id="entSearch" type="search" placeholder="Name oder entity_id" value="${esc(F.q)}"></div>
-      <div class="row2" style="margin:6px 0 4px"><select id="entArea" aria-label="Bereich" class="fsel"><option value="*">Alle Bereiche</option>${areas.map((a) => `<option value="${a}" ${F.area === a ? 'selected' : ''}>${esc(a ? app.areaName(a) : 'Ohne Bereich')}</option>`).join('')}</select>
-      <select id="entDomain" aria-label="Typ" class="fsel"><option value="">Alle Typen</option>${domains.map((d) => `<option value="${d}" ${F.domain === d ? 'selected' : ''}>${DOMAIN_LABEL[d] || d}</option>`).join('')}</select></div>
-      <div class="seg" style="display:flex;margin:4px 0 6px">${[['free', `Offen ${free.length}`], ['placed', `Platziert ${placed.length}`], ['all', 'Alle']].map(([k, l]) => `<button data-show="${k}" aria-pressed="${F.show === k}" style="flex:1">${l}</button>`).join('')}</div>`
-      + (F.show !== 'placed' ? (free.length ? Object.entries(byArea).sort((x, y) => app.areaName(x[0]).localeCompare(app.areaName(y[0]))).map(([a, ids]) => `<div class="cat" style="margin-top:8px;text-transform:none;letter-spacing:0">${esc(a ? app.areaName(a) : 'Ohne Bereich')} · ${ids.length}</div>` + ids.map((id) => row(id, false)).join('')).join('') + `<button class="btn" data-act="askAI" style="margin-top:10px">${icon('sparkle')}Vom Assistenten platzieren lassen</button>` : '<p class="hint">Keine offenen Entitäten für diesen Filter.</p>') : '')
-      + (F.show !== 'free' ? `<div class="cat">Platziert · ${placed.length}</div>` + placed.map((id) => row(id, true)).join('') : '');
+    const row = (id, ok) => ok ? `<button class="listrow" data-selent="${id}"><span class="dot ok"></span><span class="nm">${esc(app.nameOf(id))}<br><small>${esc(id)}</small></span></button>` : `<button class="listrow" draggable="true" data-place="${id}" title="${t('editor.common.tapOrDrag')}"><span class="dot no"></span><span class="nm">${esc(app.nameOf(id))}<br><small>${esc(id)}</small></span>${icon('plus')}</button>`;
+    b.innerHTML = seg + `<div class="search">${icon('search')}<input id="entSearch" type="search" placeholder="${t('editor.entities.searchPlaceholder')}" value="${esc(F.q)}"></div>
+      <div class="row2" style="margin:6px 0 4px"><select id="entArea" aria-label="${t('editor.common.area')}" class="fsel"><option value="*">${t('editor.entities.allAreas')}</option>${areas.map((a) => `<option value="${a}" ${F.area === a ? 'selected' : ''}>${esc(a ? app.areaName(a) : t('editor.entities.noArea'))}</option>`).join('')}</select>
+      <select id="entDomain" aria-label="${t('editor.common.type')}" class="fsel"><option value="">${t('editor.entities.allTypes')}</option>${domains.map((d) => `<option value="${d}" ${F.domain === d ? 'selected' : ''}>${DOMAIN_LABEL[d] ? t(DOMAIN_LABEL[d]) : d}</option>`).join('')}</select></div>
+      <div class="seg" style="display:flex;margin:4px 0 6px">${[['free', t('editor.entities.freeCount', { count: free.length })], ['placed', t('editor.entities.placedCount', { count: placed.length })], ['all', t('editor.common.all')]].map(([k, l]) => `<button data-show="${k}" aria-pressed="${F.show === k}" style="flex:1">${l}</button>`).join('')}</div>`
+      + (F.show !== 'placed' ? (free.length ? Object.entries(byArea).sort((x, y) => app.areaName(x[0]).localeCompare(app.areaName(y[0]))).map(([a, ids]) => `<div class="cat" style="margin-top:8px;text-transform:none;letter-spacing:0">${esc(a ? app.areaName(a) : t('editor.entities.noArea'))} · ${ids.length}</div>` + ids.map((id) => row(id, false)).join('')).join('') + `<button class="btn" data-act="askAI" style="margin-top:10px">${icon('sparkle')}${t('editor.entities.placeWithAssistant')}</button>` : `<p class="hint">${t('editor.entities.noneFree')}</p>`) : '')
+      + (F.show !== 'free' ? `<div class="cat">${t('editor.entities.placedCount', { count: placed.length })}</div>` + placed.map((id) => row(id, true)).join('') : '');
     const es = b.querySelector('#entSearch'); if (this._focusEnt) { es.focus(); es.setSelectionRange(es.value.length, es.value.length); this._focusEnt = false; }
   }
   treeHtml() {
     const app = this.app, p = app.plan, sel = app.sel, q = this.treeQuery.trim().toLowerCase();
     const isSel = (type, id) => (type === 'house' ? !sel : (sel?.type === type && sel.id === id) || (this.multi || []).some((x) => x.id === id));
     const row = ({ type, id, level = '', depth, ic, label, meta = '', exp = null, eye = null, lock = null }) => `<div class="trow${isSel(type, id) ? ' sel' : ''}" style="--d:${depth}" data-pick="${type}" data-id="${id}" data-level="${level}">`
-      + (exp === null ? '<span class="chev"></span>' : `<button class="chev" data-exp="${type}:${id}" aria-label="${exp ? 'Zuklappen' : 'Aufklappen'}">${exp ? '▾' : '▸'}</button>`)
+      + (exp === null ? '<span class="chev"></span>' : `<button class="chev" data-exp="${type}:${id}" aria-label="${t(exp ? 'editor.tree.collapse' : 'editor.tree.expand')}">${exp ? '▾' : '▸'}</button>`)
       + `<span class="tic">${icon(ic)}</span><span class="nm">${esc(label)}</span>${meta ? `<small>${esc(meta)}</small>` : ''}`
-      + (lock === null ? '' : `<button class="tbtn${lock ? ' on' : ''}" data-lock="${type}:${id}" title="${lock ? 'Entsperren' : 'Sperren'}" aria-label="Sperren">${icon(lock ? 'lock' : 'unlock')}</button>`)
-      + (eye === null ? '' : `<button class="tbtn${eye ? '' : ' on'}" data-eye="${type}:${id}" title="${eye ? 'Ausblenden' : 'Einblenden'}" aria-label="Sichtbarkeit">${icon(eye ? 'eye' : 'eyeoff')}</button>`) + '</div>';
+      + (lock === null ? '' : `<button class="tbtn${lock ? ' on' : ''}" data-lock="${type}:${id}" title="${t(lock ? 'editor.tree.unlock' : 'editor.tree.lock')}" aria-label="${t('editor.tree.lock')}">${icon(lock ? 'lock' : 'unlock')}</button>`)
+      + (eye === null ? '' : `<button class="tbtn${eye ? '' : ' on'}" data-eye="${type}:${id}" title="${t(eye ? 'editor.tree.hide' : 'editor.tree.show')}" aria-label="${t('editor.tree.visibility')}">${icon(eye ? 'eye' : 'eyeoff')}</button>`) + '</div>';
     const devLabel = (d) => (d.entity_id ? app.nameOf(d.entity_id) : KIND_STYLES[d.kind]?.[d.style] || KINDS[d.kind]?.label || d.kind);
-    const itemRows = (L, depth, devs, furn, ops) => ops.map((o) => row({ type: 'opening', id: o.id, level: L.id, depth, ic: o.type === 'window' ? 'window' : o.type === 'garage' ? 'garage' : 'door', label: OPEN_TYPES[o.type], meta: [o.cover, o.contact].filter(Boolean).length ? '● verknüpft' : '' })).join('')
-      + devs.map((d) => row({ type: 'device', id: d.id, level: L.id, depth, ic: KINDS[d.kind]?.icon || 'bulb', label: devLabel(d), meta: d.entity_id ? '' : 'offen', eye: !d.hidden, lock: !!d.locked })).join('')
+    const itemRows = (L, depth, devs, furn, ops) => ops.map((o) => row({ type: 'opening', id: o.id, level: L.id, depth, ic: o.type === 'window' ? 'window' : o.type === 'garage' ? 'garage' : 'door', label: t(OPEN_TYPES[o.type]), meta: [o.cover, o.contact].filter(Boolean).length ? t('editor.common.linkedBullet') : '' })).join('')
+      + devs.map((d) => row({ type: 'device', id: d.id, level: L.id, depth, ic: KINDS[d.kind]?.icon || 'bulb', label: devLabel(d), meta: d.entity_id ? '' : t('editor.common.unassigned'), eye: !d.hidden, lock: !!d.locked })).join('')
       + furn.map((f) => row({ type: 'furniture', id: f.id, level: L.id, depth, ic: 'sofa', label: this.furnLabel(f), eye: !f.hidden, lock: !!f.locked })).join('');
-    let h = `<div class="search">${icon('search')}<input id="treeSearch" type="search" placeholder="Im Haus suchen" value="${esc(this.treeQuery)}"></div><div class="tree">`;
+    let h = `<div class="search">${icon('search')}<input id="treeSearch" type="search" placeholder="${t('editor.tree.searchPlaceholder')}" value="${esc(this.treeQuery)}"></div><div class="tree">`;
     if (q) {
       for (const L of [...p.levels].reverse()) {
         const m = (s) => String(s || '').toLowerCase().includes(q);
         const rooms = L.rooms.filter((r) => m(r.name)), devs = L.devices.filter((d) => m(devLabel(d)) || m(d.entity_id)), furn = L.furniture.filter((f) => m(this.furnLabel(f)));
         if (!rooms.length && !devs.length && !furn.length) continue;
-        h += `<div class="cat">${esc(L.name)}</div>` + rooms.map((r) => row({ type: 'room', id: r.id, level: L.id, depth: 0, ic: r.kind === 'outdoor' ? 'tree' : 'square', label: r.name, meta: `${polyArea(r.points).toFixed(1)} m²` })).join('') + itemRows(L, 0, devs, furn, []);
+        h += `<div class="cat">${esc(L.name)}</div>` + rooms.map((r) => row({ type: 'room', id: r.id, level: L.id, depth: 0, ic: r.kind === 'outdoor' ? 'tree' : 'square', label: r.name, meta: `${formatNumber(polyArea(r.points), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m²` })).join('') + itemRows(L, 0, devs, furn, []);
       }
       return h + '</div>';
     }
-    h += row({ type: 'house', id: 'house', depth: 0, ic: 'home', label: p.name || 'Haus', meta: 'Fassade, Dach, Standort' });
+    h += row({ type: 'house', id: 'house', depth: 0, ic: 'home', label: p.name || t('editor.common.house'), meta: t('editor.tree.houseMeta') });
     const roofExp = this.expanded.has('roof:roof');
-    h += row({ type: 'roof', id: 'roof', depth: 1, ic: 'roof', label: 'Dach', meta: ROOF_TYPES[p.site.roof?.type] || '', exp: p.site.solar.length || (p.site.roofItems || []).length ? roofExp : null });
+    h += row({ type: 'roof', id: 'roof', depth: 1, ic: 'roof', label: t('editor.common.roof'), meta: ROOF_TYPES[p.site.roof?.type] || '', exp: p.site.solar.length || (p.site.roofItems || []).length ? roofExp : null });
     if (roofExp) h += p.site.solar.map((a, i) => row({ type: 'solar', id: a.id, depth: 2, ic: 'sun', label: `PV-Feld ${i + 1}`, meta: `${a.rows}×${a.cols}` })).join('');
     h += (p.site.roofs || []).map((x) => row({ type: 'xroof', id: x.id, depth: 1, ic: 'roof', label: x.name, meta: `${ROOF_TYPES[x.type] || ''}${x.posts ? ' · Pfosten' : ''}` })).join('');
-    if (roofExp) h += (p.site.roofItems || []).map((a, i) => row({ type: 'roofitem', id: a.id, depth: 2, ic: 'window', label: `${a.kind === 'dormer' ? 'Gaube' : 'Dachfenster'} ${i + 1}`, meta: `${Math.round(a.w * 100)}×${Math.round((a.kind === 'dormer' ? a.dormer?.h ?? 1.3 : a.h) * 100)}` })).join('');
+    if (roofExp) h += (p.site.roofItems || []).map((a, i) => row({ type: 'roofitem', id: a.id, depth: 2, ic: 'window', label: `${t(a.kind === 'dormer' ? 'editor.common.dormer' : 'editor.common.roofWindow')} ${i + 1}`, meta: `${Math.round(a.w * 100)}×${Math.round((a.kind === 'dormer' ? a.dormer?.h ?? 1.3 : a.h) * 100)}` })).join('');
     for (const L of [...p.levels].reverse()) {
       const lexp = this.expanded.has(`level:${L.id}`) || (L.id === this.level.id && !this.expanded.has(`closed:${L.id}`));
-      h += row({ type: 'level', id: L.id, level: L.id, depth: 1, ic: 'layers', label: L.name, meta: `+${L.elevation.toFixed(2)} m`, exp: lexp, eye: !app.hiddenLevels.has(L.id) });
+      h += row({ type: 'level', id: L.id, level: L.id, depth: 1, ic: 'layers', label: L.name, meta: `+${formatNumber(L.elevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`, exp: lexp, eye: !app.hiddenLevels.has(L.id) });
       if (!lexp) continue;
       const inRoom = (r) => (it) => roomAt(L, it.pos)?.id === r.id;
       for (const r of L.rooms.filter((x) => x.kind !== 'void').sort((a, b) => (a.kind === 'outdoor') - (b.kind === 'outdoor') || a.name.localeCompare(b.name))) {
         const ops = L.openings.filter((o) => o.type !== 'open' && roomOfOpening(L, o)?.id === r.id), devs = L.devices.filter(inRoom(r)), furn = L.furniture.filter(inRoom(r));
         const rexp = this.expanded.has(`room:${r.id}`), n = ops.length + devs.length + furn.length;
-        h += row({ type: 'room', id: r.id, level: L.id, depth: 2, ic: r.kind === 'outdoor' ? 'tree' : r.kind === 'garage' ? 'garage' : 'square', label: r.name, meta: `${polyArea(r.points).toFixed(1)} m²${r.area_id ? '' : ' · kein Bereich'}`, exp: n ? rexp : null });
+        h += row({ type: 'room', id: r.id, level: L.id, depth: 2, ic: r.kind === 'outdoor' ? 'tree' : r.kind === 'garage' ? 'garage' : 'square', label: r.name, meta: `${formatNumber(polyArea(r.points), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m²${r.area_id ? '' : ` · ${t('editor.entities.noArea')}`}`, exp: n ? rexp : null });
         if (rexp) h += itemRows(L, 3, devs, furn, ops);
       }
-      for (const r of L.rooms.filter((x) => x.kind === 'void')) h += row({ type: 'room', id: r.id, level: L.id, depth: 2, ic: 'square', label: r.name, meta: 'Luftraum' });
+      for (const r of L.rooms.filter((x) => x.kind === 'void')) h += row({ type: 'room', id: r.id, level: L.id, depth: 2, ic: 'square', label: r.name, meta: t('editor.tree.void') });
       const loose = (it) => !roomAt(L, it.pos); const ld = L.devices.filter(loose), lf = L.furniture.filter(loose);
-      if (ld.length || lf.length) { const oexp = this.expanded.has(`loose:${L.id}`); h += row({ type: 'loose', id: L.id, level: L.id, depth: 2, ic: 'dots', label: 'Außerhalb der Räume', meta: `${ld.length + lf.length}`, exp: oexp }); if (oexp) h += itemRows(L, 3, ld, lf, []); }
-      if (!L.rooms.length) h += `<p class="hint" style="padding-left:52px">Noch keine Räume. Oben das Rechteck- oder Polygon-Werkzeug wählen.</p>`;
+      if (ld.length || lf.length) { const oexp = this.expanded.has(`loose:${L.id}`); h += row({ type: 'loose', id: L.id, level: L.id, depth: 2, ic: 'dots', label: t('editor.tree.outsideRooms'), meta: `${ld.length + lf.length}`, exp: oexp }); if (oexp) h += itemRows(L, 3, ld, lf, []); }
+      if (!L.rooms.length) h += `<p class="hint" style="padding-left:52px">${t('editor.tree.noRooms')}</p>`;
     }
     return h + '</div>';
   }
   onLeftInput(e) {
-    const t = e.target;
-    if (t.id === 'treeSearch') { this.treeQuery = t.value; this._focusTree = true; this.renderLeft(); }
-    if (t.id === 'libSearch') { this.query = t.value; this._focusSearch = true; this.renderLeft(); }
-    if (t.id === 'entSearch') { this.entFilter.q = t.value; this._focusEnt = true; this.renderLeft(); }
-    if (t.id === 'entArea' || t.id === 'entDomain') { this.entFilter[t.id === 'entArea' ? 'area' : 'domain'] = t.value; this.renderLeft(); }
+    const target = e.target;
+    if (target.id === 'treeSearch') { this.treeQuery = target.value; this._focusTree = true; this.renderLeft(); }
+    if (target.id === 'libSearch') { this.query = target.value; this._focusSearch = true; this.renderLeft(); }
+    if (target.id === 'entSearch') { this.entFilter.q = target.value; this._focusEnt = true; this.renderLeft(); }
+    if (target.id === 'entArea' || target.id === 'entDomain') { this.entFilter[target.id === 'entArea' ? 'area' : 'domain'] = target.value; this.renderLeft(); }
   }
   onLeftClick(e) {
     const app = this.app, g = (s) => e.target.closest(s);
@@ -209,7 +212,7 @@ export class Editor {
     const sh = g('[data-show]'); if (sh) { this.entFilter.show = sh.dataset.show; this.renderLeft(); return; }
     const pl = g('[data-place]'); if (pl) return this.placeEntity(pl.dataset.place);
     const se = g('[data-selent]'); if (se) { const hit = this.findByEntity(se.dataset.selent); if (hit) { if (hit.level.id !== this.level.id) app.setLevel(hit.level.id); this.select({ type: hit.type, id: hit.item.id, level: hit.level.id }); } return; }
-    if (g('[data-act="askAI"]')) return app.agent.open('Bitte platziere die Entitäten, die noch keinen Platz im Modell haben, in den passenden Räumen.');
+    if (g('[data-act="askAI"]')) return app.agent.open(t('editor.ai.placeEntitiesPrompt'));
     const ex = g('[data-exp]'); if (ex) { const k = ex.dataset.exp; const [type, id] = k.split(':'); const open = ex.textContent.includes('▾'); if (open) { this.expanded.delete(k); if (type === 'level') this.expanded.add(`closed:${id}`); } else { this.expanded.add(k); this.expanded.delete(`closed:${id}`); } this.renderLeft(); return; }
     const eye = g('[data-eye]'); if (eye) { this.toggleFlag(eye.dataset.eye, 'hidden'); return; }
     const lk = g('[data-lock]'); if (lk) { this.toggleFlag(lk.dataset.lock, 'locked'); return; }
@@ -244,29 +247,52 @@ export class Editor {
     const app = this.app, p = app.plan; app.pushUndo(); p.site.roofs ||= [];
     const carport = room && room.kind === 'outdoor', garage = room?.kind === 'garage';
     const L = p.levels.find((l) => l.id === levelId) || this.level;
-    const x = newExtraRoof(p, { levelId: L.id, rect: rectOfPoints(points), name: room ? `Dach ${room.name}` : `Dach ${p.site.roofs.length + 2}`, type: room?.kind === 'room' ? 'gable' : 'flat', posts: carport, height: room?.kind === 'room' ? L.height : undefined });
+    const x = newExtraRoof(p, { levelId: L.id, rect: rectOfPoints(points), name: room ? t('editor.roof.named', { name: room.name }) : t('editor.roof.numbered', { number: p.site.roofs.length + 2 }), type: room?.kind === 'room' ? 'gable' : 'flat', posts: carport, height: room?.kind === 'room' ? L.height : undefined });
     if (room && !carport) { const R = x.rect, wt = garage || room.kind === 'room' ? 0.24 : 0; R.length = r3(R.length + wt); R.width = r3(R.width + wt); }
     p.site.roofs.push(x); this.setTool('select'); if (!['all', 'roof'].includes(app.levelSel)) app.setLevel('all'); app.stage.layout(); app.markDirty(); this.renderLeft(); this.select({ type: 'xroof', id: x.id });
-    app.toast(`${x.name} angelegt – Form, Höhe und Maße rechts anpassen.`); return x;
+    app.toast(t('editor.toast.roofCreated', { name: x.name })); return x;
+  }
+  frameHtml(item, num) {
+    const src = item.src || 'art';
+    const sizeKey = Object.entries(FRAME_SIZES).find(([, [, w, h]]) => (Math.abs(w - (item.fw || 0.5)) < 0.005 && Math.abs(h - (item.fh || 0.7)) < 0.005) || (Math.abs(h - (item.fw || 0.5)) < 0.005 && Math.abs(w - (item.fh || 0.7)) < 0.005))?.[0] || '';
+    if (src === 'folder' && !this._dirs) {
+      this._dirs = [];
+      this.app.stage.media?.browseDirs().then((dirs) => { this._dirs = dirs; if (this.app.sel?.id === item.id) this.renderInspector(); });
+    }
+    return this.sec(t('editor.section.image'), `<div class="field"><label for="frSrc">${t('editor.frame.source')}</label><select id="frSrc">${['art', 'upload', 'entity', 'folder'].map((key) => `<option value="${key}" ${src === key ? 'selected' : ''}>${t(`editor.frame.source.${key}`)}</option>`).join('')}</select></div>
+        ${src === 'upload' ? `<label class="btn small">${icon('image')}${t(item.artV ? 'editor.frame.otherImage' : 'editor.frame.chooseImage')}<input type="file" id="frFile" accept="image/*" hidden></label><p class="hint">${t('editor.frame.uploadHelp')}</p>` : ''}
+        ${src === 'folder' ? `<div class="field"><label for="frFolder">${t('editor.frame.folder')}</label><select id="frFolder"><option value="">${t('editor.frame.chooseFolder')}</option>${(this._dirs || []).map((dir) => `<option value="${esc(dir.id)}" ${dir.id === item.folder ? 'selected' : ''}>${esc(dir.title)}</option>`).join('')}${item.folder && !(this._dirs || []).some((dir) => dir.id === item.folder) ? `<option value="${esc(item.folder)}" selected>${esc(item.folder)}</option>` : ''}</select></div>` : ''}
+        ${src === 'folder' || (src === 'entity' && item.entity_id?.startsWith('camera.')) ? num('frInt', t('editor.frame.interval'), item.interval || 60, 10, 'min="30"') : ''}`)
+      + this.sec(t('editor.section.frame'), `<div class="row2"><div class="field"><label for="frSize">${t('editor.frame.format')}</label><select id="frSize"><option value="">${t('editor.frame.customSize')}</option>${Object.entries(FRAME_SIZES).map(([key, [label]]) => `<option value="${key}" ${key === sizeKey ? 'selected' : ''}>${label}</option>`).join('')}</select></div><div class="field"><label for="frStyle">${t('editor.frame.frameStyle')}</label><select id="frStyle">${Object.keys(FRAME_STYLES).map((key) => `<option value="${key}" ${(item.frame || 'black') === key ? 'selected' : ''}>${t(`editor.frame.style.${key}`)}</option>`).join('')}</select></div></div>
+        <div class="row2">${num('frW', t('editor.common.widthMeters'), item.fw || 0.5, 0.01, 'min="0.1"')}${num('frH', t('editor.common.heightMeters'), item.fh || 0.7, 0.01, 'min="0.1"')}</div>
+        <div class="actions"><label class="chk"><input type="checkbox" id="frPasse" ${item.passe ? 'checked' : ''}> ${t('editor.frame.passepartout')}</label><button class="btn small" data-act="frTurn">${t('editor.frame.rotateFormat')}</button></div>`);
+  }
+  async uploadArt(item, file) {
+    const app = this.app;
+    try {
+      const bmp = await createImageBitmap(file); const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height)); const canvas = document.createElement('canvas'); canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale); canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86)); const resp = await app.hass.fetchWithAuth(`/api/hometwin/underlay/art_${item.id}`, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/jpeg' } });
+      if (!resp.ok) throw new Error(resp.status); item.artV = Date.now(); item.src = 'upload'; const found = findItem(app.plan, item.id); if (found) app.stage.refreshItem(found.level.id, 'device', item); app.markDirty(); app.toast(t('editor.toast.artSaved'));
+    } catch (err) { app.toast(t('editor.toast.artSaveFailed', { message: err.message || err })); }
   }
   stairHtml(item, fp, L, num) {
     const i = stairInfo(fp), p = this.app.plan, up = p.levels[p.levels.indexOf(L) + 1], need = up ? r3(up.elevation - L.elevation) : null;
     const ok = i.rise <= 0.19 && i.tread >= 0.23 && i.rule >= 0.59 && i.rule <= 0.65;
-    return this.sec('Treppe', `<div class="row2"><div class="field"><label for="stShape">Form</label><select id="stShape">${[['straight', 'gerade'], ['quarter', 'viertelgewendelt (L)'], ['half', 'halbgewendelt (U)']].map(([k, v]) => `<option value="${k}" ${(item.shape || 'straight') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        ${item.shape ? `<div class="field"><label for="stTurn">Wendet nach</label><select id="stTurn"><option value="right" ${item.turn !== 'left' ? 'selected' : ''}>rechts</option><option value="left" ${item.turn === 'left' ? 'selected' : ''}>links</option></select></div>` : '<span></span>'}</div>
-      ${item.shape ? `<div class="row2">${num('stFw', 'Laufbreite (m)', r3(i.fw), 0.05, 'min="0.6" max="1.5"')}<span></span></div>` : ''}
-      <p class="${ok ? 'ok' : 'warn'}">${i.n} Stufen · Steigung ${Math.round(i.rise * 100)} cm · Auftritt ${Math.round(i.tread * 100)} cm · Schrittmaß ${Math.round(i.rule * 100)} cm ${ok ? '✓' : '(üblich: Steigung ≤ 19 cm, Schrittmaß 59–65 cm – Tiefe oder Form ändern)'}</p>
-      ${need && Math.abs(need - fp.h) > 0.02 ? `<p class="warn">Höhe ${fp.h.toFixed(2)} m, bis „${esc(up.name)}“ sind es ${need.toFixed(2)} m.</p>` : ''}
-      <p class="hint">Breite × Tiefe ist der Gesamtumriss. Steigt sie falsch herum, „Laufrichtung umkehren“; mit Drehung (unten) in die richtige Lage bringen.</p>
-      <div class="actions"><button class="btn small" data-act="stFlip">Laufrichtung umkehren</button>${need ? `<button class="btn small" data-act="stFit">Höhe an Etage anpassen</button>` : ''}</div>`);
+    return this.sec(t('editor.section.stairs'), `<div class="row2"><div class="field"><label for="stShape">${t('editor.common.shape')}</label><select id="stShape">${[['straight', 'editor.stairs.straight'], ['quarter', 'editor.stairs.quarter'], ['half', 'editor.stairs.half']].map(([k, key]) => `<option value="${k}" ${(item.shape || 'straight') === k ? 'selected' : ''}>${t(key)}</option>`).join('')}</select></div>
+        ${item.shape ? `<div class="field"><label for="stTurn">${t('editor.stairs.turnsToward')}</label><select id="stTurn"><option value="right" ${item.turn !== 'left' ? 'selected' : ''}>${t('editor.common.right')}</option><option value="left" ${item.turn === 'left' ? 'selected' : ''}>${t('editor.common.left')}</option></select></div>` : '<span></span>'}</div>
+      ${item.shape ? `<div class="row2">${num('stFw', t('editor.stairs.flightWidth'), r3(i.fw), 0.05, 'min="0.6" max="1.5"')}<span></span></div>` : ''}
+      <p class="${ok ? 'ok' : 'warn'}">${t('editor.stairs.metrics', { steps: i.n, rise: Math.round(i.rise * 100), tread: Math.round(i.tread * 100), rule: Math.round(i.rule * 100), warning: ok ? '✓' : t('editor.stairs.metricsWarning') })}</p>
+      ${need && Math.abs(need - fp.h) > 0.02 ? `<p class="warn">${t('editor.stairs.heightMismatch', { height: formatNumber(fp.h, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), level: esc(up.name), needed: formatNumber(need, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}</p>` : ''}
+      <p class="hint">${t('editor.stairs.help')}</p>
+      <div class="actions"><button class="btn small" data-act="stFlip">${t('editor.stairs.reverse')}</button>${need ? `<button class="btn small" data-act="stFit">${t('editor.stairs.fitHeight')}</button>` : ''}</div>`);
   }
   showRoof() { if (this.app.levelSel !== 'roof') this.app.setLevel('roof'); }
   showModal(title, text) {
     const c = this.app.$('modalCard');
-    c.innerHTML = `<div class="panel-head"><h2>${esc(title)}</h2></div><textarea readonly spellcheck="false">${esc(text)}</textarea><div class="foot"><button class="btn" id="mCopy">Kopieren</button><button class="btn primary" id="mClose">Schließen</button></div>`;
+    c.innerHTML = `<div class="panel-head"><h2>${esc(title)}</h2></div><textarea readonly spellcheck="false">${esc(text)}</textarea><div class="foot"><button class="btn" id="mCopy">${t('editor.common.copy')}</button><button class="btn primary" id="mClose">${t('editor.common.close')}</button></div>`;
     this.app.$('modal').hidden = false;
     c.querySelector('#mClose').onclick = () => (this.app.$('modal').hidden = true);
-    c.querySelector('#mCopy').onclick = async () => { const ta = c.querySelector('textarea'); try { await navigator.clipboard.writeText(ta.value); this.app.toast('Kopiert'); } catch { ta.select(); } };
+    c.querySelector('#mCopy').onclick = async () => { const ta = c.querySelector('textarea'); try { await navigator.clipboard.writeText(ta.value); this.app.toast(t('editor.toast.copied')); } catch { ta.select(); } };
   }
   findByEntity(id) {
     for (const level of this.app.plan.levels) {
@@ -304,7 +330,7 @@ export class Editor {
     this.app.pushUndo(); this.app.applyLocal(op);
     const it = findItem(this.app.plan, id)?.item; if (it) { placeItem(L, a.furniture ? 'furniture' : 'device', it); this.app.stage.moveItem(L.id, a.furniture ? 'furniture' : 'device', it); }
     this.select({ type: a.furniture ? 'furniture' : 'device', id, level: L.id });
-    this.app.toast(`${a.label} ${room ? 'in ' + room.name : 'außerhalb der Räume'} gesetzt`);
+    this.app.toast(t(room ? 'editor.toast.assetPlacedInRoom' : 'editor.toast.assetPlacedOutside', { label: a.label, room: room?.name || '' }));
   }
   placeEntity(id, at = null) {
     const s = this.app.states()[id]; if (!s) return; const area = this.app.areaOf(id);
@@ -316,14 +342,14 @@ export class Editor {
       const want = dom === 'cover' ? (dc === 'garage' ? ['garage'] : ['window', 'garage']) : dc === 'door' ? ['door', 'window'] : dc === 'garage_door' ? ['garage'] : ['window', 'door'];
       let cands = L.openings.filter((o) => want.includes(o.type) && !o[field] && (!room || roomOfOpening(L, o)?.id === room.id));
       if (at) cands = cands.sort((x, y) => distToSeg(at, x.from, x.to) - distToSeg(at, y.from, y.to));
-      if (!cands.length) return this.app.toast(`Kein freies ${dom === 'cover' ? 'Fenster/Tor' : 'Fenster/Tür'}${room ? ' in ' + room.name : ''}. Erst ein Fenster setzen.`);
+      if (!cands.length) return this.app.toast(t('editor.toast.noFreeOpening', { kind: t(dom === 'cover' ? 'editor.common.windowOrGate' : 'editor.common.windowOrDoor'), room: room ? t('editor.common.inRoom', { room: room.name }) : '' }));
       this.app.pushUndo(); cands[0][field] = id; this.app.stage.rebuildLevel(L.id); this.app.markDirty(); this.app.scheduleUI(true);
       if (L.id !== this.level.id) this.app.setLevel(L.id);
       this.select({ type: 'opening', id: cands[0].id, level: L.id }); return;
     }
-    const k = kindForEntity(s); if (!k) return this.app.toast('Für diese Entität gibt es noch keine Darstellung.');
+    const k = kindForEntity(s); if (!k) return this.app.toast(t('editor.toast.noEntityRepresentation'));
     if (!room && !at) room = L.rooms.find((r) => r.kind === 'room') || L.rooms[0];
-    if (!room && !at) return this.app.toast('Erst einen Raum zeichnen.');
+    if (!room && !at) return this.app.toast(t('editor.toast.drawRoomFirst'));
     let pos = at;
     if (!pos) { const c = roomCenter(room); const n = L.devices.filter((d) => roomAt(L, d.pos)?.id === room.id).length; pos = [r3(c[0] + ((n % 3) - 1) * 0.4), r3(c[1] + (Math.floor(n / 3) % 3 - 1) * 0.4)]; }
     const did = newId('d');
@@ -331,7 +357,7 @@ export class Editor {
     { const it = findItem(this.app.plan, did)?.item; if (it) { placeItem(L, 'device', it); this.app.stage.moveItem(L.id, 'device', it); } }
     if (L.id !== this.level.id) this.app.setLevel(L.id);
     this.select({ type: 'device', id: did, level: L.id });
-    if (!at && (!room.area_id || room.area_id !== area)) this.app.toast(`In ${room.name} gesetzt. Bitte an die richtige Stelle ziehen.`);
+    if (!at && (!room.area_id || room.area_id !== area)) this.app.toast(t('editor.toast.entityPlacedCheckPosition', { room: room.name }));
   }
 
   /* ---------------- selection & inspector ---------------- */
@@ -361,70 +387,70 @@ export class Editor {
     if (app.mode !== 'edit') { app.$('insp').hidden = true; return; }
     app.$('insp').hidden = false;
     const num = (id, label, v, step = 0.05, extra = '') => `<div class="field"><label for="${id}">${label}</label><input type="number" id="${id}" step="${step}" value="${v ?? ''}" ${extra}></div>`;
-    const rot = (v) => `<div class="field"><label for="iRot">Drehung <output>${Math.round(v || 0)}°</output></label><input type="range" id="iRot" min="-180" max="180" step="5" value="${v || 0}"></div>`;
-    const title = (t) => (app.$('inspTitle').textContent = t);
+    const rot = (v) => `<div class="field"><label for="iRot">${t('editor.common.rotation')} <output>${Math.round(v || 0)}°</output></label><input type="range" id="iRot" min="-180" max="180" step="5" value="${v || 0}"></div>`;
+    const title = (text) => (app.$('inspTitle').textContent = text);
     const p = app.plan, site = p.site;
     if (!s || s.type === 'roof') {
       const roof = site.roof, isFlat = roof.type === 'flat';
       const covers = Object.entries(ROOF_COVERS).filter(([, v]) => !!v.flat === isFlat || (!isFlat && false));
-      const roofHtml = `<div class="field"><label for="rfType">Dachform</label><select id="rfType">${Object.entries(ROOF_TYPES).map(([k, v]) => `<option value="${k}" ${roof.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        ${roof.type !== 'none' ? `<div class="row2"><div class="field"><label for="rfCover">Eindeckung</label><select id="rfCover">${covers.map(([k, v]) => `<option value="${k}" ${roof.cover === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div><div class="field"><label for="rfColor">Farbe</label><input type="color" id="rfColor" value="${roof.color || ROOF_COVERS[roof.cover]?.color || '#7d3a2c'}"></div></div>` : ''}
-        ${!['none', 'flat'].includes(roof.type) ? `<div class="row2">${num('rfPitch', 'Neigung (°)', roof.pitch ?? 35, 1, 'min="3" max="60"')}${num('rfOh', 'Überstand (m)', roof.overhang ?? 0.4, 0.05, 'min="0" max="1.5"')}</div>` : ''}
-        ${['gable', 'shed'].includes(roof.type) ? `<div class="row2">${num('rfOhG', 'Überstand Ortgang (m)', roof.overhangGable ?? roof.overhang ?? 0.4, 0.05, 'min="0" max="1.5"')}${roof.type === 'gable' ? num('rfROff', 'Firstversatz (%)', Math.round((roof.ridgeOffset || 0) * 100), 5, 'min="-45" max="45"') : '<span></span>'}</div>` : ''}
-        ${!['none', 'flat'].includes(roof.type) ? `<div class="row2">${num('rfKnee', 'Kniestock (m)', roof.knee ?? 0, 0.05, 'min="0" max="2"')}<span></span></div>` : ''}`;
+      const roofHtml = `<div class="field"><label for="rfType">${t('editor.roof.form')}</label><select id="rfType">${Object.entries(ROOF_TYPES).map(([k, v]) => `<option value="${k}" ${roof.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+        ${roof.type !== 'none' ? `<div class="row2"><div class="field"><label for="rfCover">${t('editor.roof.covering')}</label><select id="rfCover">${covers.map(([k, v]) => `<option value="${k}" ${roof.cover === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div><div class="field"><label for="rfColor">${t('editor.common.color')}</label><input type="color" id="rfColor" value="${roof.color || ROOF_COVERS[roof.cover]?.color || '#7d3a2c'}"></div></div>` : ''}
+        ${!['none', 'flat'].includes(roof.type) ? `<div class="row2">${num('rfPitch', t('editor.roof.pitch'), roof.pitch ?? 35, 1, 'min="3" max="60"')}${num('rfOh', t('editor.roof.overhang'), roof.overhang ?? 0.4, 0.05, 'min="0" max="1.5"')}</div>` : ''}
+        ${['gable', 'shed'].includes(roof.type) ? `<div class="row2">${num('rfOhG', t('editor.roof.gableOverhang'), roof.overhangGable ?? roof.overhang ?? 0.4, 0.05, 'min="0" max="1.5"')}${roof.type === 'gable' ? num('rfROff', t('editor.roof.ridgeOffset'), Math.round((roof.ridgeOffset || 0) * 100), 5, 'min="-45" max="45"') : '<span></span>'}</div>` : ''}
+        ${!['none', 'flat'].includes(roof.type) ? `<div class="row2">${num('rfKnee', t('editor.roof.kneeWall'), roof.knee ?? 0, 0.05, 'min="0" max="2"')}<span></span></div>` : ''}`;
       const R = roof.type !== 'none' ? this.roofRectNow() : null;
-      const geoHtml = R ? `<div class="field"><label for="rfRot">Drehung <output>${R.rot.toFixed(1)}°</output></label><input type="range" id="rfRot" min="-180" max="180" step="0.5" value="${R.rot}"></div>
-        <div class="row2">${num('rfRotN', 'Drehung (°)', +R.rot.toFixed(1), 0.5)}<div class="field"><span class="lbl">Schnell</span><div class="actions"><button class="btn small" data-act="roofRot" data-deg="-90">−90°</button><button class="btn small" data-act="roofRot" data-deg="90">+90°</button><button class="btn small" data-act="roofRot" data-deg="180">180°</button></div></div></div>
-        <div class="row2">${num('rfLen', 'Länge entlang First (m)', R.length.toFixed(2), 0.05, 'min="0.5"')}${num('rfWid', 'Breite (m)', R.width.toFixed(2), 0.05, 'min="0.5"')}</div>
-        <div class="row2">${num('rfCx', 'Mitte X (m)', R.cx.toFixed(2))}${num('rfCz', 'Mitte Z (m)', R.cz.toFixed(2))}</div>
-        <p class="hint">${roof.type === 'shed' ? 'Die hohe Seite liegt hinten; mit 180° drehen. ' : ''}In 2D lassen sich die Ecken ziehen, die Längen stehen an den Kanten.</p>
-        <div class="actions"><button class="btn small" data-act="roofFit" ${roof.rect ? '' : 'disabled'}>An oberstes Geschoss anpassen</button></div>` : '';
+      const geoHtml = R ? `<div class="field"><label for="rfRot">${t('editor.common.rotation')} <output>${R.rot.toFixed(1)}°</output></label><input type="range" id="rfRot" min="-180" max="180" step="0.5" value="${R.rot}"></div>
+        <div class="row2">${num('rfRotN', t('editor.common.rotationDegrees'), +R.rot.toFixed(1), 0.5)}<div class="field"><span class="lbl">${t('editor.common.quick')}</span><div class="actions"><button class="btn small" data-act="roofRot" data-deg="-90">−90°</button><button class="btn small" data-act="roofRot" data-deg="90">+90°</button><button class="btn small" data-act="roofRot" data-deg="180">180°</button></div></div></div>
+        <div class="row2">${num('rfLen', t('editor.roof.lengthAlongRidge'), R.length.toFixed(2), 0.05, 'min="0.5"')}${num('rfWid', t('editor.common.widthMeters'), R.width.toFixed(2), 0.05, 'min="0.5"')}</div>
+        <div class="row2">${num('rfCx', t('editor.common.centerX'), R.cx.toFixed(2))}${num('rfCz', t('editor.common.centerZ'), R.cz.toFixed(2))}</div>
+        <p class="hint">${roof.type === 'shed' ? t('editor.roof.shedOrientation') + ' ' : ''}${t('editor.roof.geometryHelp')}</p>
+        <div class="actions"><button class="btn small" data-act="roofFit" ${roof.rect ? '' : 'disabled'}>${t('editor.roof.fitTopLevel')}</button></div>` : '';
       const D = { ...DEFAULT_DETAILS, ...(roof.details || {}) }; const pitched = !['none', 'flat'].includes(roof.type);
       const chk = (id, label, on) => `<label class="chk"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}> ${label}</label>`;
-      const styleHtml = `<div class="stylegrid">${Object.entries(ROOF_STYLES).map(([k, v]) => `<button class="btn small" data-style="${k}" aria-pressed="${roof.style === k}">${v.label}</button>`).join('')}</div><label class="chk" style="margin-top:8px"><input type="checkbox" id="stKeep" ${this.keepRoofType !== false ? 'checked' : ''}> Meine Dachform behalten (${ROOF_TYPES[roof.type] || '–'})</label><p class="hint">Setzt Eindeckung, Neigung, Überstände, Fassade und Holzdetails${this.keepRoofType !== false ? '' : ' sowie die typische Dachform'}. Alles bleibt danach einzeln anpassbar.</p>`;
-      const detHtml = pitched ? `<div class="field"><label for="dtSoffit">Dachuntersicht</label><select id="dtSoffit">${Object.entries(SOFFITS).map(([k, v]) => `<option value="${k}" ${D.soffit === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        <div class="field"><span class="lbl">Balkenkopf</span><div class="heads">${Object.entries(HEAD_SHAPES).map(([k, v]) => `<button data-head="${k}" aria-pressed="${D.head === k}" title="${v}">${headSvg(k === 'bracket' ? 'straight' : k)}<small>${v}</small></button>`).join('')}</div></div>
-        <div class="chks">${chk('dtRafters', 'Sparrenköpfe sichtbar', D.rafters)}${chk('dtPurlins', 'Pfettenköpfe', D.purlins)}${chk('dtFly', 'Flugsparren', D.flyRafter)}${chk('dtBrackets', 'Konsolen / Knaggen', D.brackets)}${chk('dtBraces', 'Kopfbänder', D.braces)}</div>
-        ${D.rafters ? `<div class="row2">${num('dtSpacing', 'Sparrenabstand (m)', D.spacing, 0.05, 'min="0.3" max="1.5"')}${num('dtRh', 'Sparrenhöhe (cm)', Math.round(D.rh * 100), 1, 'min="6" max="30"')}</div>` : ''}
-        ${D.purlins ? `<div class="row2">${num('dtPOut', 'Pfettenüberstand (m)', D.purlinOut, 0.05, 'min="0" max="1.2"')}<span></span></div>` : ''}
-        <div class="field"><label for="dtBarge">Ortgangbrett</label><select id="dtBarge">${Object.entries(BARGES).map(([k, v]) => `<option value="${k}" ${D.barge === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        <div class="field"><span class="lbl">Holzfarbe</span><div class="swatches">${Object.entries(WOOD_PRESETS).map(([c, n]) => `<button data-wood="${c}" style="background:${c}" aria-pressed="${D.wood === c}" aria-label="${n}" title="${n}"></button>`).join('')}<input type="color" id="dtWood" value="${D.wood}" aria-label="Eigene Holzfarbe" style="width:30px;height:30px;padding:0;border:0;background:none"></div></div>
-        ${D.soffit !== 'open' && D.rafters ? '<p class="hint">Sparrenköpfe sind nur bei offener Untersicht sichtbar.</p>' : ''}` : '<p class="hint">Details gibt es für geneigte Dächer.</p>';
-      const solarHtml = (site.solar.length ? site.solar.map((a, i) => `<button class="listrow" data-solar="${a.id}"><span class="nm">PV-Feld ${i + 1}</span><small>${a.rows}×${a.cols} Module${a.entity_id ? ' · ' + esc(app.nameOf(a.entity_id)) : ''}</small></button>`).join('') : '<p class="hint">Noch keine Module.</p>') + `<button class="btn small" data-act="addSolar" style="margin-top:6px" ${roof.type === 'none' ? 'disabled' : ''}>${icon('plus')}PV-Feld hinzufügen</button>`;
-      const riHtml = (site.roofItems || []).map((it, i) => `<button class="listrow" data-ritem="${it.id}"><span class="nm">${it.kind === 'dormer' ? 'Gaube' : 'Dachfenster'} ${i + 1}</span><small>${Math.round(it.w * 100)}×${Math.round(it.h * 100)}${it.cover ? ' · ' + esc(app.nameOf(it.cover)) : ''}</small></button>`).join('') + `<div class="actions" style="margin-top:6px"><button class="btn small" data-act="addRoofWin" ${pitched ? '' : 'disabled'}>${icon('plus')}Dachfenster</button><button class="btn small" data-act="addDormer" ${pitched ? '' : 'disabled'}>${icon('plus')}Gaube</button></div>`;
-      const roofSecs = this.sec('Dach', roofHtml) + this.sec('Stil-Vorlage', styleHtml) + this.sec('Dachdetails', detHtml) + this.sec('Dachfenster & Gauben', riHtml);
-      const moreHtml = `${(site.roofs || []).map((x) => `<button class="listrow" data-xroof="${x.id}"><span class="nm">${esc(x.name)}</span><small>${ROOF_TYPES[x.type] || ''}</small></button>`).join('')}<p class="hint">Garage, Carport, Gartenhaus oder Anbau bekommen ein eigenes Dach: Raum auswählen → „Dach auf diesen Raum“, oder mit dem Dach-Werkzeug aufziehen.</p><div class="actions"><button class="btn small" data-act="toolRoof">${icon('plus')}Dach aufziehen</button></div>`;
-      if (s?.type === 'roof') { title('Dach'); box.innerHTML = roofSecs + this.sec('Weitere Dächer', moreHtml) + (geoHtml ? this.sec('Lage & Maße', geoHtml) : '') + this.sec('Photovoltaik', solarHtml); return; }
-      title('Haus');
+      const styleHtml = `<div class="stylegrid">${Object.entries(ROOF_STYLES).map(([k, v]) => `<button class="btn small" data-style="${k}" aria-pressed="${roof.style === k}">${v.label}</button>`).join('')}</div><label class="chk" style="margin-top:8px"><input type="checkbox" id="stKeep" ${this.keepRoofType !== false ? 'checked' : ''}> ${t('editor.roof.keepForm', { type: ROOF_TYPES[roof.type] || '–' })}</label><p class="hint">${t('editor.roof.styleHelp', { form: this.keepRoofType !== false ? '' : t('editor.roof.styleTypicalForm') })}</p>`;
+      const detHtml = pitched ? `<div class="field"><label for="dtSoffit">${t('editor.roof.soffit')}</label><select id="dtSoffit">${Object.entries(SOFFITS).map(([k, v]) => `<option value="${k}" ${D.soffit === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+        <div class="field"><span class="lbl">${t('editor.roof.beamEnd')}</span><div class="heads">${Object.entries(HEAD_SHAPES).map(([k, v]) => `<button data-head="${k}" aria-pressed="${D.head === k}" title="${v}">${headSvg(k === 'bracket' ? 'straight' : k)}<small>${v}</small></button>`).join('')}</div></div>
+        <div class="chks">${chk('dtRafters', t('editor.roof.showRafterTails'), D.rafters)}${chk('dtPurlins', t('editor.roof.purlinEnds'), D.purlins)}${chk('dtFly', t('editor.roof.flyRafters'), D.flyRafter)}${chk('dtBrackets', t('editor.roof.brackets'), D.brackets)}${chk('dtBraces', t('editor.roof.braces'), D.braces)}</div>
+        ${D.rafters ? `<div class="row2">${num('dtSpacing', t('editor.roof.rafterSpacing'), D.spacing, 0.05, 'min="0.3" max="1.5"')}${num('dtRh', t('editor.roof.rafterHeight'), Math.round(D.rh * 100), 1, 'min="6" max="30"')}</div>` : ''}
+        ${D.purlins ? `<div class="row2">${num('dtPOut', t('editor.roof.purlinOverhang'), D.purlinOut, 0.05, 'min="0" max="1.2"')}<span></span></div>` : ''}
+        <div class="field"><label for="dtBarge">${t('editor.roof.bargeboard')}</label><select id="dtBarge">${Object.entries(BARGES).map(([k, v]) => `<option value="${k}" ${D.barge === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+        <div class="field"><span class="lbl">${t('editor.roof.woodColor')}</span><div class="swatches">${Object.entries(WOOD_PRESETS).map(([c, n]) => `<button data-wood="${c}" style="background:${c}" aria-pressed="${D.wood === c}" aria-label="${n}" title="${n}"></button>`).join('')}<input type="color" id="dtWood" value="${D.wood}" aria-label="${t('editor.roof.customWoodColor')}" style="width:30px;height:30px;padding:0;border:0;background:none"></div></div>
+        ${D.soffit !== 'open' && D.rafters ? `<p class="hint">${t('editor.roof.rafterVisibilityHint')}</p>` : ''}` : `<p class="hint">${t('editor.roof.detailsPitchedOnly')}</p>`;
+      const solarHtml = (site.solar.length ? site.solar.map((a, i) => `<button class="listrow" data-solar="${a.id}"><span class="nm">${t('editor.solar.fieldNumber', { number: i + 1 })}</span><small>${t('editor.solar.moduleCount', { rows: a.rows, cols: a.cols })}${a.entity_id ? ' · ' + esc(app.nameOf(a.entity_id)) : ''}</small></button>`).join('') : `<p class="hint">${t('editor.solar.none')}</p>`) + `<button class="btn small" data-act="addSolar" style="margin-top:6px" ${roof.type === 'none' ? 'disabled' : ''}>${icon('plus')}${t('editor.solar.addField')}</button>`;
+      const riHtml = (site.roofItems || []).map((it, i) => `<button class="listrow" data-ritem="${it.id}"><span class="nm">${t(it.kind === 'dormer' ? 'editor.common.dormer' : 'editor.common.roofWindow')} ${i + 1}</span><small>${Math.round(it.w * 100)}×${Math.round(it.h * 100)}${it.cover ? ' · ' + esc(app.nameOf(it.cover)) : ''}</small></button>`).join('') + `<div class="actions" style="margin-top:6px"><button class="btn small" data-act="addRoofWin" ${pitched ? '' : 'disabled'}>${icon('plus')}${t('editor.common.roofWindow')}</button><button class="btn small" data-act="addDormer" ${pitched ? '' : 'disabled'}>${icon('plus')}${t('editor.common.dormer')}</button></div>`;
+      const roofSecs = this.sec(t('editor.common.roof'), roofHtml) + this.sec(t('editor.section.styleTemplate'), styleHtml) + this.sec(t('editor.section.roofDetails'), detHtml) + this.sec(t('editor.section.roofWindowsDormers'), riHtml);
+      const moreHtml = `${(site.roofs || []).map((x) => `<button class="listrow" data-xroof="${x.id}"><span class="nm">${esc(x.name)}</span><small>${ROOF_TYPES[x.type] || ''}</small></button>`).join('')}<p class="hint">${t('editor.roof.extraHelp')}</p><div class="actions"><button class="btn small" data-act="toolRoof">${icon('plus')}${t('editor.roof.draw')}</button></div>`;
+      if (s?.type === 'roof') { title(t('editor.common.roof')); box.innerHTML = roofSecs + this.sec(t('editor.section.extraRoofs'), moreHtml) + (geoHtml ? this.sec(t('editor.section.locationDimensions'), geoHtml) : '') + this.sec(t('editor.section.photovoltaics'), solarHtml); return; }
+      title(t('editor.common.house'));
       const fac = site.facade;
-      box.innerHTML = this.sec('Allgemein', `<div class="field"><label for="stName">Name</label><input type="text" id="stName" value="${esc(p.name)}"></div>`)
-        + this.sec('Standort & Sonne', `<div class="row2"><div class="field"><label for="stLat">Breitengrad</label><input type="number" id="stLat" step="0.0001" value="${site.lat ?? ''}"></div><div class="field"><label for="stLon">Längengrad</label><input type="number" id="stLon" step="0.0001" value="${site.lon ?? ''}"></div></div>
-          <div class="field"><label for="stNorth">Nordrichtung des Plans <output>${Math.round(site.north || 0)}°</output></label><input type="range" id="stNorth" min="-180" max="180" step="1" value="${site.north || 0}"></div><p class="hint">0° = oben im Grundriss ist Norden. Positive Werte drehen Norden im Uhrzeigersinn.</p>`)
-        + this.sec('Fassade', `<div class="field"><label for="faMat">Material</label><select id="faMat">${Object.entries(FACADES).map(([k, v]) => `<option value="${k}" ${fac.material === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-          <div class="field"><span class="lbl">Farbe</span><div class="swatches">${FACADE_PRESETS.map((c) => `<button data-fcol="${c}" style="background:${c}" aria-pressed="${fac.color === c}" aria-label="Farbe ${c}"></button>`).join('')}<input type="color" id="faColor" value="${fac.color}" aria-label="Eigene Farbe" style="width:30px;height:30px;padding:0;border:0;background:none"></div></div>
-          <div class="row2"><div class="field"><label for="faPlinth">Sockel</label><input type="color" id="faPlinth" value="${fac.plinth}"></div><div class="field"><label for="faFrame">Fensterrahmen</label><input type="color" id="faFrame" value="${fac.frame}"></div></div>`)
-        + roofSecs + (geoHtml ? this.sec('Dach: Lage & Maße', geoHtml) : '') + this.sec('Photovoltaik', solarHtml)
-        + this.sec('Backup', `<p class="hint">Komplette Konfiguration als eine Datei: Plan, Etagen, Dächer, Geräte-Positionen, Bauplan-Vorlagen (Bilder) und Ansichts-Einstellungen. KI-Zugangsdaten sind nicht enthalten.</p><div class="actions"><button class="btn small primary" data-act="backupExport">${icon('save')}Backup exportieren</button><label class="btn small">${icon('upload')}Backup importieren<input type="file" id="backupFile" accept=".json,application/json" hidden></label></div>`)
-        + this.sec('Datei', `<div class="actions"><button class="btn small" data-act="export">${icon('code')}Plan als JSON</button><label class="btn small">JSON laden<input type="file" id="jsonFile" accept=".json,application/json" hidden></label><label class="btn small">Sweet Home 3D<input type="file" id="sh3dFile" accept=".sh3d" hidden></label></div>
-          <div class="actions" style="margin-top:6px"><button class="btn small" data-act="demo">Beispielhaus laden</button><button class="btn small danger" data-act="empty">Leer beginnen</button></div>
-          <details class="danger-zone"><summary>Erweitert</summary><p class="hint">Setzt alle HomeTwin-Daten zurück (Plan, Bauplan-Vorlagen) und zeigt wieder die Startauswahl. Entitäten und Einstellungen in Home Assistant bleiben unberührt.</p><button class="btn small danger" data-act="resetAll">Alle Daten zurücksetzen …</button></details>`);
+      box.innerHTML = this.sec(t('editor.section.general'), `<div class="field"><label for="stName">${t('editor.common.name')}</label><input type="text" id="stName" value="${esc(p.name)}"></div>`)
+        + this.sec(t('editor.section.locationSun'), `<div class="row2"><div class="field"><label for="stLat">${t('editor.site.latitude')}</label><input type="number" id="stLat" step="0.0001" value="${site.lat ?? ''}"></div><div class="field"><label for="stLon">${t('editor.site.longitude')}</label><input type="number" id="stLon" step="0.0001" value="${site.lon ?? ''}"></div></div>
+          <div class="field"><label for="stNorth">${t('editor.site.northDirection')} <output>${Math.round(site.north || 0)}°</output></label><input type="range" id="stNorth" min="-180" max="180" step="1" value="${site.north || 0}"></div><p class="hint">${t('editor.site.northHelp')}</p>`)
+        + this.sec(t('editor.section.facade'), `<div class="field"><label for="faMat">${t('editor.common.material')}</label><select id="faMat">${Object.entries(FACADES).map(([k, v]) => `<option value="${k}" ${fac.material === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+          <div class="field"><span class="lbl">${t('editor.common.color')}</span><div class="swatches">${FACADE_PRESETS.map((c) => `<button data-fcol="${c}" style="background:${c}" aria-pressed="${fac.color === c}" aria-label="${t('editor.common.colorValue', { value: c })}"></button>`).join('')}<input type="color" id="faColor" value="${fac.color}" aria-label="${t('editor.common.customColor')}" style="width:30px;height:30px;padding:0;border:0;background:none"></div></div>
+          <div class="row2"><div class="field"><label for="faPlinth">${t('editor.facade.plinth')}</label><input type="color" id="faPlinth" value="${fac.plinth}"></div><div class="field"><label for="faFrame">${t('editor.facade.windowFrame')}</label><input type="color" id="faFrame" value="${fac.frame}"></div></div>`)
+        + roofSecs + (geoHtml ? this.sec(t('editor.section.roofLocationDimensions'), geoHtml) : '') + this.sec(t('editor.section.photovoltaics'), solarHtml)
+        + this.sec(t('editor.section.backup'), `<p class="hint">${t('editor.backup.help')}</p><div class="actions"><button class="btn small primary" data-act="backupExport">${icon('save')}${t('editor.backup.export')}</button><label class="btn small">${icon('upload')}${t('editor.backup.import')}<input type="file" id="backupFile" accept=".json,application/json" hidden></label></div>`)
+        + this.sec(t('editor.section.file'), `<div class="actions"><button class="btn small" data-act="export">${icon('code')}${t('editor.file.planAsJson')}</button><label class="btn small">${t('editor.file.loadJson')}<input type="file" id="jsonFile" accept=".json,application/json" hidden></label><label class="btn small">Sweet Home 3D<input type="file" id="sh3dFile" accept=".sh3d" hidden></label></div>
+          <div class="actions" style="margin-top:6px"><button class="btn small" data-act="demo">${t('editor.file.loadExample')}</button><button class="btn small danger" data-act="empty">${t('editor.file.startEmpty')}</button></div>
+          <details class="danger-zone"><summary>${t('editor.common.advanced')}</summary><p class="hint">${t('editor.file.resetHelp')}</p><button class="btn small danger" data-act="resetAll">${t('editor.file.resetAll')}</button></details>`);
       return;
     }
     if (s.type === 'xroof') {
       const x = (site.roofs || []).find((r) => r.id === s.id); if (!x) return this.select(null);
-      title('Dach'); const flat = x.type === 'flat'; const R = x.rect || { cx: 0, cz: 0, length: 3, width: 3, rot: 0 };
+      title(t('editor.common.roof')); const flat = x.type === 'flat'; const R = x.rect || { cx: 0, cz: 0, length: 3, width: 3, rot: 0 };
       const covers = Object.entries(ROOF_COVERS).filter(([, v]) => !!v.flat === flat);
-      box.innerHTML = this.sec('Allgemein', `<div class="field"><label for="xrName">Name</label><input type="text" id="xrName" value="${esc(x.name)}"></div>
-          <div class="row2"><div class="field"><label for="xrType">Dachform</label><select id="xrType">${Object.entries(ROOF_TYPES).filter(([k]) => k !== 'none').map(([k, v]) => `<option value="${k}" ${x.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-          <div class="field"><label for="xrCover">Eindeckung</label><select id="xrCover">${covers.map(([k, v]) => `<option value="${k}" ${x.cover === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div></div>
-          ${flat ? '' : `<div class="row2">${num('xrPitch', 'Neigung (°)', x.pitch ?? 25, 1, 'min="3" max="60"')}${num('xrOh', 'Überstand (m)', x.overhang ?? 0.3, 0.05, 'min="0" max="1.5"')}</div>`}
-          <div class="row2"><div class="field"><label for="xrLevel">Steht auf</label><select id="xrLevel">${p.levels.map((l) => `<option value="${l.id}" ${l.id === x.levelId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div>${num('xrH', 'Traufhöhe ab Boden (m)', x.height ?? 2.5, 0.05, 'min="1.8" max="8"')}</div>
-          <label class="chk"><input type="checkbox" id="xrPosts" ${x.posts ? 'checked' : ''}> Auf Pfosten (Carport, Terrassendach)</label>`)
-        + this.sec('Lage & Maße', `<div class="row2">${num('xrLen', 'Länge entlang First (m)', R.length, 0.05, 'min="0.5"')}${num('xrWid', 'Breite (m)', R.width, 0.05, 'min="0.5"')}</div>
-          <div class="row2">${num('xrCx', 'Mitte X (m)', R.cx)}${num('xrCz', 'Mitte Z (m)', R.cz)}</div>
-          <div class="row2">${num('xrRot', 'Drehung (°)', R.rot, 5)}<div class="field"><span class="lbl">Schnell</span><div class="actions"><button class="btn small" data-act="xrRot90">+90°</button></div></div></div>
-          ${x.type === 'shed' ? '<p class="hint">Die hohe Seite liegt hinten; mit 2 × 90° drehen.</p>' : ''}`)
-        + `<div class="actions"><button class="btn small" data-act="xrDup">Duplizieren</button><button class="btn small danger" data-act="del">Löschen</button></div>`;
+      box.innerHTML = this.sec(t('editor.section.general'), `<div class="field"><label for="xrName">${t('editor.common.name')}</label><input type="text" id="xrName" value="${esc(x.name)}"></div>
+          <div class="row2"><div class="field"><label for="xrType">${t('editor.roof.form')}</label><select id="xrType">${Object.entries(ROOF_TYPES).filter(([k]) => k !== 'none').map(([k, v]) => `<option value="${k}" ${x.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+          <div class="field"><label for="xrCover">${t('editor.roof.covering')}</label><select id="xrCover">${covers.map(([k, v]) => `<option value="${k}" ${x.cover === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div></div>
+          ${flat ? '' : `<div class="row2">${num('xrPitch', t('editor.roof.pitch'), x.pitch ?? 25, 1, 'min="3" max="60"')}${num('xrOh', t('editor.roof.overhang'), x.overhang ?? 0.3, 0.05, 'min="0" max="1.5"')}</div>`}
+          <div class="row2"><div class="field"><label for="xrLevel">${t('editor.roof.sitsOn')}</label><select id="xrLevel">${p.levels.map((l) => `<option value="${l.id}" ${l.id === x.levelId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div>${num('xrH', t('editor.roof.eavesHeight'), x.height ?? 2.5, 0.05, 'min="1.8" max="8"')}</div>
+          <label class="chk"><input type="checkbox" id="xrPosts" ${x.posts ? 'checked' : ''}> ${t('editor.roof.onPosts')}</label>`)
+        + this.sec(t('editor.section.locationDimensions'), `<div class="row2">${num('xrLen', t('editor.roof.lengthAlongRidge'), R.length, 0.05, 'min="0.5"')}${num('xrWid', t('editor.common.widthMeters'), R.width, 0.05, 'min="0.5"')}</div>
+          <div class="row2">${num('xrCx', t('editor.common.centerX'), R.cx)}${num('xrCz', t('editor.common.centerZ'), R.cz)}</div>
+          <div class="row2">${num('xrRot', t('editor.common.rotationDegrees'), R.rot, 5)}<div class="field"><span class="lbl">${t('editor.common.quick')}</span><div class="actions"><button class="btn small" data-act="xrRot90">+90°</button></div></div></div>
+          ${x.type === 'shed' ? `<p class="hint">${t('editor.roof.shedOrientationExtra')}</p>` : ''}`)
+        + `<div class="actions"><button class="btn small" data-act="xrDup">${t('editor.common.duplicate')}</button><button class="btn small danger" data-act="del">${t('editor.common.delete')}</button></div>`;
       app.stage.setMarks(app.plan.levels.find((l) => l.id === x.levelId) || p.levels[0], x.rect ? rectCorners(x.rect).map((c, i, a) => ({ a: c, b: a[(i + 1) % 4], color: '#ffb35c', width: 0.12, opacity: 0.95 })) : []);
       return;
     }
@@ -434,124 +460,130 @@ export class Editor {
       const ents = (dom) => Object.keys(app.states()).filter((id) => dom.some((d) => id.startsWith(d + '.')));
       const entSel = (id, label, list, cur) => `<div class="field"><label for="${id}">${label}</label><select id="${id}"><option value="">—</option>${list.map((e) => `<option value="${e}" ${e === cur ? 'selected' : ''}>${esc(app.nameOf(e))}</option>`).join('')}</select></div>`;
       const dorm = it.kind === 'dormer';
-      title(dorm ? 'Gaube' : 'Dachfenster');
-      box.innerHTML = this.sec('Lage', `<div class="field"><label for="riKind">Art</label><select id="riKind"><option value="window" ${!dorm ? 'selected' : ''}>Dachfenster</option><option value="dormer" ${dorm ? 'selected' : ''}>Gaube mit Fenster</option></select></div>
-          <div class="field"><label for="riPlane">Dachfläche</label><select id="riPlane">${planes.map((pl, i) => (pl.flat ? '' : `<option value="${i}" ${+it.plane === i ? 'selected' : ''}>${esc(pl.label || 'Fläche ' + (i + 1))}</option>`)).join('')}</select></div>
-          <div class="row2">${num('riU', 'Seitlich (m)', it.u ?? 0)}${num('riV', 'Ab Traufe (m)', it.v ?? 1)}</div><p class="hint">Im 3D-Bild direkt auf dem Dach ziehen.</p>`)
-        + this.sec('Größe', dorm ? `<div class="row2">${num('riW', 'Breite (m)', it.w, 0.05, 'min="0.8" max="6"')}${num('riDH', 'Wandhöhe (m)', it.dormer?.h ?? 1.3, 0.05, 'min="0.6" max="2.5"')}</div>
-            <div class="field"><label for="riDType">Gaubendach</label><select id="riDType"><option value="gable" ${it.dormer?.type !== 'shed' ? 'selected' : ''}>Satteldach</option><option value="shed" ${it.dormer?.type === 'shed' ? 'selected' : ''}>Schleppdach</option></select></div>`
-          : `<div class="field"><label for="riSize">Standardmaß (cm)</label><select id="riSize"><option value="">eigene Maße</option>${Object.keys(ROOF_WINDOWS).map((k) => `<option value="${k}" ${ROOF_WINDOWS[k][0] === it.w && ROOF_WINDOWS[k][1] === it.h ? 'selected' : ''}>${k.replace('x', ' × ')}</option>`).join('')}</select></div>
-            <div class="row2">${num('riW', 'Breite (m)', it.w, 0.01, 'min="0.4" max="2"')}${num('riH', 'Höhe (m)', it.h, 0.01, 'min="0.4" max="2"')}</div>`)
-        + this.sec('Verknüpfung', entSel('riCover', 'Rollladen / Rollo', ents(['cover']), it.cover) + (it.cover ? `<label class="chk"><input type="checkbox" id="riInv" ${it.coverInvert ? 'checked' : ''}> Position umkehren</label>` : '') + entSel('riContact', 'Fensterkontakt', ents(['binary_sensor']), it.contact) + '<p class="hint">Das Rollo fährt sichtbar, ein offenes Fenster wird angekippt gezeigt. In der Ansicht antippen fährt das Rollo.</p>')
-        + `<div class="actions"><button class="btn small" data-act="dup">Duplizieren</button><button class="btn small danger" data-act="delRoofItem">Löschen</button></div>`;
+      title(t(dorm ? 'editor.common.dormer' : 'editor.common.roofWindow'));
+      box.innerHTML = this.sec(t('editor.section.location'), `<div class="field"><label for="riKind">${t('editor.common.type')}</label><select id="riKind"><option value="window" ${!dorm ? 'selected' : ''}>${t('editor.common.roofWindow')}</option><option value="dormer" ${dorm ? 'selected' : ''}>${t('editor.roofItem.dormerWithWindow')}</option></select></div>
+          <div class="field"><label for="riPlane">${t('editor.roofItem.roofPlane')}</label><select id="riPlane">${planes.map((pl, i) => (pl.flat ? '' : `<option value="${i}" ${+it.plane === i ? 'selected' : ''}>${esc(pl.label || t('editor.roofItem.planeNumber', { number: i + 1 }))}</option>`)).join('')}</select></div>
+          <div class="row2">${num('riU', t('editor.roofItem.sideways'), it.u ?? 0)}${num('riV', t('editor.roofItem.fromEaves'), it.v ?? 1)}</div><p class="hint">${t('editor.roofItem.dragHelp')}</p>`)
+        + this.sec(t('editor.section.size'), dorm ? `<div class="row2">${num('riW', t('editor.common.widthMeters'), it.w, 0.05, 'min="0.8" max="6"')}${num('riDH', t('editor.roofItem.wallHeight'), it.dormer?.h ?? 1.3, 0.05, 'min="0.6" max="2.5"')}</div>
+            <div class="field"><label for="riDType">${t('editor.roofItem.dormerRoof')}</label><select id="riDType"><option value="gable" ${it.dormer?.type !== 'shed' ? 'selected' : ''}>${t('editor.roofItem.gableRoof')}</option><option value="shed" ${it.dormer?.type === 'shed' ? 'selected' : ''}>${t('editor.roofItem.shedRoof')}</option></select></div>`
+          : `<div class="field"><label for="riSize">${t('editor.roofItem.standardSize')}</label><select id="riSize"><option value="">${t('editor.roofItem.customDimensions')}</option>${Object.keys(ROOF_WINDOWS).map((k) => `<option value="${k}" ${ROOF_WINDOWS[k][0] === it.w && ROOF_WINDOWS[k][1] === it.h ? 'selected' : ''}>${k.replace('x', ' × ')}</option>`).join('')}</select></div>
+            <div class="row2">${num('riW', t('editor.common.widthMeters'), it.w, 0.01, 'min="0.4" max="2"')}${num('riH', t('editor.common.heightMeters'), it.h, 0.01, 'min="0.4" max="2"')}</div>`)
+        + this.sec(t('editor.section.link'), entSel('riCover', t('editor.roofItem.blind'), ents(['cover']), it.cover) + (it.cover ? `<label class="chk"><input type="checkbox" id="riInv" ${it.coverInvert ? 'checked' : ''}> ${t('editor.common.reversePosition')}</label>` : '') + entSel('riContact', t('editor.roofItem.windowContact'), ents(['binary_sensor']), it.contact) + `<p class="hint">${t('editor.roofItem.linkHelp')}</p>`)
+        + `<div class="actions"><button class="btn small" data-act="dup">${t('editor.common.duplicate')}</button><button class="btn small danger" data-act="delRoofItem">${t('editor.common.delete')}</button></div>`;
       return;
     }
     if (s.type === 'solar') {
       const a = site.solar.find((x) => x.id === s.id); if (!a) return this.select(null);
       const top = [...app.stage.levels.values()].find((o) => o.roof)?.roof; const planes = top?.planes || [];
       const S = app.states(); const sensors = Object.keys(S).filter((id) => id.startsWith('sensor.') && (S[id].attributes.device_class === 'power' || /^(k?w)$/i.test(S[id].attributes.unit_of_measurement || '')));
-      title('PV-Feld');
-      box.innerHTML = this.sec('Lage', `<div class="field"><label for="pvPlane">Dachfläche</label><select id="pvPlane"><option value="auto" ${a.plane === 'auto' ? 'selected' : ''}>automatisch (sonnigste)</option>${planes.map((pl, i) => `<option value="${i}" ${String(a.plane) === String(i) ? 'selected' : ''}>${esc(pl.label)}${pl.azimuth != null ? ` (${Math.round(pl.azimuth)}°)` : ''}</option>`).join('')}</select></div>
-          <div class="row2">${num('pvRows', 'Reihen', a.rows, 1, 'min="1" max="12"')}${num('pvCols', 'Spalten', a.cols, 1, 'min="1" max="30"')}</div>
-          <div class="field"><label for="pvOrient">Modul-Ausrichtung</label><select id="pvOrient"><option value="1" ${a.portrait !== false ? 'selected' : ''}>Hochkant</option><option value="0" ${a.portrait === false ? 'selected' : ''}>Quer</option></select></div>
-          <div class="row2">${num('pvOu', 'Versatz seitlich (m)', a.offset?.[0] ?? 0)}${num('pvOv', 'Versatz zum First (m)', a.offset?.[1] ?? 0)}</div>`)
-        + this.sec('Verknüpfung', `<div class="field"><label for="pvEnt">Leistungssensor (W oder kW)</label><select id="pvEnt"><option value="">—</option>${sensors.map((id) => `<option value="${id}" ${id === a.entity_id ? 'selected' : ''}>${esc(app.nameOf(id))}</option>`).join('')}</select></div>${num('pvPeak', 'Spitzenleistung (kWp)', a.peak_kw ?? 5, 0.1, 'min="0.1"')}<p class="hint">Die Module leuchten je nach aktueller Leistung.</p>`)
-        + `<div class="actions"><button class="btn small danger" data-act="delSolar">Löschen</button></div>`;
+      title(t('editor.solar.field'));
+      box.innerHTML = this.sec(t('editor.section.location'), `<div class="field"><label for="pvPlane">${t('editor.roofItem.roofPlane')}</label><select id="pvPlane"><option value="auto" ${a.plane === 'auto' ? 'selected' : ''}>${t('editor.solar.automaticSunniest')}</option>${planes.map((pl, i) => `<option value="${i}" ${String(a.plane) === String(i) ? 'selected' : ''}>${esc(pl.label)}${pl.azimuth != null ? ` (${Math.round(pl.azimuth)}°)` : ''}</option>`).join('')}</select></div>
+          <div class="row2">${num('pvRows', t('editor.solar.rows'), a.rows, 1, 'min="1" max="12"')}${num('pvCols', t('editor.solar.columns'), a.cols, 1, 'min="1" max="30"')}</div>
+          <div class="field"><label for="pvOrient">${t('editor.solar.orientation')}</label><select id="pvOrient"><option value="1" ${a.portrait !== false ? 'selected' : ''}>${t('editor.solar.portrait')}</option><option value="0" ${a.portrait === false ? 'selected' : ''}>${t('editor.solar.landscape')}</option></select></div>
+          <div class="row2">${num('pvOu', t('editor.solar.sideOffset'), a.offset?.[0] ?? 0)}${num('pvOv', t('editor.solar.ridgeOffset'), a.offset?.[1] ?? 0)}</div>`)
+        + this.sec(t('editor.section.link'), `<div class="field"><label for="pvEnt">${t('editor.solar.powerSensor')}</label><select id="pvEnt"><option value="">—</option>${sensors.map((id) => `<option value="${id}" ${id === a.entity_id ? 'selected' : ''}>${esc(app.nameOf(id))}</option>`).join('')}</select></div>${num('pvPeak', t('editor.solar.peakPower'), a.peak_kw ?? 5, 0.1, 'min="0.1"')}<p class="hint">${t('editor.solar.powerHelp')}</p>`)
+        + `<div class="actions"><button class="btn small danger" data-act="delSolar">${t('editor.common.delete')}</button></div>`;
       return;
     }
     if (s.type === 'level') {
       const L = p.levels.find((l) => l.id === s.id); if (!L) return this.select(null);
       const idx = p.levels.indexOf(L), u = L.underlay;
-      title('Etage');
-      box.innerHTML = this.sec('Allgemein', `<div class="field"><label for="lvName">Name</label><input type="text" id="lvName" value="${esc(L.name)}"></div>
-          <div class="field"><label for="lvFloor">Home-Assistant-Etage</label><select id="lvFloor"><option value="">—</option>${app.floors().map((f) => `<option value="${f.floor_id}" ${f.floor_id === L.floor_id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}</select></div>`)
-        + this.sec('Höhen', `<div class="row2">${num('lvH', 'Raumhöhe (m)', L.height, 0.05, 'min="1.8"')}${idx > 0 ? num('lvSlab', 'Deckenstärke (m)', L.slab ?? 0.25, 0.01, 'min="0"') : '<span></span>'}</div>
-          ${idx > 0 ? `<label class="check"><input type="checkbox" id="lvAuto" ${L.autoElevation !== false ? 'checked' : ''}> Höhe automatisch aus Etage darunter</label>` : ''}
-          ${num('lvElev', 'Fußboden über Grund (m)', L.elevation.toFixed(2), 0.05, idx > 0 && L.autoElevation !== false ? 'disabled' : '')}
-          <div class="field"><label for="lvCut">Innenwände in 3D abschneiden bei <output>${L.cutHeight.toFixed(2)} m</output></label><input type="range" id="lvCut" min="0.3" max="${L.height}" step="0.05" value="${L.cutHeight}"></div>`)
-        + this.sec('Bauplan-Vorlage', (this.calib?.measured ? `<div class="field"><label for="calReal">Gemessen: ${this.calib.measured.toFixed(2)} m im Bild. Wirkliche Länge (m)</label><div class="actions"><input type="number" id="calReal" step="0.01" min="0.1" style="flex:1" placeholder="z. B. 4,25"><button class="btn primary small" data-act="calApply">Übernehmen</button></div></div>` : '')
-          + (u ? `<div class="field"><label for="ulOpacity">Deckkraft <output>${Math.round((u.opacity ?? 0.6) * 100)} %</output></label><input type="range" id="ulOpacity" min="0.1" max="1" step="0.05" value="${u.opacity ?? 0.6}"></div>
-            <div class="row2">${num('ulX', 'Versatz X (m)', u.x0)}${num('ulZ', 'Versatz Z (m)', u.z0)}</div>
-            <label class="chk"><input type="checkbox" id="ulShow3d" ${u.show3d ? 'checked' : ''}> Vorlage auch in 3D zeigen (sonst nur in der Draufsicht)</label>
-            <p class="hint">Maßstab: ${(1 / u.mpp).toFixed(1)} Pixel pro Meter. Oben mit dem Lineal eine bekannte Strecke messen.</p>
-            <div class="actions"><button class="btn primary small" data-act="wizard">${icon('sparkle')}Bauplan-Assistent</button><button class="btn small" data-act="calStart">${icon('ruler')}Maßstab messen</button><label class="btn small">${icon('image')}Anderes Bild<input type="file" id="ulFile" accept="image/*" hidden></label><button class="btn small danger" data-act="ulRemove">Entfernen</button></div>
-            <div class="actions" style="margin-top:6px"><button class="btn small" data-act="aiPlan">${icon('sparkle')}Grundriss erkennen lassen</button></div>`
-          : `<p class="hint">Grundriss als Bild oder PDF laden, Maßstab setzen und Räume automatisch erkennen lassen – oder nur als Vorlage zum Nachzeichnen.</p><div class="actions" style="margin-top:6px"><button class="btn primary small" data-act="wizard">${icon('sparkle')}Bauplan-Assistent</button><label class="btn small">${icon('upload')}Nur als Vorlage<input type="file" id="ulFile" accept="image/*" hidden></label></div>`))
-        + this.sec('Etagen', `<div class="actions"><button class="btn small" data-act="addLevel">${icon('plus')}Etage darüber</button><button class="btn small" data-act="addBasement">Keller darunter</button>${p.levels.length > 1 ? `<button class="btn small danger" data-act="delLevel">Etage löschen</button>` : ''}</div>`);
+      title(t('editor.common.level'));
+      box.innerHTML = this.sec(t('editor.section.general'), `<div class="field"><label for="lvName">${t('editor.common.name')}</label><input type="text" id="lvName" value="${esc(L.name)}"></div>
+          <div class="field"><label for="lvFloor">${t('editor.level.haFloor')}</label><select id="lvFloor"><option value="">—</option>${app.floors().map((f) => `<option value="${f.floor_id}" ${f.floor_id === L.floor_id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}</select></div>`)
+        + this.sec(t('editor.section.heights'), `<div class="row2">${num('lvH', t('editor.level.roomHeight'), L.height, 0.05, 'min="1.8"')}${idx > 0 ? num('lvSlab', t('editor.level.slabThickness'), slabThickness(L), 0.01, 'min="0"') : '<span></span>'}</div>
+          ${idx > 0 ? `<label class="check"><input type="checkbox" id="lvAuto" ${L.autoElevation !== false ? 'checked' : ''}> ${t('editor.level.autoElevation')}</label>` : ''}
+          ${num('lvElev', t('editor.level.floorAboveGround'), L.elevation.toFixed(2), 0.05, idx > 0 && L.autoElevation !== false ? 'disabled' : '')}
+          <div class="field"><label for="lvCut">${t('editor.level.cutWallsAt')} <output>${formatNumber(L.cutHeight, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m</output></label><input type="range" id="lvCut" min="0.3" max="${L.height}" step="0.05" value="${L.cutHeight}"></div>`)
+        + this.sec(t('editor.section.floorPlanTemplate'), (this.calib?.measured ? `<div class="field"><label for="calReal">${t('editor.underlay.measuredLength', { measured: formatNumber(this.calib.measured, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}</label><div class="actions"><input type="number" id="calReal" step="0.01" min="0.1" style="flex:1" placeholder="${t('editor.underlay.lengthExample')}"><button class="btn primary small" data-act="calApply">${t('editor.common.apply')}</button></div></div>` : '')
+          + (u ? `<div class="field"><label for="ulOpacity">${t('editor.underlay.opacity')} <output>${Math.round((u.opacity ?? 0.6) * 100)} %</output></label><input type="range" id="ulOpacity" min="0.1" max="1" step="0.05" value="${u.opacity ?? 0.6}"></div>
+            <div class="row2">${num('ulX', t('editor.underlay.offsetX'), u.x0)}${num('ulZ', t('editor.underlay.offsetZ'), u.z0)}</div>
+            <label class="chk"><input type="checkbox" id="ulShow3d" ${u.show3d ? 'checked' : ''}> ${t('editor.underlay.show3d')}</label>
+            <p class="hint">${t('editor.underlay.scaleHelp', { pixels: formatNumber(1 / u.mpp, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}</p>
+            <div class="actions"><button class="btn primary small" data-act="wizard">${icon('sparkle')}${t('editor.toolbar.floorPlanAssistant')}</button><button class="btn small" data-act="calStart">${icon('ruler')}${t('editor.underlay.measureScale')}</button><label class="btn small">${icon('image')}${t('editor.underlay.otherImage')}<input type="file" id="ulFile" accept="image/*" hidden></label><button class="btn small danger" data-act="ulRemove">${t('editor.common.remove')}</button></div>
+            <div class="actions" style="margin-top:6px"><button class="btn small" data-act="aiPlan">${icon('sparkle')}${t('editor.underlay.detectFloorPlan')}</button></div>`
+          : `<p class="hint">${t('editor.underlay.emptyHelp')}</p><div class="actions" style="margin-top:6px"><button class="btn primary small" data-act="wizard">${icon('sparkle')}${t('editor.toolbar.floorPlanAssistant')}</button><label class="btn small">${icon('upload')}${t('editor.underlay.templateOnly')}<input type="file" id="ulFile" accept="image/*" hidden></label></div>`))
+        + this.sec(t('editor.section.levels'), `<div class="actions"><button class="btn small" data-act="addLevel">${icon('plus')}${t('editor.level.addAbove')}</button><button class="btn small" data-act="addBasement">${t('editor.level.addBasement')}</button>${p.levels.length > 1 ? `<button class="btn small danger" data-act="delLevel">${t('editor.level.delete')}</button>` : ''}</div>`);
       return;
     }
     if (this.multi?.length) {
-      const sel = this.selection(); title(`${sel.length} Objekte`);
-      box.innerHTML = this.sec('Mehrfachauswahl', `<p class="hint">${sel.map((x) => { const it = findItem(p, x.id)?.item; return esc(x.type === 'device' ? (it?.entity_id ? app.nameOf(it.entity_id) : KINDS[it?.kind]?.label || '') : this.furnLabel(it || {})); }).join(', ')}</p><p class="hint">Ziehen verschiebt alle gemeinsam. Shift+Klick fügt hinzu oder entfernt, in 2D kannst du einen Rahmen aufziehen.</p>`)
-        + `<div class="actions"><button class="btn small" data-act="rot90">↻ 90°</button><button class="btn small" data-act="dup">Duplizieren</button><button class="btn small danger" data-act="del">Alle löschen</button></div>`;
+      const sel = this.selection(); title(t('editor.selection.objectCount', { count: sel.length }));
+      box.innerHTML = this.sec(t('editor.section.multiSelect'), `<p class="hint">${sel.map((x) => { const it = findItem(p, x.id)?.item; return esc(x.type === 'device' ? (it?.entity_id ? app.nameOf(it.entity_id) : KINDS[it?.kind]?.label || '') : this.furnLabel(it || {})); }).join(', ')}</p><p class="hint">${t('editor.selection.help')}</p>`)
+        + `<div class="actions"><button class="btn small" data-act="rot90">↻ 90°</button><button class="btn small" data-act="dup">${t('editor.common.duplicate')}</button><button class="btn small danger" data-act="del">${t('editor.selection.deleteAll')}</button></div>`;
       return;
     }
     const found = findItem(p, s.id); if (!found) { app.sel = null; return this.renderInspector(); }
     const { item, level: L, type } = found; let h = '';
-    const vis = () => this.sec('Sichtbarkeit', `<label class="check"><input type="checkbox" id="iHidden" ${item.hidden ? 'checked' : ''}> Im Modell ausblenden</label><label class="check"><input type="checkbox" id="iLocked" ${item.locked ? 'checked' : ''}> Sperren (nicht verschiebbar)</label>`);
+    const vis = () => this.sec(t('editor.section.visibility'), `<label class="check"><input type="checkbox" id="iHidden" ${item.hidden ? 'checked' : ''}> ${t('editor.visibility.hideInModel')}</label><label class="check"><input type="checkbox" id="iLocked" ${item.locked ? 'checked' : ''}> ${t('editor.visibility.lock')}</label>`);
     if (type === 'device') {
       const k = KINDS[item.kind]; const asset = this.catalog.find((a) => a.key === (KIND_STYLES[item.kind] ? `${item.kind}:${item.style || Object.keys(KIND_STYLES[item.kind])[0]}` : item.kind));
       const room = roomAt(L, item.pos); const S = app.states();
       const ents = Object.keys(S).filter((id) => entityMatchesKind(item.kind, S[id])).sort((a, b) => (app.areaOf(b) === room?.area_id) - (app.areaOf(a) === room?.area_id) || a.localeCompare(b));
       const used = usedEntities(p);
       const dom = item.entity_id?.split('.')[0]; const altKinds = dom ? Object.entries(KINDS).filter(([kk, v]) => v.domains.includes(dom) && (!S[item.entity_id] || entityMatchesKind(kk, S[item.entity_id]))) : [];
-      title('Gerät');
-      h = `<div class="kind">${asset && thumbFor(asset.key) ? `<img src="${thumbFor(asset.key)}" alt="">` : ''}<div><b>${esc(KIND_STYLES[item.kind]?.[item.style] || k?.label || item.kind)}</b><small>${esc(room?.name || 'außerhalb')} · ${esc(L.name)}</small> ${item.entity_id ? '<span class="badge">verknüpft</span>' : '<span class="badge no">offen</span>'}</div></div>`
-        + this.sec('Verknüpfung', `<div class="field"><label for="iEnt">Home-Assistant-Entität</label><select id="iEnt"><option value="">— nicht verknüpft —</option>${ents.map((id) => `<option value="${id}" ${id === item.entity_id ? 'selected' : ''}>${esc(app.nameOf(id))}${app.areaOf(id) ? ' · ' + esc(app.areaName(app.areaOf(id))) : ''}${used.has(id) && id !== item.entity_id ? ' (belegt)' : ''}</option>`).join('')}</select></div>`)
-        + this.sec('Darstellung', `${altKinds.length > 1 ? `<div class="field"><label for="iKind">Darstellung als</label><select id="iKind">${altKinds.map(([kk, v]) => `<option value="${kk}" ${kk === item.kind ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></div>` : ''}
-          ${KIND_STYLES[item.kind] ? `<div class="field"><label for="iStyle">Form</label><select id="iStyle">${Object.entries(KIND_STYLES[item.kind]).map(([kk, v]) => `<option value="${kk}" ${kk === (item.style || Object.keys(KIND_STYLES[item.kind])[0]) ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>` : ''}
-          ${['strip', 'track', 'pendantTrio'].includes(item.style) || ['tv', 'radiator'].includes(item.kind) ? num('iL', 'Länge/Breite (m)', item.length ?? '', 0.1, 'placeholder="auto"') : ''}`)
-        + this.sec('Position', `<div class="row2">${num('iX', 'X (m)', item.pos[0])}${num('iZ', 'Z (m)', item.pos[1])}</div>
-          ${(item.kind === 'light' ? ['pendant', 'pendantTrio', 'table', 'wall', 'strip', 'outdoorWall'].includes(item.style || 'ceiling') : !['radiator', 'fan', 'vacuum', 'mower', 'valve', 'smoke'].includes(item.kind)) ? num('iY', ['pendant', 'pendantTrio'].includes(item.style) ? 'Unterkante über Boden (m)' : 'Montagehöhe (m)', item.y ?? '', 0.05, 'placeholder="auto"') : `<p class="hint">Hängt an der Decke (${L.height.toFixed(2)} m Raumhöhe).</p>`}
+      const isScreen = item.kind === 'tv';
+      title(t('editor.common.device'));
+      h = `<div class="kind">${asset && thumbFor(asset.key) ? `<img src="${thumbFor(asset.key)}" alt="">` : ''}<div><b>${esc(KIND_STYLES[item.kind]?.[item.style] || k?.label || item.kind)}</b><small>${esc(room?.name || t('editor.common.outside'))} · ${esc(L.name)}</small> ${item.entity_id ? `<span class="badge">${t('editor.common.linked')}</span>` : `<span class="badge no">${t('editor.common.unassigned')}</span>`}</div></div>`
+        + this.sec(t(isScreen ? 'editor.section.screenContent' : 'editor.section.link'), `<div class="field"><label for="iEnt">${t(isScreen ? 'editor.screen.chooseEntity' : 'editor.device.haEntity')}</label><select id="iEnt"><option value="">${t(isScreen ? 'editor.screen.none' : 'editor.device.notLinked')}</option>${ents.map((id) => `<option value="${id}" ${id === item.entity_id ? 'selected' : ''}>${esc(app.nameOf(id))}${app.areaOf(id) ? ' · ' + esc(app.areaName(app.areaOf(id))) : ''}${used.has(id) && id !== item.entity_id ? ` ${t('editor.device.occupied')}` : ''}</option>`).join('')}</select></div>${isScreen ? `<p class="hint">${t(item.entity_id ? 'editor.screen.help' : 'editor.screen.emptyHelp')}</p>` : ''}`)
+        + this.sec(t('editor.section.appearance'), `${altKinds.length > 1 ? `<div class="field"><label for="iKind">${t('editor.device.displayAs')}</label><select id="iKind">${altKinds.map(([kk, v]) => `<option value="${kk}" ${kk === item.kind ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></div>` : ''}
+          ${KIND_STYLES[item.kind] ? `<div class="field"><label for="iStyle">${t('editor.common.shape')}</label><select id="iStyle">${Object.entries(KIND_STYLES[item.kind]).map(([kk, v]) => `<option value="${kk}" ${kk === (item.style || Object.keys(KIND_STYLES[item.kind])[0]) ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>` : ''}
+          ${['strip', 'track', 'pendantTrio'].includes(item.style) || ['tv', 'radiator', 'fireplace'].includes(item.kind) ? num('iL', t(item.kind === 'tv' ? 'editor.device.imageWidth' : 'editor.common.lengthWidthMeters'), item.length ?? '', 0.05, `placeholder="${t('editor.common.auto')}"`) : ''}
+          ${item.kind === 'tv' && item.style === 'curved' ? num('iCurve', t('editor.device.curveRadius'), item.curve ?? 4, 0.1, 'min="1" max="20"') : ''}
+          ${item.kind === 'tv' ? `<p class="hint">${t('editor.device.mediaScreenHelp')}</p>` : ''}`)
+        + (item.kind === 'frame' ? this.frameHtml(item, num) : '')
+        + this.sec(t('editor.section.position'), `<div class="row2">${num('iX', 'X (m)', item.pos[0])}${num('iZ', 'Z (m)', item.pos[1])}</div>
+          ${num('iElevation', t('editor.position.elevation'), app.stage.itemElevation(L.id, type, item.id).toFixed(3), 0.01)}<label><input type="checkbox" id="iAutoElevation" ${automaticPlacement(item, type) ? 'checked' : ''}> ${t('editor.position.automatic')}</label><button class="btn small" data-act="onSurface">${t('editor.position.onSurface')}</button>
           ${rot(item.rot)}`) + vis();
     } else if (type === 'furniture') {
       const def = FURNITURE[item.type] || {}; const fp = furnitureParams(item);
-      title('Möbel');
-      h = `<div class="kind">${thumbFor(`f:${item.type}`) ? `<img src="${thumbFor(`f:${item.type}`)}" alt="">` : ''}<div><b>${esc(def.label || item.type)}</b><small>${esc(roomAt(L, item.pos)?.name || 'außerhalb')} · ${esc(L.name)}</small></div></div>`
-        + this.sec('Maße', `<div class="row2">${def.w != null ? num('fW', 'Breite (m)', fp.w, 0.05, 'min="0.1"') : ''}${def.d != null ? num('fD', 'Tiefe (m)', fp.d, 0.05, 'min="0.05"') : ''}</div>
-          ${def.h != null ? `<div class="row2">${num('fH', 'Höhe (m)', fp.h, 0.05, 'min="0.1"')}<span></span></div>` : ''}
-          ${def.chairs != null ? `<div class="row2">${num('fChairs', 'Stühle', item.chairs ?? def.chairs, 1, 'min="0" max="12"')}<span></span></div>` : ''}
-          ${def.stools != null ? `<div class="row2">${num('fStools', 'Hocker', item.stools ?? def.stools, 1, 'min="0" max="6"')}<span></span></div>` : ''}
-          ${def.color ? `<div class="field"><label for="fC">Farbe</label><input type="color" id="fC" value="${fp.color}"></div>` : ''}`)
+      title(t('editor.common.furniture'));
+      h = `<div class="kind">${thumbFor(`f:${item.type}`) ? `<img src="${thumbFor(`f:${item.type}`)}" alt="">` : ''}<div><b>${esc(def.label || item.type)}</b><small>${esc(roomAt(L, item.pos)?.name || t('editor.common.outside'))} · ${esc(L.name)}</small></div></div>`
+        + (def.screen ? this.sec(t('editor.section.screenContent'), `<div class="field"><label for="lEnt">${t('editor.screen.chooseEntity')}</label><select id="lEnt"><option value="">${t('editor.screen.none')}</option>${Object.keys(app.states()).filter((id) => /^(media_player|camera|image)\./.test(id)).sort().map((id) => `<option value="${id}" ${id === item.entity_id ? 'selected' : ''}>${esc(app.nameOf(id))}</option>`).join('')}</select></div><p class="hint">${t(item.entity_id ? 'editor.screen.help' : 'editor.screen.emptyHelp')}</p>`) : '')
+        + this.sec(t('editor.section.dimensions'), `<div class="row2">${def.w != null ? num('fW', t('editor.common.widthMeters'), fp.w, 0.05, 'min="0.1"') : ''}${def.d != null ? num('fD', t('editor.common.depthMeters'), fp.d, 0.05, 'min="0.05"') : ''}</div>
+          ${def.h != null ? `<div class="row2">${num('fH', t('editor.common.heightMeters'), fp.h, 0.05, 'min="0.1"')}<span></span></div>` : ''}
+          ${def.chairs != null ? `<div class="row2">${num('fChairs', t('editor.furniture.chairs'), item.chairs ?? def.chairs, 1, 'min="0" max="12"')}<span></span></div>` : ''}
+          ${def.stools != null ? `<div class="row2">${num('fStools', t('editor.furniture.stools'), item.stools ?? def.stools, 1, 'min="0" max="6"')}<span></span></div>` : ''}
+          ${def.color ? `<div class="field"><label for="fC">${t('editor.common.color')}</label><input type="color" id="fC" value="${fp.color}"></div>` : ''}`)
         + (item.type === 'stairs' ? this.stairHtml(item, fp, L, num) : '')
-        + this.sec('Position', `<div class="row2">${num('iX', 'X (m)', item.pos[0])}${num('iZ', 'Z (m)', item.pos[1])}</div>${rot(item.rot)}`) + vis();
+        + this.sec(t('editor.section.position'), `<div class="row2">${num('iX', 'X (m)', item.pos[0])}${num('iZ', 'Z (m)', item.pos[1])}</div>${num('iElevation', t('editor.position.elevation'), app.stage.itemElevation(L.id, type, item.id).toFixed(3), 0.01)}<label><input type="checkbox" id="iAutoElevation" ${automaticPlacement(item, type) ? 'checked' : ''}> ${t('editor.position.automatic')}</label><button class="btn small" data-act="onSurface">${t('editor.position.onSurface')}</button>${rot(item.rot)}`) + vis();
     } else if (type === 'room') {
       const surf = Object.entries(SURFACES).filter(([, v]) => (item.kind === 'outdoor') === !!v.outdoor);
-      title(item.kind === 'outdoor' ? 'Außenfläche' : 'Raum');
-      h = this.sec('Allgemein', `<div class="field"><label for="rN">Name</label><input type="text" id="rN" value="${esc(item.name)}"></div>
-          <div class="field"><label for="rA">Home-Assistant-Bereich</label><select id="rA"><option value="">—</option>${app.areas().map((a) => `<option value="${a.area_id}" ${a.area_id === item.area_id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>`)
-        + this.sec('Darstellung', `<div class="row2"><div class="field"><label for="rK">Art</label><select id="rK">${Object.entries(KIND_ROOM).map(([k, v]) => `<option value="${k}" ${k === item.kind ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-          <div class="field"><label for="rS">Oberfläche</label><select id="rS">${surf.map(([k, v]) => `<option value="${k}" ${k === item.surface ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div></div>
-          ${item.kind === 'outdoor' ? `<div class="row2">${num('rR', 'Anhebung (m)', item.raise ?? 0, 0.01)}<span></span></div>` : ''}`)
-        + (item.kind !== 'void' ? this.sec('Dach', `<p class="hint">${item.kind === 'room' ? 'Für Anbau, Gartenhaus oder Wintergarten mit eigenem Dach.' : 'Garage, Carport oder Terrassendach bekommen ein eigenes Dach.'}</p><div class="actions"><button class="btn small" data-act="roomRoof">${icon('roof')}Dach auf diesen Raum</button></div>`) : '')
-        + this.sec('Form', `<p class="hint">${polyArea(item.points).toFixed(1)} m² · ${item.points.length} Ecken. Die Längen stehen an den Wänden im Modell und lassen sich dort eintippen. Ecken ziehen, Mittelpunkt ziehen fügt eine Ecke ein, Doppelklick auf eine Ecke entfernt sie.</p>`);
+      title(t(item.kind === 'outdoor' ? 'editor.roomKind.outdoor' : 'editor.common.room'));
+      h = this.sec(t('editor.section.general'), `<div class="field"><label for="rN">${t('editor.common.name')}</label><input type="text" id="rN" value="${esc(item.name)}"></div>
+          <div class="field"><label for="rA">${t('editor.room.haArea')}</label><select id="rA"><option value="">—</option>${app.areas().map((a) => `<option value="${a.area_id}" ${a.area_id === item.area_id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>`)
+        + this.sec(t('editor.section.appearance'), `<div class="row2"><div class="field"><label for="rK">${t('editor.common.type')}</label><select id="rK">${Object.entries(KIND_ROOM).map(([k, key]) => `<option value="${k}" ${k === item.kind ? 'selected' : ''}>${t(key)}</option>`).join('')}</select></div>
+          <div class="field"><label for="rS">${t('editor.room.surface')}</label><select id="rS">${surf.map(([k, v]) => `<option value="${k}" ${k === item.surface ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div></div>
+          ${item.kind === 'outdoor' ? `<div class="row2">${num('rR', t('editor.room.raise'), item.raise ?? 0, 0.01)}<span></span></div>` : ''}`)
+        + (item.kind !== 'void' ? this.sec(t('editor.common.roof'), `<p class="hint">${t(item.kind === 'room' ? 'editor.room.roofHelpRoom' : 'editor.room.roofHelpOther')}</p><div class="actions"><button class="btn small" data-act="roomRoof">${icon('roof')}${t('editor.room.roofThisRoom')}</button></div>`) : '')
+        + this.sec(t('editor.common.shape'), `<p class="hint">${t('editor.room.shapeHelp', { area: formatNumber(polyArea(item.points), { minimumFractionDigits: 1, maximumFractionDigits: 1 }), corners: item.points.length })}</p>`);
     } else if (type === 'opening') {
       const S = app.states(); const width = Math.hypot(item.to[0] - item.from[0], item.to[1] - item.from[1]);
       const covers = Object.keys(S).filter((id) => id.startsWith('cover.')), contacts = Object.keys(S).filter((id) => id.startsWith('binary_sensor.') && ['door', 'window', 'garage_door', 'opening'].includes(S[id].attributes.device_class));
       const room = roomOfOpening(L, item);
       const sortA = (ids) => ids.sort((a, b) => (app.areaOf(b) === room?.area_id) - (app.areaOf(a) === room?.area_id) || app.nameOf(a).localeCompare(app.nameOf(b)));
       const opt = (ids, cur) => `<option value="">—</option>` + sortA(ids).map((id) => `<option value="${id}" ${id === cur ? 'selected' : ''}>${esc(app.nameOf(id))}${app.areaOf(id) ? ' · ' + esc(app.areaName(app.areaOf(id))) : ''}</option>`).join('');
-      title(OPEN_TYPES[item.type]);
-      h = `<div class="kind"><div><b>${OPEN_TYPES[item.type]}</b><small>${esc(room?.name || '')} · ${esc(L.name)}</small></div></div>`
-        + (item.type === 'window' ? `<div class="field" style="margin-top:8px"><label for="oPre">Vorlage</label><select id="oPre"><option value="">— eigene Maße —</option>${Object.entries(WINDOW_PRESETS).map(([k, w]) => `<option value="${k}" ${item.preset === k ? 'selected' : ''}>${w.label} (${w.w.toFixed(2).replace('.', ',')} m)</option>`).join('')}</select></div>` : '')
-        + (item.type !== 'open' ? this.sec('Verknüpfung', `${['window', 'garage'].includes(item.type) ? `<div class="field"><label for="oC">${item.type === 'garage' ? 'Tor-Antrieb (cover)' : 'Rollladen (cover)'}</label><select id="oC">${opt(covers, item.cover)}</select></div>${item.cover ? `<label class="chk"><input type="checkbox" id="oInv" ${item.coverInvert ? 'checked' : ''}> Position umkehren (Gerät meldet 0 = offen)</label>` : ''}` : ''}
-            <div class="field"><label for="oK">Kontakt (binary_sensor)</label><select id="oK">${opt(contacts, item.contact)}</select></div>`) : '')
-        + this.sec('Maße', `<div class="row2"><div class="field"><label for="oT">Art</label><select id="oT">${Object.entries(OPEN_TYPES).map(([k, v]) => `<option value="${k}" ${k === item.type ? 'selected' : ''}>${v}</option>`).join('')}</select></div>${num('oW', 'Breite (m)', width.toFixed(2), 0.05, 'min="0.3"')}</div>
-          <div class="row2">${item.type === 'window' ? num('oS', 'Brüstung (m)', item.sill ?? 0.9) : '<span></span>'}${num('oH', 'Oberkante (m)', item.head ?? (item.type === 'garage' ? 2.2 : item.type === 'window' ? 2.2 : 2.1))}</div>
-          <p class="hint">Abstände zu den Wandenden stehen im Modell und sind eintippbar.</p>`);
+      title(t(OPEN_TYPES[item.type]));
+      h = `<div class="kind"><div><b>${t(OPEN_TYPES[item.type])}</b><small>${esc(room?.name || '')} · ${esc(L.name)}</small></div></div>`
+        + (item.type === 'window' ? `<div class="field" style="margin-top:8px"><label for="oPre">${t('editor.common.template')}</label><select id="oPre"><option value="">${t('editor.opening.customDimensions')}</option>${Object.entries(WINDOW_PRESETS).map(([k, w]) => `<option value="${k}" ${item.preset === k ? 'selected' : ''}>${t(`editor.windowPreset.${k}`)} (${formatNumber(w.w, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m)</option>`).join('')}</select></div>` : '')
+        + (item.type !== 'open' ? this.sec(t('editor.section.link'), `${['window', 'garage'].includes(item.type) ? `<div class="field"><label for="oC">${t(item.type === 'garage' ? 'editor.opening.gateDrive' : 'editor.opening.shutter')}</label><select id="oC">${opt(covers, item.cover)}</select></div>${item.cover ? `<label class="chk"><input type="checkbox" id="oInv" ${item.coverInvert ? 'checked' : ''}> ${t('editor.opening.reversePosition')}</label>` : ''}` : ''}
+            <div class="field"><label for="oK">${t('editor.opening.contact')}</label><select id="oK">${opt(contacts, item.contact)}</select></div>`) : '')
+        + this.sec(t('editor.section.dimensions'), `<div class="row2"><div class="field"><label for="oT">${t('editor.common.type')}</label><select id="oT">${Object.entries(OPEN_TYPES).map(([k, key]) => `<option value="${k}" ${k === item.type ? 'selected' : ''}>${t(key)}</option>`).join('')}</select></div>${num('oW', t('editor.common.widthMeters'), width.toFixed(2), 0.05, 'min="0.3"')}</div>
+          <div class="row2">${item.type === 'window' ? num('oS', t('editor.opening.sill'), item.sill ?? 0.9) : '<span></span>'}${num('oH', t('editor.opening.topEdge'), item.head ?? (item.type === 'garage' ? 2.2 : item.type === 'window' ? 2.2 : 2.1))}</div>
+          <p class="hint">${t('editor.opening.distancesHelp')}</p>`);
     } else { app.sel = null; return this.renderInspector(); }
-    h += `<div class="actions">${['device', 'furniture'].includes(type) ? `<button class="btn small" data-act="rot90">↻ 90°</button><button class="btn small" data-act="dup">Duplizieren</button>` : ''}<button class="btn small danger" data-act="del">Löschen</button></div>`;
+    h += `<div class="actions">${['device', 'furniture'].includes(type) ? `<button class="btn small" data-act="rot90">↻ 90°</button><button class="btn small" data-act="dup">${t('editor.common.duplicate')}</button>` : ''}<button class="btn small danger" data-act="del">${t('editor.common.delete')}</button></div>`;
     box.innerHTML = h;
   }
   async onInspChange(e, live = false) {
-    const app = this.app, s = app.sel, p = app.plan, site = p.site; const t = e.target, v = t.value, id = t.id;
-    const out = (txt) => { const o = t.previousElementSibling?.querySelector?.('output') || t.closest('.field')?.querySelector('output'); if (o) o.textContent = txt; };
+    const app = this.app, s = app.sel, p = app.plan, site = p.site; const target = e.target, v = target.value, id = target.id;
+    const out = (txt) => { const o = target.previousElementSibling?.querySelector?.('output') || target.closest('.field')?.querySelector('output'); if (o) o.textContent = txt; };
     // files
-    if (id === 'ulFile' && t.files?.[0]) return this.uploadUnderlay(t.files[0]);
-    if (id === 'backupFile' && t.files?.[0]) return this.importBackup(t.files[0]);
-    if (id === 'jsonFile' && t.files?.[0]) { try { const plan = migrate(JSON.parse(await t.files[0].text())); if (!plan) throw new Error('Unbekanntes Format'); app.pushUndo(); app.setPlan(plan, { frame: true }); app.markDirty(); app.toast('Plan geladen'); } catch (err) { app.toast(`Import fehlgeschlagen: ${err.message}`); } return; }
-    if (id === 'sh3dFile' && t.files?.[0]) { try { const { plan, stats } = await importSh3d(t.files[0], p); app.pushUndo(); app.setPlan(plan, { frame: true }); app.markDirty(); app.toast(`Importiert: ${stats.rooms} Räume, ${stats.openings} Öffnungen, ${stats.furniture} Möbel, ${stats.levels} Etagen`); } catch (err) { console.error(err); app.toast(`Sweet-Home-3D-Import fehlgeschlagen: ${err.message}`); } return; }
-    if (id === 'stKeep') { this.keepRoofType = t.checked; this.renderInspector(); return; }
+    if (id === 'ulFile' && target.files?.[0]) return this.uploadUnderlay(target.files[0]);
+    if (id === 'backupFile' && target.files?.[0]) return this.importBackup(target.files[0]);
+    if (id === 'frFile' && target.files?.[0]) { const found = s && findItem(p, s.id); if (found?.type === 'device') await this.uploadArt(found.item, target.files[0]); return this.renderInspector(); }
+    if (id === 'jsonFile' && target.files?.[0]) { try { const plan = migrate(JSON.parse(await target.files[0].text())); if (!plan) throw new Error(t('editor.error.unknownFormat')); app.pushUndo(); app.setPlan(plan, { frame: true }); app.markDirty(); app.toast(t('editor.toast.planLoaded')); } catch (err) { app.toast(t('editor.toast.importFailed', { message: err.message })); } return; }
+    if (id === 'sh3dFile' && target.files?.[0]) { try { const { plan, stats } = await importSh3d(target.files[0], p); app.pushUndo(); app.setPlan(plan, { frame: true }); app.markDirty(); app.toast(t('editor.toast.sh3dImported', stats)); } catch (err) { console.error(err); app.toast(t('editor.toast.sh3dImportFailed', { message: err.message })); } return; }
+    if (id === 'stKeep') { this.keepRoofType = target.checked; this.renderInspector(); return; }
     if (!live || !this._liveUndo) { app.pushUndo(); this._liveUndo = live; } if (!live) this._liveUndo = false;
     // house
     if (id === 'stName') { p.name = v; app.markDirty(); this.renderLeft(); return; }
@@ -560,7 +592,7 @@ export class Editor {
     if (['faMat', 'faColor', 'faPlinth', 'faFrame'].includes(id)) { site.facade[{ faMat: 'material', faColor: 'color', faPlinth: 'plinth', faFrame: 'frame' }[id]] = v; clearTimeout(this._facT); this._facT = setTimeout(() => { app.stage.rebuildAll(); this.showRoofIfOff(); }, live ? 150 : 0); app.markDirty(); if (!live) this.renderInspector(); return; }
     if (['rfRot', 'rfRotN', 'rfLen', 'rfWid', 'rfCx', 'rfCz'].includes(id)) {
       const r = site.roof; r.rect = { ...this.roofRectNow() }; const R = r.rect;
-      if (id === 'rfRot' || id === 'rfRotN') { R.rot = ((+v + 540) % 360) - 180; if (id === 'rfRot') out(`${(+v).toFixed(1)}°`); }
+      if (id === 'rfRot' || id === 'rfRotN') { R.rot = ((+v + 540) % 360) - 180; if (id === 'rfRot') out(`${formatNumber(+v, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}°`); }
       if (id === 'rfLen') R.length = Math.max(0.5, +v); if (id === 'rfWid') R.width = Math.max(0.5, +v); if (id === 'rfCx') R.cx = +v; if (id === 'rfCz') R.cz = +v;
       clearTimeout(this._roofT); this._roofT = setTimeout(() => { app.stage.layout(); this.roofHandles(); }, live ? 60 : 0); this.dimsDirty = true; app.markDirty(); if (!live) this.renderInspector(); return;
     }
@@ -573,7 +605,7 @@ export class Editor {
       this.showRoofIfOff(); clearTimeout(this._roofT); this._roofT = setTimeout(() => app.stage.layout(), live ? 120 : 0); app.markDirty(); if (!live) this.renderInspector(); this.renderLeft(); return;
     }
     if (['dtSoffit', 'dtRafters', 'dtPurlins', 'dtFly', 'dtBrackets', 'dtBraces', 'dtSpacing', 'dtRh', 'dtPOut', 'dtBarge', 'dtWood'].includes(id)) {
-      const D = (site.roof.details = { ...DEFAULT_DETAILS, ...(site.roof.details || {}) }); const c = t.checked;
+      const D = (site.roof.details = { ...DEFAULT_DETAILS, ...(site.roof.details || {}) }); const c = target.checked;
       ({ dtSoffit: () => (D.soffit = v), dtRafters: () => (D.rafters = c), dtPurlins: () => (D.purlins = c), dtFly: () => (D.flyRafter = c), dtBrackets: () => (D.brackets = c), dtBraces: () => (D.braces = c), dtSpacing: () => (D.spacing = Math.max(0.3, +v)), dtRh: () => (D.rh = Math.max(0.06, +v / 100)), dtPOut: () => (D.purlinOut = Math.max(0, +v)), dtBarge: () => (D.barge = v), dtWood: () => (D.wood = v) })[id]();
       if (id === 'dtSoffit' && v === 'open' && !D.rafters) D.rafters = true;
       this.showRoofIfOff(); clearTimeout(this._roofT); this._roofT = setTimeout(() => app.stage.layout(), live ? 150 : 0); app.markDirty(); if (!live && id !== 'dtWood') this.renderInspector(); return;
@@ -583,7 +615,7 @@ export class Editor {
       const x = (site.roofs || []).find((r) => r.id === s.id); if (!x) return; x.rect ||= { cx: 0, cz: 0, length: 3, width: 3, rot: 0 }; const R = x.rect;
       if (id === 'xrName') { x.name = v; this.renderLeft(); app.markDirty(); return; }
       if (id === 'xrType') { x.type = v; const fl = v === 'flat'; if (!!ROOF_COVERS[x.cover]?.flat !== fl) x.cover = fl ? (x.posts ? 'blech' : 'kies') : 'pfanne'; if (!fl && (x.pitch ?? 0) < 10) x.pitch = 25; }
-      if (id === 'xrCover') x.cover = v; if (id === 'xrPitch') x.pitch = +v; if (id === 'xrOh') x.overhang = Math.max(0, +v); if (id === 'xrLevel') x.levelId = v; if (id === 'xrH') x.height = Math.max(1.8, +v); if (id === 'xrPosts') x.posts = t.checked;
+      if (id === 'xrCover') x.cover = v; if (id === 'xrPitch') x.pitch = +v; if (id === 'xrOh') x.overhang = Math.max(0, +v); if (id === 'xrLevel') x.levelId = v; if (id === 'xrH') x.height = Math.max(1.8, +v); if (id === 'xrPosts') x.posts = target.checked;
       if (id === 'xrLen') R.length = Math.max(0.5, +v); if (id === 'xrWid') R.width = Math.max(0.5, +v); if (id === 'xrCx') R.cx = +v; if (id === 'xrCz') R.cz = +v; if (id === 'xrRot') R.rot = ((+v + 540) % 360) - 180;
       app.stage.layout(); app.markDirty(); if (!live && ['xrType', 'xrPosts', 'xrLevel', 'xrRot'].includes(id)) { this.renderInspector(); this.renderLeft(); } else if (!live) this.renderInspector(); return;
     }
@@ -597,29 +629,36 @@ export class Editor {
       const L = p.levels.find((l) => l.id === s.id); if (!L) return;
       if (id === 'lvName') { L.name = v; app.renderLevels(); this.renderLeft(); this.renderStatus(); app.markDirty(); return; }
       if (id === 'lvFloor') { L.floor_id = v || null; app.markDirty(); return; }
-      if (id === 'lvCut') { L.cutHeight = +v; out(`${(+v).toFixed(2)} m`); clearTimeout(this._cutT); this._cutT = setTimeout(() => { app.stage.rebuildLevel(L.id); app.markDirty(); }, 120); return; }
+      if (id === 'lvCut') { L.cutHeight = +v; out(`${formatNumber(+v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`); clearTimeout(this._cutT); this._cutT = setTimeout(() => { app.stage.rebuildLevel(L.id); app.markDirty(); }, 120); return; }
       if (id === 'ulOpacity') { L.underlay.opacity = +v; out(`${Math.round(v * 100)} %`); app.stage.updateUnderlay(L.id); app.markDirty(); return; }
-      if (id === 'ulShow3d') { L.underlay.show3d = t.checked; app.stage.layout(); app.markDirty(); return; }
+      if (id === 'ulShow3d') { L.underlay.show3d = target.checked; app.stage.layout(); app.markDirty(); return; }
       if (id === 'ulX' || id === 'ulZ') { L.underlay[id === 'ulX' ? 'x0' : 'z0'] = +v; app.stage.updateUnderlay(L.id); app.markDirty(); return; }
       if (id === 'lvH') { L.height = Math.max(1.8, +v); L.cutHeight = Math.min(L.cutHeight, L.height); }
       if (id === 'lvSlab') L.slab = Math.max(0, +v);
-      if (id === 'lvAuto') L.autoElevation = t.checked ? undefined : false;
+      if (id === 'lvAuto') L.autoElevation = target.checked ? undefined : false;
       if (id === 'lvElev') { L.elevation = +v; if (p.levels.indexOf(L) > 0) L.autoElevation = false; }
       computeElevations(p); app.stage.rebuildAll(); app.renderLevels(); app.buildLabels(); app.markDirty(); this.renderInspector(); this.renderLeft(); this.renderStatus(); return;
     }
     const f = s && findItem(p, s.id); if (!f) return;
     const { item, level: L, type } = f;
-    if (id === 'iHidden' || id === 'iLocked') { if (t.checked) item[id === 'iHidden' ? 'hidden' : 'locked'] = true; else delete item[id === 'iHidden' ? 'hidden' : 'locked']; if (id === 'iHidden') { app.stage.refreshItem(L.id, type, item); app.stage.select(s); } app.markDirty(); this.renderLeft(); return; }
+    if (id === 'iAutoElevation') { item.autoElevation = target.checked; if (!target.checked) item.elevation = app.stage.itemElevation(L.id, type, item.id); app.stage.settleItem(L.id, type, item); app.markDirty(); this.renderInspector(); return; }
+    if (id === 'iHidden' || id === 'iLocked') { if (target.checked) item[id === 'iHidden' ? 'hidden' : 'locked'] = true; else delete item[id === 'iHidden' ? 'hidden' : 'locked']; if (id === 'iHidden') { app.stage.refreshItem(L.id, type, item); app.stage.select(s); } app.markDirty(); this.renderLeft(); return; }
     if (id === 'iRot') { item.rot = +v; out(`${v}°`); app.stage.moveItem(L.id, type, item); app.markDirty(); return; }
     if (type === 'device') {
-      if (id === 'iEnt') item.entity_id = v || undefined; if (id === 'iStyle') { item.style = v; Object.assign(item, deviceDefaults(item.kind, v)); } if (id === 'iKind') { item.kind = v; delete item.style; delete item.y; Object.assign(item, deviceDefaults(v)); }
-      if (id === 'iX') item.pos[0] = +v; if (id === 'iZ') item.pos[1] = +v; if (id === 'iY') { if (v === '') delete item.y; else item.y = +v; } if (id === 'iL') { if (v === '') delete item.length; else item.length = +v; }
+      if (id === 'iEnt') item.entity_id = v || undefined; if (id === 'iStyle') { item.style = v; Object.assign(item, deviceDefaults(item.kind, v)); markStandaloneProjectorScreen(item); } if (id === 'iKind') { item.kind = v; delete item.style; delete item.y; Object.assign(item, deviceDefaults(v)); }
+      if (id === 'iElevation') { item.elevation = Number.isFinite(+v) ? +v : 0; item.autoElevation = false; } if (id === 'iX') item.pos[0] = +v; if (id === 'iZ') item.pos[1] = +v; if (id === 'iY') { if (v === '') delete item.y; else item.y = +v; } if (id === 'iL') { if (v === '') delete item.length; else item.length = +v; }
+      if (id === 'iCurve') item.curve = Math.max(1, +v);
+      if (id === 'frSrc') { item.src = v; if (v === 'entity' && !item.entity_id) app.toast(t('editor.frame.linkHint')); }
+      if (id === 'frSize' && FRAME_SIZES[v]) { const [, w, h] = FRAME_SIZES[v]; const landscape = (item.fw || 0.5) > (item.fh || 0.7) && v !== 'pano'; item.fw = landscape ? h : w; item.fh = landscape ? w : h; }
+      if (id === 'frW') item.fw = Math.max(0.1, +v); if (id === 'frH') item.fh = Math.max(0.1, +v); if (id === 'frStyle') item.frame = v; if (id === 'frPasse') item.passe = target.checked; if (id === 'frInt') item.interval = Math.max(30, +v); if (id === 'frFolder') item.folder = v || undefined;
       app.stage.refreshItem(L.id, type, item);
+      if (['iX', 'iZ', 'fW', 'fD', 'fH'].includes(id)) app.stage.settleItem(L.id, type, item);
     } else if (type === 'furniture') {
       if (id === 'stShape') { item.shape = v === 'straight' ? undefined : v; if (v === 'half' && (item.width ?? 1) < 2) item.width = 2.2; if (v === 'quarter' && (item.width ?? 1) < 2) item.width = 2.2; }
-      if (id === 'stTurn') item.turn = v; if (id === 'stFw') item.fw = Math.max(0.6, +v);
-      if (id === 'iX') item.pos[0] = +v; if (id === 'iZ') item.pos[1] = +v; if (id === 'fW') item.width = +v; if (id === 'fD') item.depth = +v; if (id === 'fH') item.height = +v; if (id === 'fC') item.color = v; if (id === 'fChairs') item.chairs = +v; if (id === 'fStools') item.stools = +v;
+      if (id === 'stTurn') item.turn = v; if (id === 'stFw') item.fw = Math.max(0.6, +v); if (id === 'lEnt') item.entity_id = v || undefined;
+      if (id === 'iElevation') { item.elevation = Number.isFinite(+v) ? +v : 0; item.autoElevation = false; } if (id === 'iX') item.pos[0] = +v; if (id === 'iZ') item.pos[1] = +v; if (id === 'fLift') item.lift = Number.isFinite(+v) ? +v : 0; if (id === 'fW') item.width = +v; if (id === 'fD') item.depth = +v; if (id === 'fH') item.height = +v; if (id === 'fC') item.color = v; if (id === 'fChairs') item.chairs = +v; if (id === 'fStools') item.stools = +v;
       app.stage.refreshItem(L.id, type, item);
+      if (['iX', 'iZ', 'fW', 'fD', 'fH'].includes(id)) app.stage.settleItem(L.id, type, item);
     } else if (type === 'room') {
       if (id === 'rN') item.name = v; if (id === 'rA') item.area_id = v || null; if (id === 'rS') item.surface = v; if (id === 'rR') item.raise = +v;
       if (id === 'rK') { item.kind = v; const outdoor = v === 'outdoor'; if (outdoor !== !!SURFACES[item.surface]?.outdoor) item.surface = outdoor ? 'lawn' : v === 'garage' ? 'concrete' : 'oak'; }
@@ -627,18 +666,18 @@ export class Editor {
     } else if (type === 'opening') {
       if (id === 'oPre' && WINDOW_PRESETS[v]) { const w = WINDOW_PRESETS[v]; item.preset = v; item.sill = w.sill; item.head = w.head; const cx = (item.from[0] + item.to[0]) / 2, cz = (item.from[1] + item.to[1]) / 2, dx = item.to[0] - item.from[0], dz = item.to[1] - item.from[1], L0 = Math.hypot(dx, dz) || 1; item.from = [r3(cx - dx / L0 * w.w / 2), r3(cz - dz / L0 * w.w / 2)]; item.to = [r3(cx + dx / L0 * w.w / 2), r3(cz + dz / L0 * w.w / 2)]; }
       if (['oS', 'oH', 'oW'].includes(id)) delete item.preset;
-      if (id === 'oT') item.type = v; if (id === 'oS') item.sill = +v; if (id === 'oH') item.head = +v; if (id === 'oC') item.cover = v || undefined; if (id === 'oInv') item.coverInvert = t.checked || undefined; if (id === 'oK') item.contact = v || undefined;
+      if (id === 'oT') item.type = v; if (id === 'oS') item.sill = +v; if (id === 'oH') item.head = +v; if (id === 'oC') item.cover = v || undefined; if (id === 'oInv') item.coverInvert = target.checked || undefined; if (id === 'oK') item.contact = v || undefined;
       if (id === 'oW') { const w = Math.max(0.3, +v); const cx = (item.from[0] + item.to[0]) / 2, cz = (item.from[1] + item.to[1]) / 2, dx = item.to[0] - item.from[0], dz = item.to[1] - item.from[1], L0 = Math.hypot(dx, dz) || 1; item.from = [r3(cx - dx / L0 * w / 2), r3(cz - dz / L0 * w / 2)]; item.to = [r3(cx + dx / L0 * w / 2), r3(cz + dz / L0 * w / 2)]; }
       app.stage.rebuildLevel(L.id);
     }
     app.stage.select(s); app.markDirty(); app.scheduleUI(true); this.dimsDirty = true; this.markSelection();
-    if (['oT', 'oPre', 'iKind', 'iStyle', 'rK', 'iEnt', 'oC', 'oK', 'stShape', 'stTurn'].includes(id)) { this.renderInspector(); this.renderLeft(); }
+    if (['iElevation', 'iX', 'iZ', 'oT', 'oPre', 'iKind', 'iStyle', 'rK', 'iEnt', 'oC', 'oK', 'stShape', 'stTurn', 'frSrc', 'frSize', 'frStyle', 'lEnt'].includes(id)) { this.renderInspector(); this.renderLeft(); }
     else if (['stFw', 'fW', 'fD', 'fH'].includes(id) && item?.type === 'stairs') this.renderInspector();
   }
   showRoofIfOff() { const app = this.app; if (!app.roofOn && app.hasRoof()) app.setLevel('all'); }
   onInspClick(e) {
     const app = this.app, s = app.sel, p = app.plan, L = this.level;
-    const sty = e.target.closest('[data-style]'); if (sty) { app.pushUndo(); applyStyle(p.site, sty.dataset.style, { keepType: this.keepRoofType !== false }); this.showRoofIfOff(); app.stage.rebuildAll(); app.stage.layout(); app.markDirty(); this.renderInspector(); app.toast(`Stil: ${ROOF_STYLES[sty.dataset.style].label}`); return; }
+    const sty = e.target.closest('[data-style]'); if (sty) { app.pushUndo(); applyStyle(p.site, sty.dataset.style, { keepType: this.keepRoofType !== false }); this.showRoofIfOff(); app.stage.rebuildAll(); app.stage.layout(); app.markDirty(); this.renderInspector(); app.toast(t('editor.toast.styleApplied', { style: ROOF_STYLES[sty.dataset.style].label })); return; }
     const hd = e.target.closest('[data-head]'); if (hd) { app.pushUndo(); const D = (p.site.roof.details = { ...DEFAULT_DETAILS, ...(p.site.roof.details || {}) }); D.head = hd.dataset.head; if (D.head === 'bracket') D.brackets = true; app.stage.layout(); app.markDirty(); this.renderInspector(); return; }
     const wd = e.target.closest('[data-wood]'); if (wd) { app.pushUndo(); const D = (p.site.roof.details = { ...DEFAULT_DETAILS, ...(p.site.roof.details || {}) }); D.wood = wd.dataset.wood; app.stage.layout(); app.markDirty(); this.renderInspector(); return; }
     const ri = e.target.closest('[data-ritem]'); if (ri) { this.select({ type: 'roofitem', id: ri.dataset.ritem }); return; }
@@ -650,18 +689,25 @@ export class Editor {
     if (act === 'roomRoof' && s?.type === 'room') { const f = findItem(p, s.id); if (f) return this.addExtraRoof(f.item.points, { levelId: f.level.id, room: f.item }); return; }
     if (act === 'xrRot90' || act === 'xrDup') { const x = (p.site.roofs || []).find((r) => r.id === s?.id); if (!x) return; app.pushUndo();
       if (act === 'xrRot90') { x.rect.rot = ((x.rect.rot + 90 + 540) % 360) - 180; const l = x.rect.length; x.rect.length = x.rect.width; x.rect.width = l; app.stage.layout(); app.markDirty(); return this.renderInspector(); }
-      const c = structuredClone(x); c.id = newId('xr'); c.name = `${x.name} (Kopie)`; c.rect.cx = r3(c.rect.cx + 1); p.site.roofs.push(c); app.stage.layout(); app.markDirty(); return this.select({ type: 'xroof', id: c.id }); }
+      const c = structuredClone(x); c.id = newId('xr'); c.name = t('editor.common.copyName', { name: x.name }); c.rect.cx = r3(c.rect.cx + 1); p.site.roofs.push(c); app.stage.layout(); app.markDirty(); return this.select({ type: 'xroof', id: c.id }); }
+    if (act === 'frTurn') { const found = findItem(p, s?.id); if (!found) return; app.pushUndo(); const width = found.item.fw || 0.5; found.item.fw = found.item.fh || 0.7; found.item.fh = width; app.stage.refreshItem(found.level.id, 'device', found.item); app.markDirty(); return this.renderInspector(); }
     if (act === 'stFlip' || act === 'stFit') { const f = findItem(p, s?.id); if (!f) return; app.pushUndo(); const it = f.item;
       if (act === 'stFlip') it.rot = (((it.rot || 0) + 180 + 180) % 360) - 180;
       else { const i = p.levels.indexOf(f.level), up = p.levels[i + 1]; if (up) it.height = r3(up.elevation - f.level.elevation); }
       app.stage.refreshItem(f.level.id, 'furniture', it); app.markDirty(); return this.renderInspector(); }
+    if (act === 'onSurface') {
+      const found = s && findItem(p, s.id); if (!found || !['device', 'furniture'].includes(found.type)) return;
+      const elevation = app.stage.supportElevation(found.level.id, found.type, found.item.id);
+      app.pushUndo(); app.applyLocal({ op: 'move_item', level_id: found.level.id, item_id: found.item.id, elevation, autoElevation: true });
+      this.renderInspector(); return;
+    }
     if (act === 'rot90') return this.rotateSel();
     if (act === 'del') return this.deleteSel();
     if (act === 'dup') return this.duplicateSel();
     if (act === 'roofRot') { app.pushUndo(); const r = p.site.roof; r.rect = { ...this.roofRectNow() }; r.rect.rot = ((r.rect.rot + +e.target.closest('[data-deg]').dataset.deg + 540) % 360) - 180; app.stage.layout(); this.roofHandles(); this.dimsDirty = true; app.markDirty(); this.renderInspector(); return; }
     if (act === 'roofFit') { app.pushUndo(); delete p.site.roof.rect; app.stage.layout(); this.roofHandles(); this.dimsDirty = true; app.markDirty(); this.renderInspector(); return; }
     if (act === 'resetAll') {
-      if (!confirm('Wirklich alle HomeTwin-Daten zurücksetzen? Plan, Räume, Geräte-Positionen und Bauplan-Vorlagen werden gelöscht. Rückgängig ist danach nur mit einem vorher exportierten JSON möglich.')) return;
+      if (!confirm(t('editor.confirm.resetAll'))) return;
       this.images?.clear?.(); app.undoStack = []; app.redoStack = []; app.setPlan(emptyPlan(), { frame: true }); app.markDirty(); app.setMode('view'); app._firstRun = true; app.showOnboarding(); return;
     }
     if (act === 'wizard') return app.wizard.open({ levelId: s?.type === 'level' ? s.id : L.id });
@@ -676,19 +722,19 @@ export class Editor {
     if (act === 'addSolar') { app.pushUndo(); const a = { id: newId('pv'), plane: 'auto', rows: 2, cols: 5, portrait: true, offset: [0, 0], entity_id: null, peak_kw: 4 }; p.site.solar.push(a); this.showRoof(); app.stage.layout(); app.markDirty(); this.expanded.add('roof:roof'); return this.select({ type: 'solar', id: a.id }); }
     if (act === 'delSolar') { app.pushUndo(); p.site.solar = p.site.solar.filter((x) => x.id !== s.id); app.stage.layout(); app.markDirty(); return this.select({ type: 'roof', id: 'roof' }); }
     if (act === 'backupExport') return this.exportBackup();
-    if (act === 'export') return this.showModal('Plan (JSON)', JSON.stringify(p, null, 2));
+    if (act === 'export') return this.showModal(t('editor.file.planJsonTitle'), JSON.stringify(p, null, 2));
     if (act === 'demo' || act === 'empty') { app.pushUndo(); app.setPlan(act === 'demo' ? demoPlan() : emptyPlan(), { frame: true }); app.markDirty(); return this.select(null); }
-    if (act === 'aiPlan') return app.agent.open('Erkenne bitte aus dem Grundriss-Bild die Räume, Türen und Fenster dieser Etage und lege sie an.', { image: true });
+    if (act === 'aiPlan') return app.agent.open(t('editor.ai.detectFloorPlanPrompt'), { image: true });
     if (act === 'calStart') return this.setTool('calibrate');
-    if (act === 'calApply') { const real = parseFloat(String(app.$('calReal')?.value).replace(',', '.')); if (real > 0 && this.calib?.measured) { app.pushUndo(); L.underlay.mpp *= real / this.calib.measured; this.calib = null; app.stage.updateUnderlay(L.id); app.markDirty(); this.setTool('select'); this.renderInspector(); app.toast('Maßstab übernommen'); } return; }
+    if (act === 'calApply') { const real = parseFloat(String(app.$('calReal')?.value).replace(',', '.')); if (real > 0 && this.calib?.measured) { app.pushUndo(); L.underlay.mpp *= real / this.calib.measured; this.calib = null; app.stage.updateUnderlay(L.id); app.markDirty(); this.setTool('select'); this.renderInspector(); app.toast(t('editor.toast.scaleApplied')); } return; }
     if (act === 'ulRemove') { app.pushUndo(); L.underlay = null; app.stage.setUnderlay(L.id, null); app.markDirty(); this.renderInspector(); this.renderBar(); return; }
     if (act === 'addLevel' || act === 'addBasement') {
       app.pushUndo(); const top = p.levels[p.levels.length - 1], bottom = p.levels[0];
-      const nl = act === 'addLevel' ? newLevel(p.levels.length === 1 ? 'Obergeschoss' : `${p.levels.length}. Etage`, top.elevation + top.height + 0.25, { height: 2.5 }) : newLevel('Keller', r3(bottom.elevation - 2.35 - 0.25), { height: 2.35 });
+      const nl = act === 'addLevel' ? newLevel(p.levels.length === 1 ? t('editor.level.upperFloor') : t('editor.level.numbered', { number: p.levels.length }), top.elevation + top.height + 0.25, { height: 2.5 }) : newLevel(t('editor.level.basement'), r3(bottom.elevation - 2.35 - 0.25), { height: 2.35 });
       const src = act === 'addLevel' ? top : bottom;
-      nl.rooms = src.rooms.filter((r) => r.kind === 'room' || r.kind === 'garage').map((r) => ({ id: newId('r'), name: act === 'addLevel' ? `${r.name} (OG)` : 'Kellerraum', kind: 'room', surface: act === 'addLevel' ? 'oak' : 'concrete', area_id: null, points: r.points.map((q) => [...q]) }));
+      nl.rooms = src.rooms.filter((r) => r.kind === 'room' || r.kind === 'garage').map((r) => ({ id: newId('r'), name: act === 'addLevel' ? t('editor.level.upperRoomName', { name: r.name }) : t('editor.level.basementRoom'), kind: 'room', surface: act === 'addLevel' ? 'oak' : 'concrete', area_id: null, points: r.points.map((q) => [...q]) }));
       if (act === 'addBasement') { nl.autoElevation = false; bottom.autoElevation = bottom.autoElevation ?? undefined; }
-      p.levels.push(nl); computeElevations(p); app.stage.rebuildAll(); app.setLevel(nl.id); app.markDirty(); this.select({ type: 'level', id: nl.id, level: nl.id }); app.toast(`${nl.name} angelegt (+${nl.elevation.toFixed(2)} m), Umriss übernommen`);
+      p.levels.push(nl); computeElevations(p); app.stage.rebuildAll(); app.setLevel(nl.id); app.markDirty(); this.select({ type: 'level', id: nl.id, level: nl.id }); app.toast(t('editor.toast.levelCreated', { name: nl.name, elevation: formatNumber(nl.elevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }));
       return;
     }
     if (act === 'delLevel') { app.pushUndo(); p.levels.splice(p.levels.indexOf(L), 1); computeElevations(p); app.stage.rebuildAll(); app.setLevel(p.levels[0].id); app.markDirty(); return this.select(null); }
@@ -783,7 +829,7 @@ export class Editor {
   }
   pointerMove(e) {
     const app = this.app, st = app.stage, L = this.level;
-    if (!this._coordT) { this._coordT = requestAnimationFrame(() => { this._coordT = null; }); const fp = st.floorPoint(e, L.id), el = app.$('stCoord'); if (fp && el) el.textContent = `x ${fp[0].toFixed(2)} · z ${fp[1].toFixed(2)} m`; }
+    if (!this._coordT) { this._coordT = requestAnimationFrame(() => { this._coordT = null; }); const fp = st.floorPoint(e, L.id), el = app.$('stCoord'); if (fp && el) el.textContent = `x ${formatNumber(fp[0], { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · z ${formatNumber(fp[1], { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`; }
     if (this.drag?.roofItem) {
       const it = (app.plan.site.roofItems || []).find((x) => x.id === this.drag.roofItem); const rp = it && st.roofPlanePoint(e); if (!rp) return true;
       if (!this.drag.undo) { app.pushUndo(); this.drag.undo = true; }
@@ -833,7 +879,7 @@ export class Editor {
           .filter(({ it }) => !it.hidden && !it.locked && it.pos[0] >= x0 && it.pos[0] <= x1 && it.pos[1] >= z0 && it.pos[1] <= z1).map(({ type, it }) => ({ type, id: it.id, level: L.id }));
         if (!m.shift || !this.selection().length) { this.select(hits[0] || null); hits.slice(1).forEach((h) => this.select(h, { add: true })); }
         else hits.forEach((h) => this.select(h, { add: true }));
-        if (hits.length) app.toast(`${hits.length} Objekte ausgewählt`);
+        if (hits.length) app.toast(t('editor.selection.selectedCount', { count: hits.length }));
         return;
       }
     }
@@ -850,7 +896,7 @@ export class Editor {
       if (b && Math.abs(b[0] - a[0]) > 0.3 && Math.abs(b[1] - a[1]) > 0.3) {
         const x = Math.min(a[0], b[0]), z = Math.min(a[1], b[1]), w = Math.abs(b[0] - a[0]), dd = Math.abs(b[1] - a[1]); const id = newId('r');
         if (this.tool === 'roofrect') return this.addExtraRoof(rectPoints(x, z, w, dd), { levelId: L.id });
-        app.pushUndo(); app.applyLocal({ op: 'add_room', level_id: L.id, id, name: `Raum ${L.rooms.length + 1}`, rect: [x, z, w, dd] }); this.select({ type: 'room', id, level: L.id });
+        app.pushUndo(); app.applyLocal({ op: 'add_room', level_id: L.id, id, name: t('editor.room.numbered', { number: L.rooms.length + 1 }), rect: [x, z, w, dd] }); this.select({ type: 'room', id, level: L.id });
       }
       return;
     }
@@ -876,7 +922,7 @@ export class Editor {
   }
   finishPoly() {
     const pts = this.draw.points; this.draw = null; this.app.stage.setPreview(null); if (pts.length < 3) return;
-    const L = this.level, id = newId('r'); this.app.pushUndo(); this.app.applyLocal({ op: 'add_room', level_id: L.id, id, name: `Raum ${L.rooms.length + 1}`, points: pts }); this.select({ type: 'room', id, level: L.id });
+    const L = this.level, id = newId('r'); this.app.pushUndo(); this.app.applyLocal({ op: 'add_room', level_id: L.id, id, name: t('editor.room.numbered', { number: L.rooms.length + 1 }), points: pts }); this.select({ type: 'room', id, level: L.id });
   }
   nearestOpening(L, p) { let best = null, bd = 0.35; for (const o of L.openings) { const d = distToSeg(p, o.from, o.to); if (d < bd) { bd = d; best = o; } } return best; }
   // Nearest wall edge to p and where an opening of this type would land on it.
@@ -896,7 +942,7 @@ export class Editor {
   }
   placeOpening(p, type) {
     const L = this.level; const cand = this.openingCandidate(p, type);
-    if (!cand) return this.app.toast('Bitte näher an eine Wand klicken.');
+    if (!cand) return this.app.toast(t('editor.toast.clickNearWall'));
     const { from, to } = cand; this.setHover(null);
     const id = newId('o'); this.app.pushUndo();
     this.app.applyLocal({ op: 'add_opening', level_id: L.id, id, type, from, to, ...(type === 'window' ? { sill: WINDOW_PRESETS[this.windowPreset || 'std'].sill, head: WINDOW_PRESETS[this.windowPreset || 'std'].head, preset: this.windowPreset || 'std' } : type === 'garage' ? { head: 2.2 } : {}) });
@@ -925,7 +971,7 @@ export class Editor {
     if (this.draw?.poly && this.draw.points.length) { const pts = this.draw.points; for (let i = 0; i < pts.length - 1; i++) out.push({ ghost: true, pos: () => this.edgeLabelPos(null, pts[i], pts[i + 1]), text: () => fmt(Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])) }); }
     if (this.hover) {
       const c = this.hover;
-      out.push({ ghost: true, pos: () => this.edgeLabelPos(null, c.a, c.b, 0.55), text: () => `Wand ${fmt(c.len)}` });
+      out.push({ ghost: true, pos: () => this.edgeLabelPos(null, c.a, c.b, 0.55), text: () => t('editor.dimensions.wallLength', { length: fmt(c.len) }) });
       out.push({ ghost: true, pos: () => this.edgeLabelPos(null, c.from, c.to, -0.55), text: () => `${fmt(c.left)} · ${fmt(c.w)} · ${fmt(c.right)}` });
     }
     if (app.levelSel === 'roof' && app.plan.site.roof.type !== 'none' && ['roof', 'solar', 'roofitem'].includes(app.sel?.type)) {
@@ -946,7 +992,7 @@ export class Editor {
       const o = sel.item; const host = this.hostEdge(L, o);
       if (host) {
         const geo = () => { const [a, b] = host; const len = Math.hypot(b[0] - a[0], b[1] - a[1]); const ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len; const t1 = (o.from[0] - a[0]) * ux + (o.from[1] - a[1]) * uz, t2 = (o.to[0] - a[0]) * ux + (o.to[1] - a[1]) * uz; return { a, b, len, ux, uz, t0: Math.min(t1, t2), t1: Math.max(t1, t2) }; };
-        const at = (t) => { const g = geo(); return [g.a[0] + g.ux * t, g.a[1] + g.uz * t]; };
+        const at = (distance) => { const g = geo(); return [g.a[0] + g.ux * distance, g.a[1] + g.uz * distance]; };
         const lbl = (t0, t1) => () => this.edgeLabelPos(null, at(t0()), at(t1()), 0.55);
         out.push({ key: `${o.id}:l`, pos: lbl(() => 0, () => geo().t0), text: () => fmt(geo().t0), commit: (v) => this.setOpeningSpan(L, o, host, v, null, null) });
         out.push({ key: `${o.id}:w`, pos: () => this.edgeLabelPos(null, at(geo().t0), at(geo().t1), -0.55), text: () => fmt(geo().t1 - geo().t0), commit: (v) => this.setOpeningSpan(L, o, host, null, v, null) });
@@ -965,7 +1011,7 @@ export class Editor {
       for (const d of this._dims) {
         if (keep && d.key === editing) { d.el = keep; continue; }
         const el = document.createElement('div'); el.className = `dim${d.ghost ? ' ghost' : ''}`; if (d.key) el.dataset.key = d.key;
-        if (d.commit) { el.title = 'Länge eingeben'; el.addEventListener('pointerdown', (e) => e.stopPropagation()); el.addEventListener('click', (e) => { e.stopPropagation(); this.editDim(d, el); }); }
+        if (d.commit) { el.title = t('editor.dimensions.enterLength'); el.addEventListener('pointerdown', (e) => e.stopPropagation()); el.addEventListener('click', (e) => { e.stopPropagation(); this.editDim(d, el); }); }
         box.appendChild(el); d.el = el;
       }
     }
@@ -974,14 +1020,14 @@ export class Editor {
       const p = d.pos(); if (!p) { d.el.hidden = true; continue; }
       const [x, yy, z] = st.project(p[0], y, p[1]); d.el.hidden = z > 1;
       d.el.style.transform = `translate(${x}px, ${yy}px) translate(-50%, -50%)`;
-      if (!d.el.classList.contains('editing')) { const t = d.text(); if (d.el.textContent !== t) d.el.textContent = t; }
+      if (!d.el.classList.contains('editing')) { const text = d.text(); if (d.el.textContent !== text) d.el.textContent = text; }
     }
   }
   editDim(d, el) {
     if (el.classList.contains('editing')) return;
     this._editingKey = d.key; el.classList.add('editing');
     const cur = parseFloat(d.text().replace(',', '.'));
-    el.innerHTML = `<input type="text" inputmode="decimal" value="${cur.toFixed(2).replace('.', ',')}" aria-label="Länge in Metern">`;
+    el.innerHTML = `<input type="text" inputmode="decimal" value="${formatNumber(cur, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}" aria-label="${t('editor.dimensions.lengthMeters')}">`;
     const inp = el.querySelector('input'); inp.focus(); inp.select();
     const done = (ok) => {
       if (!this._editingKey) return; this._editingKey = null; el.classList.remove('editing');
@@ -1038,6 +1084,9 @@ export class Editor {
   // Full backup: plan + floor-plan images (data URLs) + per-browser view settings.
   async exportBackup() {
     const app = this.app, plan = structuredClone(app.plan), images = {};
+    for (const L of plan.levels) for (const device of L.devices) if (device.kind === 'frame' && device.artV) {
+      try { const r = await app.hass.fetchWithAuth(`/api/hometwin/underlay/art_${device.id}`); if (r.ok) { const blob = await r.blob(); images[`art_${device.id}`] = await new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(blob); }); } } catch { /* image missing */ }
+    }
     for (const L of plan.levels) {
       if (!L.underlay) continue;
       try { const r = await app.hass.fetchWithAuth(`/api/hometwin/underlay/${L.id}`); if (!r.ok) continue; const b = await r.blob(); images[L.id] = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }); } catch { /* image missing */ }
@@ -1046,20 +1095,20 @@ export class Editor {
     const data = { format: 'hometwin-backup', version: 1, created: new Date().toISOString(), app_version: app.version || null, plan, images, settings };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = `hometwin-backup-${new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    app.toast(`Backup exportiert (${(blob.size / 1024 / 1024).toFixed(1)} MB, ${Object.keys(images).length} Bauplan-Bilder)`);
+    app.toast(t('editor.toast.backupExported', { size: formatNumber(blob.size / 1024 / 1024, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), images: Object.keys(images).length }));
   }
   async importBackup(file) {
     const app = this.app;
     try {
       const data = JSON.parse(await file.text());
-      const plan = migrate(data.format === 'hometwin-backup' ? data.plan : data); if (!plan) throw new Error('Unbekanntes Format');
-      if (!confirm('Backup importieren? Der aktuelle Plan wird ersetzt (Rückgängig ist möglich).')) return;
+      const plan = migrate(data.format === 'hometwin-backup' ? data.plan : data); if (!plan) throw new Error(t('editor.error.unknownFormat'));
+      if (!confirm(t('editor.confirm.importBackup'))) return;
       app.pushUndo(); let n = 0;
       for (const [lid, url] of Object.entries(data.images || {})) { try { const blob = await (await fetch(url)).blob(); const r = await app.hass.fetchWithAuth(`/api/hometwin/underlay/${lid}`, { method: 'POST', body: blob, headers: { 'Content-Type': blob.type || 'image/jpeg' } }); if (r.ok) n++; } catch { /* skip image */ } }
       try { for (const [k, v] of Object.entries(data.settings || {})) localStorage.setItem(k.replace(/^raumwerk-/, 'hometwin-'), v); } catch { /* storage blocked */ }
       this.images?.clear?.(); app.setPlan(plan, { frame: true }); app.markDirty(); this.loadUnderlays();
-      app.toast(`Backup importiert: ${plan.levels.length} Etagen, ${n} Bauplan-Bilder`);
-    } catch (err) { app.toast(`Import fehlgeschlagen: ${err.message}`); }
+      app.toast(t('editor.toast.backupImported', { levels: plan.levels.length, images: n }));
+    } catch (err) { app.toast(t('editor.toast.importFailed', { message: err.message })); }
   }
   async uploadUnderlay(file) {
     const app = this.app, L = this.level;
@@ -1073,8 +1122,8 @@ export class Editor {
       const indoor = L.rooms.filter((r) => r.kind !== 'outdoor'); const b = indoor.length ? bbox(indoor.flatMap((r) => r.points)) : null;
       L.underlay = { x0: b ? b.minX : 0, z0: b ? b.minZ : 0, mpp: b ? Math.max(b.w, 4) / c.width : 0.01, wpx: c.width, hpx: c.height, opacity: 0.6, v: Date.now() };
       const img = await createImageBitmap(c); this.images.set(L.id, img); app.stage.setUnderlay(L.id, img);
-      app.markDirty(); this.select({ type: 'level', id: L.id, level: L.id }); this.setTool('calibrate'); app.toast('Bild geladen. Jetzt eine bekannte Strecke messen.');
-    } catch (err) { app.toast(`Bild konnte nicht gespeichert werden: ${err.message}`); }
+      app.markDirty(); this.select({ type: 'level', id: L.id, level: L.id }); this.setTool('calibrate'); app.toast(t('editor.toast.imageLoaded'));
+    } catch (err) { app.toast(t('editor.toast.imageSaveFailed', { message: err.message })); }
   }
   async loadUnderlays() {
     for (const L of this.app.plan.levels) {

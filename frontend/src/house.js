@@ -4,8 +4,10 @@
 // The segmentation idea comes from house-control (MIT, 0xProbabillity), generalised
 // here from axis-aligned rectangles to arbitrary polygons.
 import * as THREE from 'three';
+import { mergeByMaterial } from '../../engine/recipe.js';
 import { box, mat, surfaceMat, slatTex, garageTex, blockerMat, canvasTex, shade } from './kit.js';
 import { edges, lineOf, lineKey, pointInPolygon, bbox, centroid } from './geometry.js';
+import { slabThickness } from './plan.js';
 import { facadeMaterial, metricUV } from './roof.js';
 
 export const EXT_T = 0.24, INT_T = 0.11, CURB = 0.14;
@@ -83,7 +85,7 @@ const frameMat = (c = '#2c3142') => mat(c, { rough: 0.6 });
 
 export function buildLevel(level, site = {}) {
   const fac = facadeMaterial(site.facade), plinthM = mat(site.facade?.plinth || '#5f636b', { rough: 0.9 }), frameColor = site.facade?.frame || '#2c3142';
-  const H = level.height, Hi = Math.min(level.cutHeight ?? 1.2, H);
+  const H = level.height, Hi = Math.min(level.cutHeight ?? 1.2, H), slabDepth = slabThickness(level);
   const g = new THREE.Group();
   const floors = {}, overlays = {}, exterior = [], windows = {}, doors = {}, garages = {}, openingHits = [];
   const wb = wallBody(), cap = capMat;
@@ -100,7 +102,7 @@ export function buildLevel(level, site = {}) {
     const ov = polyMesh(r.points, new THREE.MeshBasicMaterial({ color: '#79a6ff', transparent: true, opacity: 0, depthWrite: false }), y + 0.006, 2.4, holes);
     ov.renderOrder = 1; g.add(ov); overlays[r.id] = ov;
     if (!outdoor) {
-      const s = slab(r.points, -0.22, -0.001, mat('#1a2030', { rough: 0.9 }), holes); s.receiveShadow = true; s.castShadow = true; g.add(s);
+      if (slabDepth > EPS) { const s = slab(r.points, -slabDepth, 0, mat('#1a2030', { rough: 0.9 }), holes); s.receiveShadow = true; s.castShadow = true; g.add(s); }
       const ceil = slab(r.points, H, H + 0.05, blockerMat); ceil.castShadow = true; ceil.userData.blocker = true; g.add(ceil);
     } else if (r.raise) {
       const s = slab(r.points, -0.02, r.raise, mat(shade('#6d6a63', 0), { rough: 0.9 })); s.receiveShadow = true; s.castShadow = true; g.add(s);
@@ -120,6 +122,7 @@ export function buildLevel(level, site = {}) {
   const glassMat = () => new THREE.MeshStandardMaterial({ color: '#9cc0ff', roughness: 0.08, transparent: true, opacity: 0.22, emissive: '#3d5fae', emissiveIntensity: 0.5 });
 
   const opInfo = {};
+  const inner = new THREE.Group(); // static interior walls, merged per material after the loop
   for (const s of wallSegments(level)) {
     const ext = s.kind === 'exterior', t = ext ? EXT_T : INT_T, o = s.opening, type = o?.type;
     if (o && !opInfo[o.id]) opInfo[o.id] = { t, side: s.side, l: s.l };
@@ -130,24 +133,27 @@ export function buildLevel(level, site = {}) {
     if (type === 'door') {
       const hinge = new THREE.Group(); const L = s.b - s.a - 0.04, h = ext ? (o.head ?? 2.1) : Math.min(o.head ?? 2.05, Hi - 0.02);
       const leaf = box(L, h, 0.04, mat(ext ? '#3a3f4b' : '#d6d0c4', { rough: 0.7 }), 0.01); leaf.position.x = L / 2; leaf.castShadow = true;
-      hinge.add(leaf); hinge.position.copy(at(s.a + 0.02)); hinge.rotation.y = wallRot;
+      hinge.add(leaf); hinge.position.copy(at(s.a + 0.02)); hinge.rotation.y = wallRot; hinge.userData.keep = true;
       doors[o.id] = { hinge, base: wallRot, swing: -s.side, cur: 0, ext };
     }
     if (type === 'garage') {
       const head = o.head ?? 2.2, w = s.b - s.a;
       const tex = garageTex.clone(); tex.repeat.set(Math.max(1, w / 1.2), head / 1.6); tex.needsUpdate = true;
       const panel = new THREE.Mesh(new THREE.BoxGeometry(w - 0.04, head, 0.05), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }));
-      panel.geometry.translate(0, -head / 2, 0); panel.position.copy(at((s.a + s.b) / 2, head)); panel.rotation.y = wallRot; panel.castShadow = true;
+      panel.geometry.translate(0, -head / 2, 0); panel.position.copy(at((s.a + s.b) / 2, head)); panel.rotation.y = wallRot; panel.castShadow = true; panel.userData.keep = true;
       garages[o.id] = { panel, cur: 0 };
     }
     if (!ext) {
-      if (!type) { piece(g, s, a, b, 0, Hi, t); if (Hi < H) piece(g, s, a, b, Hi, H, 0.04, blockerMat); }
-      else if (type === 'door') { g.add(doors[o.id].hinge); if (Hi < H) piece(g, s, a, b, Math.max(Hi, o.head ?? 2.05), H, 0.04, blockerMat); }
+      if (!type) { piece(inner, s, a, b, 0, Hi, t); if (Hi < H) piece(inner, s, a, b, Hi, H, 0.04, blockerMat); }
+      else if (type === 'door') { g.add(doors[o.id].hinge); if (Hi < H) piece(inner, s, a, b, Math.max(Hi, o.head ?? 2.05), H, 0.04, blockerMat); }
       else if (type === 'garage') g.add(garages[o.id].panel);
       continue;
     }
     const full = new THREE.Group(), curb = new THREE.Group();
     const em = s.side > 0 ? [fac, fac, cap, fac, wb, fac] : [fac, fac, cap, fac, fac, wb];
+    // The floor plate reaches the exterior face. This closes the seam to the level below
+    // without extending the room slab across interior stair voids.
+    if (slabDepth > EPS) { piece(full, s, a, b, -slabDepth, 0, t, em); piece(curb, s, a, b, -slabDepth, 0, t, em); }
     if (!type || (type === 'window' && (o.sill ?? 0.9) >= 0.35)) piece(full, s, a, b, 0, 0.3, t + 0.03, plinthM);
     const blocker = (y0, y1) => piece(curb, s, a, b, y0, y1, t, blockerMat);
     if (type === 'door' || type === 'garage') {
@@ -176,9 +182,15 @@ export function buildLevel(level, site = {}) {
       const head = o.head ?? 2.2; const hit = piece(g, s, s.a, s.b, 0, head, 0.5, new THREE.MeshBasicMaterial({ visible: false })); hit.userData.opening = o.id; hit.castShadow = false; openingHits.push(hit);
     }
     full.traverse((m) => { if (m.isMesh && m.material !== blockerMat) { m.castShadow = true; m.receiveShadow = true; } });
-    g.add(full, curb);
-    exterior.push({ nx: -s.side * s.l.nx, nz: -s.side * s.l.nz, full, curb });
+    curb.traverse((m) => { if (m.isMesh && m.material === blockerMat) { m.castShadow = true; m.receiveShadow = false; } });
+    // one mesh per material for this wall (door leaves and garage doors stay separate objects)
+    const fullM = mergeByMaterial(full), curbM = mergeByMaterial(curb);
+    if (garages[o?.id]) { garages[o.id].fullParent = fullM; garages[o.id].curbParent = curbM; }
+    g.add(fullM, curbM);
+    exterior.push({ nx: -s.side * s.l.nx, nz: -s.side * s.l.nz, full: fullM, curb: curbM });
   }
+  inner.traverse((m) => { if (m.isMesh && m.material === blockerMat) { m.castShadow = true; m.receiveShadow = false; } });
+  g.add(mergeByMaterial(inner));
   // blocker meshes are invisible to the camera but must cast shadows
   g.traverse((m) => { if (m.isMesh && m.material === blockerMat) { m.castShadow = true; m.receiveShadow = false; } });
   // Plan symbols (only shown in the top view): gap in the wall, glass line, door swing.

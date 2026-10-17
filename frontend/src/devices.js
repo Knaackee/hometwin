@@ -4,36 +4,49 @@
 // shared pool of real lights (only the brightest ones get a THREE light, the rest glow).
 import * as THREE from 'three';
 import { box, cyl, sphere, at, group, mat, lightPool, pulseRing } from './kit.js';
+import { bindScreen, screenMaterial, Label, generativeArt } from './media.js';
+import { screenGeometry } from '../../engine/recipe.js';
+import { t } from './i18n.js';
 
 const DARK = '#23262e', METAL = '#a8adb5';
 
 export const KINDS = {
-  light: { label: 'Leuchte', icon: 'bulb', cat: 'Licht', domains: ['light'] },
-  radiator: { label: 'Heizkörper', icon: 'flame', cat: 'Klima', domains: ['climate'] },
-  thermostat: { label: 'Thermostat', icon: 'thermo', cat: 'Klima', domains: ['climate'] },
-  ac: { label: 'Klimagerät', icon: 'wind', cat: 'Klima', domains: ['climate', 'fan'] },
-  fan: { label: 'Deckenventilator', icon: 'fan', cat: 'Klima', domains: ['fan', 'switch'] },
-  temp: { label: 'Temperatursensor', icon: 'thermo', cat: 'Sensoren', domains: ['sensor'], dc: ['temperature', 'humidity'] },
-  motion: { label: 'Bewegungsmelder', icon: 'motion', cat: 'Sensoren', domains: ['binary_sensor'], dc: ['motion', 'occupancy', 'presence'] },
-  smoke: { label: 'Rauchmelder', icon: 'alarm', cat: 'Sensoren', domains: ['binary_sensor'], dc: ['smoke', 'carbon_monoxide', 'gas', 'safety', 'moisture'] },
-  plug: { label: 'Steckdose / Schalter', icon: 'plug', cat: 'Geräte', domains: ['switch', 'input_boolean'] },
-  tv: { label: 'Fernseher', icon: 'tv', cat: 'Medien', domains: ['media_player'] },
-  speaker: { label: 'Lautsprecher', icon: 'speaker', cat: 'Medien', domains: ['media_player'] },
-  vacuum: { label: 'Saugroboter', icon: 'robot', cat: 'Geräte', domains: ['vacuum'] },
-  mower: { label: 'Mähroboter', icon: 'robot', cat: 'Garten', domains: ['lawn_mower'] },
-  valve: { label: 'Bewässerung', icon: 'drop', cat: 'Garten', domains: ['valve', 'switch'] },
-  camera: { label: 'Kamera', icon: 'camera', cat: 'Sicherheit', domains: ['camera'] },
+  light: { get label() { return t('data.device.light'); }, icon: 'bulb', get cat() { return t('data.category.light'); }, domains: ['light'] },
+  radiator: { get label() { return t('data.device.radiator'); }, icon: 'flame', get cat() { return t('data.category.climate'); }, domains: ['climate'] },
+  thermostat: { get label() { return t('data.device.thermostat'); }, icon: 'thermo', get cat() { return t('data.category.climate'); }, domains: ['climate'] },
+  ac: { get label() { return t('data.device.ac'); }, icon: 'wind', get cat() { return t('data.category.climate'); }, domains: ['climate', 'fan'] },
+  fan: { get label() { return t('data.device.fan'); }, icon: 'fan', get cat() { return t('data.category.climate'); }, domains: ['fan', 'switch'] },
+  temp: { get label() { return t('data.device.temp'); }, icon: 'thermo', get cat() { return t('data.category.sensors'); }, domains: ['sensor'], dc: ['temperature', 'humidity'] },
+  motion: { get label() { return t('data.device.motion'); }, icon: 'motion', get cat() { return t('data.category.sensors'); }, domains: ['binary_sensor'], dc: ['motion', 'occupancy', 'presence'] },
+  smoke: { get label() { return t('data.device.smoke'); }, icon: 'alarm', get cat() { return t('data.category.sensors'); }, domains: ['binary_sensor'], dc: ['smoke', 'carbon_monoxide', 'gas', 'safety', 'moisture'] },
+  plug: { get label() { return t('data.device.plug'); }, icon: 'plug', get cat() { return t('data.category.devices'); }, domains: ['switch', 'input_boolean'] },
+  tv: { get label() { return t('data.device.tv'); }, icon: 'tv', get cat() { return t('data.category.media'); }, domains: ['media_player', 'camera', 'image'] },
+  projector: { get label() { return t('data.device.projector'); }, icon: 'tv', get cat() { return t('data.category.media'); }, domains: ['media_player', 'switch', 'input_boolean'] },
+  frame: { get label() { return t('data.device.frame'); }, icon: 'image', get cat() { return t('data.category.media'); }, domains: ['image', 'camera', 'media_player'] },
+  speaker: { get label() { return t('data.device.speaker'); }, icon: 'speaker', get cat() { return t('data.category.media'); }, domains: ['media_player'] },
+  vacuum: { get label() { return t('data.device.vacuum'); }, icon: 'robot', get cat() { return t('data.category.devices'); }, domains: ['vacuum'] },
+  washer: { get label() { return t('data.device.washer'); }, icon: 'drop', get cat() { return t('data.category.devices'); }, domains: ['sensor', 'switch', 'binary_sensor', 'input_boolean'] },
+  fireplace: { get label() { return t('data.device.fireplace'); }, icon: 'flame', get cat() { return t('data.category.climate'); }, domains: ['switch', 'climate', 'light', 'input_boolean'] },
+  mower: { get label() { return t('data.device.mower'); }, icon: 'robot', get cat() { return t('data.category.garden'); }, domains: ['lawn_mower'] },
+  valve: { get label() { return t('data.device.valve'); }, icon: 'drop', get cat() { return t('data.category.garden'); }, domains: ['valve', 'switch'] },
+  camera: { get label() { return t('data.device.camera'); }, icon: 'camera', get cat() { return t('data.category.security'); }, domains: ['camera'] },
 };
 export const LIGHT_STYLES = {
-  ceiling: 'Deckenleuchte', downlights: 'Einbauspots', pendant: 'Pendelleuchte', pendantTrio: 'Pendelgruppe', arc: 'Bogenlampe', floor: 'Stehlampe',
-  table: 'Tischlampe', wall: 'Wandleuchte', track: 'Strahlerschiene', strip: 'LED-Streifen', outdoorWall: 'Außenwandleuchte', bollard: 'Wegeleuchte',
+  get ceiling() { return t('data.lightStyle.ceiling'); }, get downlights() { return t('data.lightStyle.downlights'); }, get pendant() { return t('data.lightStyle.pendant'); }, get pendantTrio() { return t('data.lightStyle.pendantTrio'); }, get arc() { return t('data.lightStyle.arc'); }, get floor() { return t('data.lightStyle.floor'); },
+  get table() { return t('data.lightStyle.table'); }, get wall() { return t('data.lightStyle.wall'); }, get track() { return t('data.lightStyle.track'); }, get strip() { return t('data.lightStyle.strip'); }, get outdoorWall() { return t('data.lightStyle.outdoorWall'); }, get bollard() { return t('data.lightStyle.bollard'); },
 };
-export const RADIATOR_STYLES = { panel: 'Flachheizkörper', towel: 'Handtuchheizkörper', convector: 'Bodenkonvektor' };
-export const KIND_STYLES = { light: LIGHT_STYLES, radiator: RADIATOR_STYLES };
+export const RADIATOR_STYLES = { get panel() { return t('data.radiatorStyle.panel'); }, get towel() { return t('data.radiatorStyle.towel'); }, get convector() { return t('data.radiatorStyle.convector'); } };
+export const TV_STYLES = { get stand() { return t('data.tvStyle.stand'); }, get wall() { return t('data.tvStyle.wall'); }, get curved() { return t('data.tvStyle.curved'); }, get monitor() { return t('data.tvStyle.monitor'); }, get projector() { return t('data.tvStyle.projector'); } };
+export const PROJECTOR_STYLES = { get ceiling() { return t('data.projectorStyle.ceiling'); } };
+export const FRAME_STYLES = { get black() { return t('data.frameStyle.black'); }, get white() { return t('data.frameStyle.white'); }, get oak() { return t('data.frameStyle.oak'); }, get alu() { return t('data.frameStyle.alu'); }, get none() { return t('data.frameStyle.none'); }, get canvas() { return t('data.frameStyle.canvas'); } };
+export const FRAME_SIZES = { a4: ['A4', 0.21, 0.297], a3: ['A3', 0.297, 0.42], a2: ['A2', 0.42, 0.594], p50: ['50 × 70', 0.5, 0.7], p70: ['70 × 100', 0.7, 1.0], sq: ['50 × 50', 0.5, 0.5], pano: ['100 × 50', 1.0, 0.5] };
+export const KIND_STYLES = { light: LIGHT_STYLES, radiator: RADIATOR_STYLES, tv: TV_STYLES, projector: PROJECTOR_STYLES };
 // Default extra fields for a new device of this kind/style.
 export function deviceDefaults(kind, style) {
   if (kind === 'light') return ({ table: { y: 0.5 }, strip: { y: 1.1, length: 1.2 }, wall: { y: 1.8 }, outdoorWall: { y: 2.0 }, pendant: { y: 1.75 }, pendantTrio: { y: 1.75, length: 1.4 }, track: { length: 1.2 } })[style] || {};
-  return ({ temp: { y: 1.5 }, motion: { y: 2.3 }, thermostat: { y: 1.5 }, ac: { y: 2.15 }, tv: { y: 0.55 }, speaker: { y: 0.8 }, camera: { y: 2.4 }, plug: { y: 0.3 } })[kind] || {};
+  if (kind === 'tv') return ({ stand: { y: 0.55 }, wall: { y: 0.9 }, curved: { y: 0.55 }, monitor: { y: 0.75 }, projector: { y: 0.6, length: 2.2 } })[style || 'stand'] || { y: 0.55 };
+  if (kind === 'projector') return { style: 'ceiling' };
+  return ({ temp: { y: 1.5 }, motion: { y: 2.3 }, thermostat: { y: 1.5 }, ac: { y: 2.15 }, speaker: { y: 0.8 }, camera: { y: 2.4 }, plug: { y: 0.3 }, frame: { y: 1.5, fw: 0.5, fh: 0.7, frame: 'black', src: 'art' } })[kind] || {};
 }
 export function entityMatchesKind(kind, stateObj) {
   const k = KINDS[kind]; if (!k || !stateObj) return false;
@@ -52,6 +65,7 @@ export function kindForEntity(s) {
   if (dom === 'vacuum') return { kind: 'vacuum' };
   if (dom === 'lawn_mower') return { kind: 'mower' };
   if (dom === 'camera') return { kind: 'camera' };
+  if (dom === 'image') return { kind: 'frame' };
   if (dom === 'fan') return { kind: 'fan' };
   if (dom === 'valve') return { kind: 'valve' };
   if (dom === 'switch' || dom === 'input_boolean') return { kind: 'plug' };
@@ -128,7 +142,7 @@ export function buildDevice(dev, ctx) {
       const flap = at(box(0.8, 0.03, 0.06, mat('#d9d9d6'), 0.01), 0, yy + 0.02, 0.21); root.add(flap);
       const led = new THREE.MeshStandardMaterial({ color: '#111', emissive: '#5fb8ff', emissiveIntensity: 0 }); root.add(at(box(0.03, 0.012, 0.004, led, 0.002), 0.36, yy + 0.22, 0.222));
       const air = []; const am = new THREE.MeshBasicMaterial({ color: '#bfe3ff', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-      for (let i = 0; i < 5; i++) { const p = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.18), am.clone()); p.rotation.x = -0.9; root.add(p); air.push(p); }
+      for (let i = 0; i < 5; i++) { const p = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.18), am.clone()); p.rotation.x = -0.9; p.userData.roomEffect = true; root.add(p); air.push(p); }
       let cur = 0;
       return ret({ hit: [1, 0.4, 0.4, yy + 0.15], update(s, dt, t) {
         const a = s?.attributes || {}; const act = ['cooling', 'heating', 'fan', 'drying'].includes(a.hvac_action) || (s?.entity_id?.startsWith('fan.') && s.state === 'on');
@@ -166,23 +180,93 @@ export function buildDevice(dev, ctx) {
       return ret({ hit: [0.25, 0.25, 0.2, yy + 0.04], update(s) { led.emissiveIntensity = s?.state === 'on' ? 2 : 0; } });
     }
     case 'tv': {
-      const yy = y ?? 0.55, scr = new THREE.MeshStandardMaterial({ color: '#05070c', roughness: 0.25, emissive: '#000', emissiveIntensity: 1 });
-      const w = dev.length || 1.42, h = w * 0.5625;
-      root.add(at(box(0.36, 0.02, 0.2, mat('#24272e'), 0.005), 0, yy, 0), at(box(0.04, 0.12, 0.04, mat('#24272e')), 0, yy, -0.02), at(box(w, h + 0.04, 0.04, mat('#24272e', { rough: 0.4 }), 0.008), 0, yy + 0.1, -0.02), at(box(w - 0.04, h, 0.005, scr, 0), 0, yy + 0.12, 0.002));
-      const pl = lightPool(2.2); pl.position.set(0, 0.04, 1.0); root.add(pl);
-      const anchor = new THREE.Object3D(); anchor.position.set(0, yy + 0.5, 0.6); root.add(anchor); const em = { anchor, color: new THREE.Color(), power: 0 };
-      let cur = 0;
-      return ret({ hit: [w + 0.1, h + 0.2, 0.3, yy + 0.5], emitters: [em], update(s, dt, t) {
-        cur += ((s?.state === 'playing' || s?.state === 'on' ? 1 : 0) - cur) * Math.min(1, dt * 4);
-        tmp.setHSL(0.58 + 0.06 * Math.sin(t * 0.7), 0.6, 0.5); scr.emissive.copy(tmp); scr.emissiveIntensity = cur * (1.1 + 0.25 * Math.sin(t * 3.1) * Math.sin(t * 1.3));
-        em.color.copy(tmp); em.power = cur * 2.5; pl.material.color.copy(tmp); pl.material.opacity = cur * 0.25;
-      } });
+      const st = dev.style || 'stand', proj = st === 'projector', mon = st === 'monitor';
+      const w = dev.length || (proj ? 2.2 : mon ? 0.62 : 1.42), h = w * 0.5625, yy = y ?? (proj ? 0.6 : mon ? 0.75 : st === 'wall' ? 0.9 : 0.55);
+      const scrM = screenMaterial(), bind = bindScreen(scrM, { glowPower: proj ? 1.6 : 2.5 }), dark = mat('#24272e', { rough: 0.4 });
+      const R = st === 'curved' ? (dev.curve || 4) : 0; const front = 0.002;
+      let sy; // bottom of the picture
+      if (proj) { // independently placeable projector screen
+        sy = yy; root.add(at(box(w + 0.1, h + 0.12, 0.02, mat('#1b1d22'), 0.004), 0, yy - 0.06, 0.01), at(box(w + 0.16, 0.08, 0.1, mat('#e9e9e6'), 0.02), 0, yy + h + 0.06, 0.05));
+      } else if (st === 'wall') {
+        sy = yy + 0.02; root.add(at(box(w, h + 0.04, 0.035, dark, 0.008), 0, yy, 0.0175));
+      } else { // stand, monitor, curved
+        sy = yy + 0.12; root.add(at(box(0.36, 0.02, 0.2, dark, 0.005), 0, yy, 0), at(box(0.04, 0.12, 0.04, dark), 0, yy, -0.02));
+        if (R > 0) { const back = new THREE.Mesh(screenGeometry(w + 0.02, h + 0.04, R), new THREE.MeshStandardMaterial({ color: '#24272e', roughness: 0.4, side: THREE.DoubleSide })); back.position.set(0, yy + 0.1, -0.02); root.add(back); }
+        else root.add(at(box(w, h + 0.04, 0.04, dark, 0.008), 0, yy + 0.1, -0.02));
+      }
+      const scr = new THREE.Mesh(screenGeometry(w - 0.04, h, R), scrM); scr.position.set(0, sy, proj ? 0.0215 : st === 'wall' ? 0.036 : front + (R > 0 ? 0.002 : 0)); scr.userData.role = 'screen'; root.add(scr);
+      const pl = lightPool(proj ? 3 : 2.2); pl.position.set(0, 0.04, proj ? 1.6 : 1.0); root.add(pl);
+      const anchor = new THREE.Object3D(); anchor.position.set(0, sy + h * 0.5, 0.6); root.add(anchor); bind.emitter.anchor = anchor;
+      return ret({ hit: [w + 0.1, h + 0.2, 0.3, sy + h / 2], emitters: [bind.emitter], animating: bind.animating, dispose: () => bind.dispose(), update(s, dt, t, env) { bind.update(s, dt, t, env); const on = bind.emitter.power > 0.01 ? 1 : 0; bind.extra?.(on); pl.material.color.copy(bind.emitter.color); pl.material.opacity = Math.min(0.3, bind.emitter.power * 0.1); } });
+    }
+    case 'projector': {
+      const yy = y ?? H - 0.37;
+      const body = mat('#e9e9e6', { rough: 0.4 });
+      const lens = new THREE.MeshStandardMaterial({ color: '#111', emissive: '#bcd3ff', emissiveIntensity: 0 });
+      root.add(at(box(0.32, 0.12, 0.26, body, 0.03), 0, yy, 0), at(cyl(0.012, 0.012, Math.max(0.05, H - yy - 0.12), mat(DARK), 8), 0, yy + 0.11, 0));
+      const lensMesh = at(cyl(0.035, 0.035, 0.02, lens, 16), 0, yy + 0.06, -0.135); lensMesh.rotation.x = Math.PI / 2; root.add(lensMesh);
+      return ret({ hit: [0.42, 0.3, 0.4, yy + 0.06], update(s) { lens.emissiveIntensity = s && !['off', 'standby', 'unavailable', 'unknown'].includes(s.state) ? 2 : 0; } });
     }
     case 'speaker': {
       const yy = y ?? 0, lr = new THREE.MeshStandardMaterial({ color: '#2a2d35', emissive: '#ffffff', emissiveIntensity: 0 });
       root.add(at(cyl(0.07, 0.075, 0.2, mat('#3a3e48', { rough: 0.95 }), 24), 0, yy, 0), at(cyl(0.072, 0.072, 0.01, lr, 24), 0, yy + 0.2, 0));
       const rings = [pulseRing('#ffb35c'), pulseRing('#ffb35c')]; rings.forEach((r) => { r.position.y = yy + 0.02; root.add(r); });
-      return ret({ hit: [0.3, 0.35, 0.3, yy + 0.1], update(s, dt, t) { const p = s?.state === 'playing'; lr.emissiveIntensity = p ? 0.6 + 0.4 * Math.sin(t * 6) : 0; rings.forEach((r, i) => { const q = (t * 0.8 + i * 0.5) % 1; r.scale.setScalar(0.1 + q * 0.6); r.material.opacity = p ? (1 - q) * 0.6 : 0; }); } });
+      const barM = new THREE.MeshBasicMaterial({ color: '#ffb35c', transparent: true, opacity: 0.9 }); const bars = [];
+      for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.018, 1, 0.018), barM); b.geometry.translate(0, 0.5, 0); b.position.set(-0.05 + i * 0.025, yy + 0.24, 0); b.visible = false; root.add(b); bars.push(b); }
+      const label = new Label(); label.sprite.position.set(0, yy + 0.55, 0); label.sprite.visible = false; root.add(label.sprite);
+      return ret({ hit: [0.3, 0.35, 0.3, yy + 0.1], animating: (s) => s?.state === 'playing', dispose: () => label.dispose(), update(s, dt, t, env) {
+        const p = s?.state === 'playing', a = s?.attributes || {}; lr.emissiveIntensity = p ? 0.6 + 0.4 * Math.sin(t * 6) : 0;
+        rings.forEach((r, i) => { const q = (t * 0.8 + i * 0.5) % 1; r.scale.setScalar(0.1 + q * 0.6); r.material.opacity = p && !env.perf ? (1 - q) * 0.6 : 0; });
+        bars.forEach((b, i) => { b.visible = p; if (p) b.scale.y = env.perf ? 0.05 : 0.02 + 0.07 * Math.abs(Math.sin(t * (3.1 + i * 0.9) + i * 1.7) * Math.sin(t * (1.3 + i * 0.4))); });
+        const txt = p && !env.editing && a.media_title ? `${a.media_title}${a.media_artist ? ' – ' + a.media_artist : ''}` : ''; label.set(txt); label.sprite.visible = !!txt;
+      } });
+    }
+    case 'frame': {
+      const fw = dev.fw || 0.5, fh = dev.fh || 0.7, yy = y ?? 1.5, style = dev.frame || 'black';
+      const B = { black: 0.02, white: 0.03, oak: 0.035, alu: 0.012, none: 0, canvas: 0 }[style] ?? 0.02, D = style === 'canvas' ? 0.035 : style === 'none' ? 0.002 : 0.025;
+      const fm = mat({ black: '#16171b', white: '#f2f1ec', oak: '#b68a5a', alu: '#b9bec5', none: '#fff', canvas: '#e8e4da' }[style] || '#16171b', { rough: style === 'alu' ? 0.35 : 0.6, metal: style === 'alu' ? 0.6 : 0 });
+      const y0 = yy - fh / 2; if (style !== 'none') root.add(at(box(fw, fh, D, fm, style === 'canvas' ? 0.004 : 0.003), 0, y0, D / 2));
+      const pass = dev.passe && style !== 'none' && style !== 'canvas' ? Math.min(fw, fh) * 0.12 : 0;
+      if (pass) root.add(at(new THREE.Mesh(new THREE.PlaneGeometry(fw - 2 * B, fh - 2 * B), mat('#f7f5ef', { rough: 0.9 })), 0, yy, D + 0.001));
+      const iw = fw - 2 * (B + pass), ih = fh - 2 * (B + pass); const pics = [0, 1].map((k) => { const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6, emissive: '#ffffff', emissiveIntensity: 0.08, transparent: k === 1, opacity: k === 1 ? 0 : 1 }); const p = new THREE.Mesh(new THREE.PlaneGeometry(iw, ih), m); p.position.set(0, yy, D + 0.002 + k * 0.0008); p.userData.role = 'screen'; root.add(p); return p; });
+      const makeTexture = (img) => { const tex = new THREE.Texture(img); tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true; const ia = (img.width || 1) / (img.height || 1), fa = iw / ih; if (ia > fa) { tex.repeat.set(fa / ia, 1); tex.offset.set((1 - fa / ia) / 2, 0); } else { tex.repeat.set(1, ia / fa); tex.offset.set(0, (1 - ia / fa) / 2); } return tex; };
+      const art = generativeArt(dev.id || 'frame', 512, Math.round(512 * (ih / iw))); let shown = null, fade = 1, folder = { idx: -1, item: null, url: null, resolvedAt: 0, retryAt: 0, missingAt: 0, pending: false }, camAt = 0, camUrl = null;
+      const show = (img) => { if (!img || img === shown) return; const tex = makeTexture(img); if (!shown) { pics[0].material.map = tex; pics[0].material.emissiveMap = tex; pics[0].material.needsUpdate = true; } else { const pending = pics[1].material.map; if (pending && pending !== pics[0].material.map) pending.dispose(); pics[1].material.map = tex; pics[1].material.emissiveMap = tex; pics[1].material.needsUpdate = true; fade = 0; } shown = img; };
+      const resolveFolder = (media, item, idx, force = false) => { if (folder.pending) return; folder.pending = true; media.resolveItem(item, { maxAge: 2400000, force }).then((url) => { if (folder.idx === idx && folder.item === item) { folder.url = url; folder.resolvedAt = Date.now(); folder.retryAt = 0; folder.missingAt = 0; } }).catch(() => { folder.retryAt = Date.now() + 30000; }).finally(() => { folder.pending = false; }); };
+      return ret({ hit: [fw + 0.05, fh + 0.05, 0.12, yy], animating: () => fade < 1, dispose() { const a = pics[0].material.map, b = pics[1].material.map; a?.dispose(); if (b && b !== a) b.dispose(); }, update(s, dt, t, env) {
+        const media = env.media, src = dev.src || 'art', iv = Math.max(30, dev.interval || 60) * 1000, now = Date.now(); let img = null;
+        if (src === 'upload') img = media?.image(`/api/hometwin/underlay/art_${dev.id}?v=${dev.artV || 0}`, { auth: true });
+        else if (src === 'entity' && s) { const u = s.attributes?.entity_picture; if (s.entity_id.startsWith('camera.')) { if (!camUrl || now - camAt > iv) { camUrl = u; camAt = now; } img = media?.image(camUrl, { maxAge: iv }); } else if (s.entity_id.startsWith('image.')) { camUrl = u; img = media?.image(camUrl, { maxAge: 60000 }); } else { camUrl = media?.resolve(u) ? u : `/api/media_player_proxy/${s.entity_id}`; img = media?.image(camUrl, { maxAge: 60000 }); } }
+        else if (src === 'folder' && dev.folder && media) { const items = media.folder(dev.folder) || []; if (items.length) { const idx = Math.floor(now / iv) % items.length, item = items[idx]; if (idx !== folder.idx || item !== folder.item) folder = { idx, item, url: null, resolvedAt: 0, retryAt: 0, missingAt: 0, pending: false }; if (!folder.pending && (!folder.url || now - folder.resolvedAt >= 2400000) && now >= folder.retryAt) resolveFolder(media, item, idx); img = media.image(folder.url, { maxAge: iv }); if (folder.url && !img) { folder.missingAt ||= now; if (!folder.pending && now - folder.missingAt >= 30000 && now >= folder.retryAt) resolveFolder(media, item, idx, true); } else if (img) folder.missingAt = 0; } }
+        show(img || (src === 'art' || !shown ? art : null));
+        if (fade < 1) { fade = Math.min(1, fade + dt / (env.perf ? 0.05 : 1.2)); pics[1].material.opacity = fade; if (fade >= 1) { const old = pics[0].material.map, next = pics[1].material.map; pics[0].material.map = next; pics[0].material.emissiveMap = next; pics[0].material.needsUpdate = true; pics[1].material.map = null; pics[1].material.emissiveMap = null; pics[1].material.opacity = 0; pics[1].material.needsUpdate = true; if (old && old !== next) old.dispose(); } }
+      } });
+    }
+    case 'washer': {
+      const body = mat('#f2f2ef', { rough: 0.35 }); root.add(at(box(0.6, 0.85, 0.6, body, 0.03), 0, 0, 0), at(box(0.6, 0.12, 0.02, mat('#dcdcd8'), 0.005), 0, 0.73, 0.3));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 8, 32), mat('#b9bec5', { metal: 0.6, rough: 0.3 })); ring.position.set(0, 0.42, 0.305); root.add(ring);
+      const drum = new THREE.Group(); drum.position.set(0, 0.42, 0.29); root.add(drum);
+      const dm = new THREE.MeshStandardMaterial({ color: '#8e96a3', metalness: 0.5, roughness: 0.4 }); drum.add(new THREE.Mesh(new THREE.CircleGeometry(0.16, 24), dm));
+      for (let i = 0; i < 3; i++) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.01), mat('#cfd3d8')); fin.position.set(Math.cos(i * 2.1) * 0.09, Math.sin(i * 2.1) * 0.09, 0.006); fin.rotation.z = i * 2.1 + Math.PI / 2; drum.add(fin); }
+      const glass = new THREE.Mesh(new THREE.CircleGeometry(0.16, 24), new THREE.MeshStandardMaterial({ color: '#9cc0ff', transparent: true, opacity: 0.25, roughness: 0.05 })); glass.position.set(0, 0.42, 0.31); root.add(glass);
+      const led = new THREE.MeshStandardMaterial({ color: '#111', emissive: '#5fd39a', emissiveIntensity: 0 }); root.add(at(box(0.05, 0.015, 0.004, led, 0), 0.18, 0.78, 0.312));
+      let spd = 0; const active = (s) => { const v = parseFloat(s?.state); return ['on', 'running', 'wash', 'washing', 'rinse', 'spin', 'spinning', 'drying', 'dry'].includes(String(s?.state).toLowerCase()) || (Number.isFinite(v) && v > 5); };
+      return ret({ hit: [0.65, 0.9, 0.65, 0.43], animating: active, update(s, dt, t) { const on = active(s); spd += ((on ? 6 + 4 * Math.max(0, Math.sin(t * 0.3)) : 0) - spd) * Math.min(1, dt); drum.rotation.z -= spd * dt; led.emissiveIntensity = on ? 1.5 : 0; } });
+    }
+    case 'fireplace': {
+      const w = dev.length || 1.0, bm = mat('#2b2d31', { rough: 0.8 }), cw = w * 0.7; // body with an open fire box (cavity)
+      root.add(at(box(w, 0.9, 0.2, bm, 0.01), 0, 0, 0.1), at(box(w, 0.15, 0.42, bm, 0.01), 0, 0, 0.21), at(box(w, 0.3, 0.42, bm, 0.01), 0, 0.6, 0.21), at(box((w - cw) / 2, 0.45, 0.42, bm, 0.005), -(w + cw) / 4, 0.15, 0.21), at(box((w - cw) / 2, 0.45, 0.42, bm, 0.005), (w + cw) / 4, 0.15, 0.21),
+        at(box(cw, 0.45, 0.01, mat('#0b0b0c', { rough: 1 })), 0, 0.15, 0.205), at(box(w + 0.1, 0.06, 0.5, mat('#4a4744'), 0.01), 0, 0.9, 0.24));
+      for (let i = 0; i < 3; i++) { const l = at(cyl(0.035, 0.035, cw * 0.8, mat('#5b3a22'), 8), cw * 0.4, 0.19 + (i === 1 ? 0.05 : 0), 0.26 + i * 0.05); l.rotation.z = Math.PI / 2; root.add(l); }
+      const fm = new THREE.MeshBasicMaterial({ color: '#ff9a3c', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }); const flames = [];
+      for (let i = 0; i < 5; i++) { const f = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 6, 1, true), fm.clone()); f.geometry.translate(0, 0.11, 0); f.position.set(-cw * 0.32 + i * cw * 0.16, 0.22, 0.32); flames.push(f); root.add(f); }
+      const anchor = new THREE.Object3D(); anchor.position.set(0, 0.4, 0.8); root.add(anchor); const em = { anchor, color: new THREE.Color('#ff8a3d'), power: 0 }; let cur = 0;
+      const active = (s) => ['on', 'heat', 'heating'].includes(s?.state) || s?.attributes?.hvac_action === 'heating';
+      return ret({ hit: [w + 0.1, 1.0, 0.5, 0.45], emitters: [em], animating: active, update(s, dt, t, env) {
+        cur += ((active(s) ? 1 : 0) - cur) * Math.min(1, dt * 2);
+        flames.forEach((f, i) => { const n = env.perf ? 0.85 : 0.7 + 0.3 * Math.sin(t * (7 + i) + i * 2) * Math.sin(t * (3.3 + i * 0.7)); f.scale.set(1, n * cur + 0.001, 1); f.material.opacity = cur * 0.85; });
+        em.power = cur * (1.4 + (env.perf ? 0 : 0.3 * Math.sin(t * 9) * Math.sin(t * 4.1)));
+      } });
     }
     case 'vacuum': case 'mower': {
       const mower = dev.kind === 'mower', body = new THREE.Group(), lr = new THREE.MeshStandardMaterial({ color: '#111', emissive: '#5fd39a', emissiveIntensity: 1.2 });
@@ -203,7 +287,7 @@ export function buildDevice(dev, ctx) {
     case 'valve': {
       root.add(at(cyl(0.05, 0.05, 0.12, mat('#3a3f4b'), 12)), at(cyl(0.02, 0.02, 0.06, mat('#5c8f45'), 8), 0, 0.12, 0));
       const drops = []; const dm = new THREE.MeshBasicMaterial({ color: '#bfe3ff', transparent: true, opacity: 0, depthWrite: false });
-      for (let i = 0; i < 24; i++) { const d = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 4), dm.clone()); root.add(d); drops.push({ m: d, a: (i / 24) * Math.PI * 2, o: i / 24 }); }
+      for (let i = 0; i < 24; i++) { const d = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 4), dm.clone()); d.userData.roomEffect = true; root.add(d); drops.push({ m: d, a: (i / 24) * Math.PI * 2, o: i / 24 }); }
       return ret({ hit: [0.4, 0.4, 0.4, 0.15], update(s, dt, t) { const on = s?.state === 'on' || s?.state === 'open'; drops.forEach((d) => { const q = (t * 0.7 + d.o) % 1; const rr = q * 2.2; d.m.position.set(Math.cos(d.a + t * 0.3) * rr, 0.2 + Math.sin(q * Math.PI) * 0.9, Math.sin(d.a + t * 0.3) * rr); d.m.material.opacity = on ? 0.7 * (1 - q) : 0; }); } });
     }
     case 'camera': {
@@ -212,7 +296,7 @@ export function buildDevice(dev, ctx) {
       head.children[1].rotation.x = Math.PI / 2; head.children[1].position.set(0, 0, 0.1);
       const rec = new THREE.MeshStandardMaterial({ color: '#111', emissive: '#ff3b3b', emissiveIntensity: 0 }); head.add(at(box(0.012, 0.012, 0.004, rec, 0), 0.035, 0.02, 0.1));
       const cone = new THREE.Mesh(new THREE.ConeGeometry(1.4, 4, 4, 1, true), new THREE.MeshBasicMaterial({ color: '#79a6ff', transparent: true, opacity: 0.06, depthWrite: false, side: THREE.DoubleSide }));
-      cone.geometry.translate(0, -2, 0); cone.rotation.x = -Math.PI / 2; cone.rotation.y = Math.PI / 4; cone.position.z = 0.1; cone.userData.pool = true; head.add(cone);
+      cone.geometry.translate(0, -2, 0); cone.rotation.x = -Math.PI / 2; cone.rotation.y = Math.PI / 4; cone.position.z = 0.1; cone.userData.pool = true; cone.userData.roomEffect = true; head.add(cone);
       root.add(at(box(0.08, 0.12, 0.03, mat('#f1f1ee'), 0.01), 0, yy - 0.06, 0.015), head);
       return ret({ hit: [0.3, 0.3, 0.4, yy], camera: true, update(s, dt, t, env) { rec.emissiveIntensity = (s?.state === 'recording' || s?.state === 'streaming') && Math.sin(t * 4) > 0 ? 2 : 0.3; cone.visible = env.editing || env.showCones; } });
     }

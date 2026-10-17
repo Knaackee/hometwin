@@ -24,6 +24,7 @@
           "demo_when_empty": "Mit Beispielhaus starten, solange noch kein Plan existiert",
           "base_url": "Basis-URL des Endpunkts",
           "model": "Modell",
+          "ui_language": "Sprache der Oberfläche",
           "api_key": "API-Key",
           "reasoning_effort": "Reasoning-Level",
           "max_steps": "Maximale Werkzeug-Schritte pro Anfrage",
@@ -38,7 +39,8 @@
       }
     },
     "error": {
-      "invalid_url": "Die Adresse muss mit http:// oder https:// beginnen."
+      "invalid_url": "Die Adresse muss mit http:// oder https:// beginnen.",
+      "invalid_language": "Wähle eine unterstützte Sprache für die Oberfläche."
     }
   },
   "selector": {
@@ -48,6 +50,12 @@
         "low": "Niedrig",
         "medium": "Mittel",
         "high": "Hoch"
+      }
+    },
+    "ui_language": {
+      "options": {
+        "en": "Englisch",
+        "de": "Deutsch"
       }
     }
   }

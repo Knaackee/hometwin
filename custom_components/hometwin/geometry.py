@@ -9,6 +9,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from .i18n import message
+
 Pt = list[float]
 
 GRID = 0.05            # coordinates are rounded to this grid
@@ -82,7 +84,7 @@ def _closest_on_seg(p: Pt, a: Pt, b: Pt) -> tuple[Pt, float]:
     return q, math.hypot(p[0] - q[0], p[1] - q[1])
 
 
-def snap(points: list[Pt], others: list[list[Pt]]) -> tuple[list[Pt], list[str]]:
+def snap(points: list[Pt], others: list[list[Pt]], language: str = "en") -> tuple[list[Pt], list[str]]:
     """Aligns vertices with the walls of other rooms and rounds to the grid.
 
     Each coordinate snaps separately to the nearest x (or z) used by an existing vertex, so a
@@ -108,7 +110,7 @@ def snap(points: list[Pt], others: list[list[Pt]]) -> tuple[list[Pt], list[str]]
             moved += 1
         out.append([round(x2, 3), round(z2, 3)])
     if moved:
-        notes.append(f"{moved} Ecke(n) bündig an vorhandene Wände angepasst")
+        notes.append(message(language, "snapped_corners", count=moved))
     clean = [p for i, p in enumerate(out) if math.hypot(p[0] - out[i - 1][0], p[1] - out[i - 1][1]) > 1e-4]
     return clean, notes
 
@@ -143,7 +145,7 @@ def gaps(a: list[Pt], b: list[Pt]) -> float | None:
     return best
 
 
-def check_level(rooms: list[dict[str, Any]]) -> list[str]:
+def check_level(rooms: list[dict[str, Any]], language: str = "en") -> list[str]:
     """Human-readable problems of one level."""
     probs: list[str] = []
     walled = [r for r in rooms if r.get("kind") in WALL_KINDS and len(r.get("points") or []) >= 3]
@@ -152,18 +154,18 @@ def check_level(rooms: list[dict[str, Any]]) -> list[str]:
         for w in walled:
             ov = overlap_area(o["points"], w["points"])
             if ov > 0.3:
-                probs.append(f"Außenfläche „{o.get('name')}“ liegt unter „{w.get('name')}“ ({ov:.1f} m²) – Außenfläche bis an die Wand zuschneiden")
+                probs.append(message(language, "outdoor_overlap", outside=o.get("name"), room=w.get("name"), area=ov))
     for i, a in enumerate(walled):
         if area(a["points"]) < 0.5:
-            probs.append(f"„{a.get('name')}“ ist sehr klein ({area(a['points']):.2f} m²)")
+            probs.append(message(language, "room_too_small", room=a.get("name"), area=area(a["points"])))
         for b in walled[i + 1:]:
             ov = overlap_area(a["points"], b["points"])
             if ov > OVERLAP_TOL:
-                probs.append(f"„{a.get('name')}“ und „{b.get('name')}“ überlappen um ca. {ov:.2f} m²")
+                probs.append(message(language, "rooms_overlap", first=a.get("name"), second=b.get("name"), area=ov))
                 continue
             g = gaps(a["points"], b["points"])
             if g is not None:
-                probs.append(f"Zwischen „{a.get('name')}“ und „{b.get('name')}“ ist eine Lücke von {g:.2f} m – gemeinsame Wand exakt auf dieselbe Linie legen")
+                probs.append(message(language, "room_gap", first=a.get("name"), second=b.get("name"), gap=g))
     return probs
 
 

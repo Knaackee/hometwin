@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // Small modelling kit: cached materials, primitive helpers, procedural textures.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
@@ -97,20 +98,20 @@ function water() {
 }
 
 export const SURFACES = {
-  oak: { label: 'Eiche', make: () => planks('#c4a17a'), rough: 0.75 },
-  walnut: { label: 'Nussbaum', make: () => planks('#8f6c56'), rough: 0.75 },
-  ash: { label: 'Esche hell', make: () => planks('#ddc9a8'), rough: 0.75 },
-  tile: { label: 'Fliese hell', make: () => tiles('#d3d8dd', 4, '#a9afb7'), rough: 0.55 },
-  tileDark: { label: 'Fliese anthrazit', make: () => tiles('#5b6068', 4, '#3f444b'), rough: 0.5 },
-  stone: { label: 'Naturstein', make: () => tiles('#9ea3aa', 3, '#7a8089'), rough: 0.55 },
-  concrete: { label: 'Beton', make: () => noise('#9a9c9e', 0.08), rough: 0.9 },
-  carpet: { label: 'Teppichboden', make: () => noise('#7b7f8c', 0.07, 20000), rough: 1 },
-  lawn: { label: 'Rasen', make: grass, rough: 1, outdoor: true },
-  terrace: { label: 'Terrasse (Holz)', make: () => planks('#9b7a5a', 10), rough: 0.8, outdoor: true },
-  paving: { label: 'Pflaster', make: () => tiles('#a59c90', 6, '#7f776c'), rough: 0.85, outdoor: true },
-  gravel: { label: 'Kies', make: () => noise('#b9b2a5', 0.22, 26000), rough: 1, outdoor: true },
-  driveway: { label: 'Einfahrt (Asphalt)', make: () => noise('#4a4d52', 0.1, 20000), rough: 0.95, outdoor: true },
-  pool: { label: 'Pool (Wasser)', make: water, rough: 0.05, outdoor: true },
+  oak: { get label() { return t('panel.surface.oak'); }, make: () => planks('#c4a17a'), rough: 0.75 },
+  walnut: { get label() { return t('panel.surface.walnut'); }, make: () => planks('#8f6c56'), rough: 0.75 },
+  ash: { get label() { return t('panel.surface.ash'); }, make: () => planks('#ddc9a8'), rough: 0.75 },
+  tile: { get label() { return t('panel.surface.tile'); }, make: () => tiles('#d3d8dd', 4, '#a9afb7'), rough: 0.55 },
+  tileDark: { get label() { return t('panel.surface.tileDark'); }, make: () => tiles('#5b6068', 4, '#3f444b'), rough: 0.5 },
+  stone: { get label() { return t('panel.surface.stone'); }, make: () => tiles('#9ea3aa', 3, '#7a8089'), rough: 0.55 },
+  concrete: { get label() { return t('panel.surface.concrete'); }, make: () => noise('#9a9c9e', 0.08), rough: 0.9 },
+  carpet: { get label() { return t('panel.surface.carpet'); }, make: () => noise('#7b7f8c', 0.07, 20000), rough: 1 },
+  lawn: { get label() { return t('panel.surface.lawn'); }, make: grass, rough: 1, outdoor: true },
+  terrace: { get label() { return t('panel.surface.terrace'); }, make: () => planks('#9b7a5a', 10), rough: 0.8, outdoor: true },
+  paving: { get label() { return t('panel.surface.paving'); }, make: () => tiles('#a59c90', 6, '#7f776c'), rough: 0.85, outdoor: true },
+  gravel: { get label() { return t('panel.surface.gravel'); }, make: () => noise('#b9b2a5', 0.22, 26000), rough: 1, outdoor: true },
+  driveway: { get label() { return t('panel.surface.driveway'); }, make: () => noise('#4a4d52', 0.1, 20000), rough: 0.95, outdoor: true },
+  pool: { get label() { return t('panel.surface.pool'); }, make: water, rough: 0.05, outdoor: true },
 };
 const surfaceMats = new Map();
 export function surfaceMat(kind) {
@@ -133,12 +134,12 @@ export const garageTex = canvasTex(128, (g, s) => { g.fillStyle = '#d9dcdf'; g.f
 // A soft additive light pool lying on the floor.
 export function lightPool(size) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
-  m.rotation.x = -Math.PI / 2; m.renderOrder = 2; m.userData.pool = true;
+  m.rotation.x = -Math.PI / 2; m.renderOrder = 2; m.userData.pool = true; m.userData.roomEffect = true;
   return m;
 }
 export function pulseRing(color = '#79a6ff') {
   const m = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
-  m.rotation.x = -Math.PI / 2; m.userData.pool = true;
+  m.rotation.x = -Math.PI / 2; m.userData.pool = true; m.userData.roomEffect = true;
   return m;
 }
 // Invisible mesh that still casts shadows (ceilings, cut-away walls).

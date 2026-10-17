@@ -41,6 +41,8 @@ const shot = (scene, cam, bg, groundOn = true) => { scene.getObjectByName('groun
 
 window.renderRecipe = async (recipe, params = {}, meta = {}) => {
   const { object, stats } = buildRecipe(recipe, params); const b = boundsOf(object);
+  // parts with role "screen" show a test picture, so reviewers see where live content will appear
+  object.traverse((m) => { if (m.isMesh && m.userData.role === 'screen') { const c = document.createElement('canvas'); c.width = 256; c.height = 144; const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 0, 256, 144); gr.addColorStop(0, '#3b6fb6'); gr.addColorStop(1, '#f2a65a'); g.fillStyle = gr; g.fillRect(0, 0, 256, 144); g.fillStyle = 'rgba(255,255,255,.9)'; g.font = 'bold 22px sans-serif'; g.textAlign = 'center'; g.fillText('SCREEN', 128, 80); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; m.material = new THREE.MeshBasicMaterial({ map: t }); } });
   const scene = stage(object, b.size);
   // 1. transparent hero image for the library
   const hero = await shot(scene, fitPersp(b, [1, 0.75, 1.5]));

@@ -120,5 +120,5 @@ In the PR description, state the exact AI model name/version used to generate ea
 - Measurements only from sources or the user. Mark estimates.
 - Licence of the recipe: CC0-1.0 (default) or CC-BY-4.0. Manufacturer and model names are fine; no logos, no copied textures or photos.
 - One object per folder (variants with different geometry = separate objects). Several objects per PR are welcome.
-- Keep it light: ≤ 15 000 triangles, recipe ≤ 64 KB. Detail level of a good architectural visualisation, not a CAD model.
+- Keep it light: recipe ≤ 64 KB; ≤ 12 draw calls. Triangle budgets by largest dimension: under 0.3 m → 4,000; under 1 m → 8,000; otherwise 15,000. Run strict validation after modelling.
 - Coordinates: metres, y up, stands on y = 0, centred on x/z, front faces +z. Wall objects: back face at z = −d/2.

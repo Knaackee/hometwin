@@ -1,3 +1,6 @@
+import englishFlag from './assets/flags/gb.svg';
+import germanFlag from './assets/flags/de.svg';
+import { t as tr, setLanguage, getLanguage, getLocale, formatNumber } from './i18n.js';
 // <hometwin-panel>: the Home Assistant panel. Receives `hass`, `narrow`, `panel` from HA.
 import { Stage } from './scene.js';
 import { CSS } from './styles.js';
@@ -28,10 +31,54 @@ export class HomeTwinPanel extends HTMLElement {
   set hass(h) { const first = !this._hass; this._hass = h; if (first) this._init(); else this._onHass(); }
   get hass() { return this._hass; }
   set narrow(v) { this._narrow = v; this.$?.('menuBtn') && (this.$('menuBtn').hidden = !v); }
-  set panel(p) { this._panel = p; }
+  set panel(p) {
+    this._panel = p;
+    const previous = getLanguage();
+    this.lang = setLanguage(p?.config?.ui_language);
+    if (this.plan && previous !== this.lang) this.refreshLanguage();
+  }
+
+  refreshLanguage() {
+    // Update only our static labels: retain controls, listeners and user input.
+    for (const el of this.shadowRoot.querySelectorAll('[data-i18n]')) {
+      const node = [...el.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
+      if (node) node.textContent = tr(el.dataset.i18n);
+    }
+    for (const attr of ['title', 'aria-label', 'placeholder']) {
+      for (const el of this.shadowRoot.querySelectorAll(`[data-i18n-${attr}]`)) el.setAttribute(attr, tr(el.getAttribute(`data-i18n-${attr}`)));
+    }
+    this.$('lib').lang = this.lang;
+    this.$('saveState').textContent = tr(this.dirty ? 'panel.unsaved' : 'panel.saved');
+    this.renderLevels(); this.renderSunPop(); this.updateLabelText();
+    this.editor.refreshLanguage();
+    if (!this.$('wizard').hidden) this.wizard.render();
+    if (!this.$('onboard').hidden) this.showOnboarding();
+    if (this.detailEntity) this.renderDetail(true);
+    this.scheduleUI(true);
+  }
 
   /* ---------- HA access ---------- */
-  states() { return this._hass?.states || {}; }
+  states() { const states = this._hass?.states || {}; return this._preview ? { ...states, ...this._preview.states } : states; }
+  // Show a scene in the model without activating it.
+  async previewScene(id) {
+    const scene = this._hass?.states?.[id]; if (!scene) return;
+    let config = null;
+    try { config = scene.attributes.id != null || this._hass.demo ? await this._hass.callApi('GET', `config/scene/config/${scene.attributes.id ?? id}`) : null; } catch { config = null; }
+    if (!config?.entities) { this.toast(tr('panel.scenePreviewUnavailable')); return; }
+    const states = {}, current = this._hass.states;
+    for (const [entityId, value] of Object.entries(config.entities)) {
+      const existing = current[entityId]; if (!existing) continue;
+      const { state, ...attributes } = typeof value === 'object' ? value : { state: value }; const merged = { ...existing.attributes, ...attributes };
+      if (attributes.rgb_color) merged.color_mode = 'rgb'; else if (attributes.color_temp_kelvin) { merged.color_mode = 'color_temp'; delete merged.rgb_color; }
+      if (attributes.position != null) merged.current_position = attributes.position;
+      states[entityId] = { ...existing, state: state ?? existing.state, attributes: merged };
+    }
+    this._preview = { id, states }; clearTimeout(this._prevT); this._prevT = setTimeout(() => this.endPreview(), 12000);
+    const bar = this.$('scenePrev'); bar.hidden = false; bar.innerHTML = `<span>👁 ${tr('panel.preview')}: <b>${esc(this.nameOf(id))}</b> · ${tr('panel.deviceCount', { count: Object.keys(states).length })}</span><button class="btn small primary" data-sp="run">${tr('panel.run')}</button><button class="btn small" data-sp="end">${tr('panel.close')}</button>`;
+    bar.onclick = (event) => { const button = event.target.closest('[data-sp]'); if (!button) return; if (button.dataset.sp === 'run') { this.call('scene', 'turn_on', { entity_id: id }); this.toast(tr('panel.scene', { name: this.nameOf(id) })); } this.endPreview(); };
+    if (this.levelSel !== 'all') this.setLevel('all'); this.stage.wake(); this.scheduleUI(true);
+  }
+  endPreview() { if (!this._preview) return; this._preview = null; clearTimeout(this._prevT); this.$('scenePrev').hidden = true; this.stage.wake(); this.scheduleUI(true); }
   isAdmin() { return this._hass?.user?.is_admin !== false; }
   areaOf(id) {
     const h = this._hass, e = h.entities?.[id];
@@ -45,8 +92,12 @@ export class HomeTwinPanel extends HTMLElement {
 
   /* ---------- setup ---------- */
   async _init() {
+    // HA may assign hass before panel in the same update cycle.
+    await Promise.resolve();
+    setLanguage(this._panel?.config?.ui_language);
+    this.lang = getLanguage();
     const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>${CSS}</style>${TEMPLATE}`;
+    root.innerHTML = `<style>${CSS}</style>${template()}`;
     this.$ = (id) => root.getElementById(id);
     root.querySelectorAll('[data-ic]').forEach((b) => b.insertAdjacentHTML('afterbegin', icon(b.dataset.ic)));
     this.setAttribute('mode', 'view');
@@ -63,7 +114,7 @@ export class HomeTwinPanel extends HTMLElement {
     try {
       this._unsub = await this._hass.connection?.subscribeMessage?.((msg) => {
         if (msg.client_id === CLIENT_ID || this.dirty) return;
-        const p = migrate(msg.plan); if (p) { this.setPlan(p); this.toast('Plan wurde auf einem anderen Gerät geändert'); }
+        const p = migrate(msg.plan); if (p) { this.setPlan(p); this.toast(tr('panel.remoteChange')); }
       }, { type: 'hometwin/plan/subscribe' });
     } catch { /* older backend or demo */ }
     this.stage.start(); setTimeout(() => this.stage.riseAll(), 250);
@@ -74,20 +125,36 @@ export class HomeTwinPanel extends HTMLElement {
   // First start: choose between the sample house, an empty plan or the floor-plan wizard.
   showOnboarding() {
     const o = this.$('onboard'); o.hidden = false;
-    o.innerHTML = `<div class="ob" role="dialog" aria-modal="true" aria-labelledby="obT"><h2 id="obT">Willkommen bei HomeTwin</h2>
-      <p class="lead">Dein Zuhause als 3D-Modell, mit Licht, Rollläden, Heizung und Sensoren aus Home Assistant. Wie möchtest du starten?</p>
+    o.innerHTML = `<div class="ob" role="dialog" aria-modal="true" aria-labelledby="obT"><div class="ob-languages" role="group" aria-label="${tr('panel.language')}">${[['en', 'English', englishFlag], ['de', 'Deutsch', germanFlag]].map(([code, name, flag]) => `<button type="button" data-language="${code}" lang="${code}" aria-pressed="${getLanguage() === code}"><img src="${esc(flag)}" alt="" width="27" height="18">${name}</button>`).join('')}</div><h2 id="obT">${tr('panel.welcome')}</h2>
+      <p class="lead">${tr('panel.intro')}</p>
       <div class="choices">
-        <button class="choice primary" data-ob="plan">${icon('image')}<strong>Mit Bauplan starten</strong><span>Grundriss als Bild oder PDF laden; Räume werden erkannt oder nachgezeichnet.</span></button>
-        <button class="choice" data-ob="empty">${icon('square')}<strong>Leer starten</strong><span>Räume selbst zeichnen, mit Maßen und Rechteck- oder Polygon-Werkzeug.</span></button>
-        <button class="choice" data-ob="demo">${icon('home')}<strong>Beispielhaus ansehen</strong><span>Erst einmal ausprobieren. Später jederzeit leer neu beginnen.</span></button>
+        <button class="choice primary" data-ob="plan">${icon('image')}<strong>${tr('panel.startPlan')}</strong><span>${tr('panel.startPlanHint')}</span></button>
+        <button class="choice" data-ob="empty">${icon('square')}<strong>${tr('panel.startEmpty')}</strong><span>${tr('panel.startEmptyHint')}</span></button>
+        <button class="choice" data-ob="demo">${icon('home')}<strong>${tr('panel.startDemo')}</strong><span>${tr('panel.startDemoHint')}</span></button>
       </div></div>`;
-    o.onclick = (e) => {
+    o.onclick = async (e) => {
+      const languageButton = e.target.closest('[data-language]');
+      if (languageButton) {
+        const language = languageButton.dataset.language;
+        if (language === getLanguage()) return;
+        o.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+        try {
+          await this._hass.callWS({ type: 'hometwin/language/set', language });
+          this.panel = { ...this._panel, config: { ...this._panel?.config, ui_language: language } };
+          this.dispatchEvent(new CustomEvent('hometwin-language-changed', { detail: language }));
+          this.$('onboard').querySelector(`[data-language="${language}"]`)?.focus();
+        } catch (error) {
+          o.querySelectorAll('button').forEach((button) => { button.disabled = false; });
+          this.toast(tr('panel.languageSaveError'));
+        }
+        return;
+      }
       const c = e.target.closest('[data-ob]')?.dataset.ob; if (!c) return;
       o.hidden = true; o.innerHTML = ''; this._firstRun = false;
       if (c === 'demo') { this.markDirty(); return; }
       this.setPlan(emptyPlan(), { frame: true }); this.markDirty(); this.setMode('edit');
       if (c === 'plan') this.wizard.open({ levelId: this.plan.levels[0].id });
-      else this.toast('Wähle oben das Rechteck-Werkzeug und ziehe den ersten Raum auf.');
+      else this.toast(tr('panel.drawFirst'));
     };
   }
   connectedCallback() { this.stage?.start(); }
@@ -113,13 +180,15 @@ export class HomeTwinPanel extends HTMLElement {
   markDirty() {
     const voids = syncStairVoids(this.plan);
     if (voids.size) { for (const id of voids) this.stage.rebuildLevel(id); this.buildLabels(); if (this.mode === 'edit') this.editor.renderLeft(); }
-    this.dirty = true; this.$('saveState').textContent = 'Ungespeichert';
+    this.stage.settleAutomaticItems();
+    this.stage.select(this.sel, this.editor?.multi || []);
+    this.dirty = true; this.$('saveState').textContent = tr('panel.unsaved');
     clearTimeout(this._saveT); this._saveT = setTimeout(() => this.save(), 900);
   }
   async save() {
-    clearTimeout(this._saveT); this.$('saveState').textContent = 'Speichere …';
-    try { await this._hass.callWS({ type: 'hometwin/plan/save', plan: this.plan, client_id: CLIENT_ID }); this.dirty = false; this.$('saveState').textContent = 'Gespeichert'; }
-    catch (e) { this.$('saveState').textContent = 'Nicht gespeichert'; this.toast(`Speichern fehlgeschlagen: ${e.message || e.code || e}`); }
+    clearTimeout(this._saveT); this.$('saveState').textContent = tr('panel.saving');
+    try { await this._hass.callWS({ type: 'hometwin/plan/save', plan: this.plan, client_id: CLIENT_ID }); this.dirty = false; this.$('saveState').textContent = tr('panel.saved'); }
+    catch (e) { this.$('saveState').textContent = tr('panel.notSaved'); this.toast(tr('panel.saveError', {error: e.message || e.code || e})); }
   }
   // Applies ops (from editor tools or the agent), rebuilding only what changed.
   apply(ops, { undo = true } = {}) {
@@ -136,6 +205,11 @@ export class HomeTwinPanel extends HTMLElement {
     if (op.op === 'place_device') this.stage.addDevice(L.id, findItem(this.plan, res.id).item);
     else if (op.op === 'place_furniture') this.stage.addFurniture(L.id, findItem(this.plan, res.id).item);
     else { this.stage.rebuildLevel(L.id); this.buildLabels(); }
+    if (['place_device', 'place_furniture', 'move_item', 'update_device'].includes(op.op)) {
+      const f = findItem(this.plan, res.id || op.item_id || op.device_id);
+      if (f) this.stage.settleItem(f.level.id, f.type, f.item);
+    }
+    this.stage.select(this.sel, this.editor?.multi || []);
     this.markDirty(); this.scheduleUI(true); return res;
   }
 
@@ -157,7 +231,8 @@ export class HomeTwinPanel extends HTMLElement {
       const tg = e.target.closest('[data-toggle]'); if (!tg) return; const k = tg.dataset.toggle;
       if (k === 'heat') this.heatOn = !this.heatOn;
       if (k === 'xray') { this.xray = !this.xray; if (this.xray && this.levelSel !== 'all') this.setLevel('all'); this.stage.layout(); }
-      if (k === 'perf') { this.perfMode = !this.perfMode; try { localStorage.setItem('hometwin-perf', this.perfMode ? '1' : '0'); } catch { /* ignore */ } this.stage.setPerf(this.perfMode); this.renderSunPop(); this.toast(this.perfMode ? 'Leistungsmodus an: geringere Auflösung, kein Leuchten' : 'Leistungsmodus aus'); return; }
+      if (k === 'stats') { this.showStats = !this.showStats; this.$('stats').hidden = !this.showStats; this.renderSunPop(); return; }
+      if (k === 'perf') { this.perfMode = !this.perfMode; try { localStorage.setItem('hometwin-perf', this.perfMode ? '1' : '0'); } catch { /* ignore */ } this.stage.setPerf(this.perfMode); this.renderSunPop(); this.toast(this.perfMode ? tr('panel.perfOn') : tr('panel.perfOff')); return; }
       if (k === 'explode') { this.explode = !this.explode; if (this.explode && this.levelSel !== 'all') this.levelSel = 'all'; this.stage.layout(); this.buildLabels(); this.renderLevels(); this.stage.frame(this.levelSel); }
       this.renderSunPop();
     });
@@ -192,7 +267,7 @@ export class HomeTwinPanel extends HTMLElement {
   renderLevels() {
     const ls = this.plan.levels; const el = this.$('levels');
     el.hidden = false;
-    el.innerHTML = `<button data-level="all" aria-pressed="${this.levelSel === 'all'}" title="Ganzes Haus" aria-label="Ganzes Haus">${icon('home')}</button>`
+    el.innerHTML = `<button data-level="all" aria-pressed="${this.levelSel === 'all'}" title="${tr('panel.wholeHouse')}" aria-label="${tr('panel.wholeHouse')}">${icon('home')}</button>`
       + [...ls].reverse().map((l) => `<button data-level="${l.id}" aria-pressed="${this.levelSel === l.id}" title="${esc(l.name)}">${esc(short(l.name))}</button>`).join('');
     this.renderRoomSel();
   }
@@ -200,22 +275,22 @@ export class HomeTwinPanel extends HTMLElement {
   renderRoomSel() {
     const el = this.$('roomSel'); if (!el) return;
     const groups = [...this.plan.levels].reverse().map((l) => { const rs = l.rooms.filter((r) => r.kind !== 'void' && !(r.kind === 'outdoor' && polyArea(r.points) > 60)); return rs.length ? `<optgroup label="${esc(l.name)}">${rs.map((r) => `<option value="${l.id}|${r.id}" ${this.focusRoom === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</optgroup>` : ''; }).join('');
-    el.innerHTML = `<option value="" ${this.focusRoom ? '' : 'selected'}>Alle Räume</option>${groups}`;
+    el.innerHTML = `<option value="" ${this.focusRoom ? '' : 'selected'}>${tr('panel.allRooms')}</option>${groups}`;
   }
   renderSunPop(full = true) {
     const p = this.$('sunPop'); const s = this._sun || { azimuth: 0, elevation: 0 }; const d = this.sunDate();
     const tg = (k, on, label) => `<button class="chip" data-toggle="${k}" aria-pressed="${on}">${label}</button>`;
-    if (full) p.innerHTML = `<div class="panel-head" style="padding:0"><h2>Ansicht</h2></div>
-      <div class="chips" style="padding:0">${tg('heat', this.heatOn, 'Temperatur-Heatmap')}${tg('xray', this.xray, 'Röntgen')}${this.plan.levels.length > 1 ? tg('explode', this.explode, 'Etagen aufklappen') : ''}${tg('perf', !!this.perfMode, 'Leistungsmodus')}</div>
-      <div class="field"><span class="lbl">Kamera</span><div class="chips" style="padding:0">${[['N', 'Nord'], ['E', 'Ost'], ['S', 'Süd'], ['W', 'West'], ['top', 'Oben']].map(([k, l]) => `<button class="chip" data-cam="${k}">${l}</button>`).join('')}</div></div>
-      <div class="panel-head" style="padding:6px 0 0"><h2>Sonnenstand</h2></div>
-      <label class="check"><input type="checkbox" id="sunLive" ${this.timeLive ? 'checked' : ''}> Live (jetzt)</label>
-      <div class="field"><label for="sunDate">Datum</label><input type="date" id="sunDate" value="${isoDate(d)}"></div>
-      <div class="field"><label for="sunTime">Uhrzeit <output id="sunTimeOut"></output></label><input type="range" id="sunTime" min="0" max="1439" step="5" value="${d.getHours() * 60 + d.getMinutes()}"></div>
+    if (full) p.innerHTML = `<div class="panel-head" style="padding:0"><h2>${tr('panel.view')}</h2></div>
+      <div class="chips" style="padding:0">${tg('heat', this.heatOn, tr('panel.heatmap'))}${tg('xray', this.xray, tr('panel.xray'))}${this.plan.levels.length > 1 ? tg('explode', this.explode, tr('panel.explode')) : ''}${tg('perf', !!this.perfMode, tr('panel.performance'))}${tg('stats', !!this.showStats, tr('panel.performanceDisplay'))}</div>
+      <div class="field"><span class="lbl">${tr('panel.camera')}</span><div class="chips" style="padding:0">${[['N', tr('panel.north')], ['E', tr('panel.east')], ['S', tr('panel.south')], ['W', tr('panel.west')], ['top', tr('panel.top')]].map(([k, l]) => `<button class="chip" data-cam="${k}">${l}</button>`).join('')}</div></div>
+      <div class="panel-head" style="padding:6px 0 0"><h2>${tr('panel.sun')}</h2></div>
+      <label class="check"><input type="checkbox" id="sunLive" ${this.timeLive ? 'checked' : ''}> ${tr('panel.live')}</label>
+      <div class="field"><label for="sunDate">${tr('panel.date')}</label><input type="date" id="sunDate" value="${isoDate(d)}"></div>
+      <div class="field"><label for="sunTime">${tr('panel.time')} <output id="sunTimeOut"></output></label><input type="range" id="sunTime" min="0" max="1439" step="5" value="${d.getHours() * 60 + d.getMinutes()}"></div>
       <div class="sunline" id="sunLine"></div>
-      <p class="hint">Standort ${fmtCoord(this.plan.site.lat, 'N')} ${fmtCoord(this.plan.site.lon, 'O')}, Nordrichtung ${Math.round(this.plan.site.north || 0)}°. Ändern im Editor beim Haus.</p>`;
-    this.$('sunTimeOut').textContent = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-    this.$('sunLine').textContent = `Azimut ${s.azimuth.toFixed(1)}° · Höhe ${s.elevation.toFixed(1)}°${s.source ? ' · ' + s.source : ''}`;
+      <p class="hint">${tr('panel.location', {lat: fmtCoord(this.plan.site.lat, 'N'), lon: fmtCoord(this.plan.site.lon, getLanguage() === 'de' ? 'O' : 'E'), north: Math.round(this.plan.site.north || 0)})}</p>`;
+    this.$('sunTimeOut').textContent = d.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
+    this.$('sunLine').textContent = tr('panel.sunAngles', {azimuth: formatNumber(s.azimuth,{maximumFractionDigits:1}), elevation: formatNumber(s.elevation,{maximumFractionDigits:1})}) + (s.source ? ' · ' + s.source : '');
     if (!full && this.timeLive) { this.$('sunDate').value = isoDate(d); this.$('sunTime').value = d.getHours() * 60 + d.getMinutes(); }
   }
   sunDate() { return this.timeLive || !this.customTime ? new Date() : this.customTime; }
@@ -224,9 +299,10 @@ export class HomeTwinPanel extends HTMLElement {
     let s; const sunEnt = this.states()['sun.sun'];
     // Always compute from the site when possible: sun.sun only refreshes every few minutes,
     // which shows near sunrise/sunset as a visible jump between live and preview.
-    if (site.lat != null) s = { ...sunPosition(this.sunDate(), site.lat, site.lon), source: this.timeLive ? 'live' : 'Vorschau' };
+    if (site.lat != null) s = { ...sunPosition(this.sunDate(), site.lat, site.lon), source: this.timeLive ? 'live' : tr('panel.preview') };
     else if (sunEnt?.attributes?.azimuth != null) s = { azimuth: +sunEnt.attributes.azimuth, elevation: +sunEnt.attributes.elevation, source: 'sun.sun' };
-    else s = { azimuth: 180, elevation: 35, source: 'ohne Standort' };
+    else s = { azimuth: 180, elevation: 35, source: tr('panel.noLocation') };
+    if (this._hass.demo) this._hass.updateDemoSun?.(s.elevation);
     this._sun = s; this.stage.setSun(s.azimuth, s.elevation, site.north || 0);
     this.$('tSun').innerHTML = icon(s.elevation > 0 ? 'sun' : 'moon');
     if (!this.$('sunPop').hidden) this.renderSunPop(false);
@@ -257,12 +333,13 @@ export class HomeTwinPanel extends HTMLElement {
   }
   updateLabelText() {
     for (const L of this._labels || []) {
-      if (!L.room) { const lit = L.level.devices.filter((d) => d.kind === 'light' && this.states()[d.entity_id]?.state === 'on').length; L.el.innerHTML = `<b>${esc(L.level.name)}</b><span>${lit ? `<span class="on">${lit} Lichter an</span>` : ''}</span>`; continue; }
+      if (!L.room) { const lit = L.level.devices.filter((d) => d.kind === 'light' && this.states()[d.entity_id]?.state === 'on').length; L.el.innerHTML = `<b>${esc(L.level.name)}</b><span>${lit ? `<span class="on">${lit} ${tr('panel.lightsOn')}</span>` : ''}</span>`; continue; }
       const t = this.roomTemp(L.level, L.room); const lit = this.roomDevices(L.level, L.room).filter((d) => d.kind === 'light' && this.states()[d.entity_id]?.state === 'on').length;
-      L.el.innerHTML = `<b>${esc(L.room.name)}</b><span>${t != null ? t.toFixed(1) + '°' : ''}${lit ? ` <span class="on">· ${lit} an</span>` : ''}</span>`;
+      L.el.innerHTML = `<b>${esc(L.room.name)}</b><span>${t != null ? formatNumber(t, {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '°' : ''}${lit ? ` <span class="on">· ${lit} ${tr('panel.on')}</span>` : ''}</span>`;
     }
   }
   onFrame() {
+    if (this.showStats && performance.now() - (this._statT || 0) > 500) { this._statT = performance.now(); const info = this.stage.renderer.info; this.$('stats').textContent = tr('panel.performanceStats', { fps: this.stage.fps, drawCalls: info.render.calls, triangles: formatNumber(info.render.triangles / 1000, { maximumFractionDigits: 0 }), geometries: info.memory.geometries, pace: this.stage.pace }); }
     if (this.mode === 'edit') this.editor.placeDims();
     for (const L of this._labels || []) {
       const [x, y, z] = this.stage.project(L.c[0], this.stage.displayY(L.level) + 0.05, L.c[1]);
@@ -287,6 +364,7 @@ export class HomeTwinPanel extends HTMLElement {
 
   /* ---------- view panel ---------- */
   _onHass() {
+    this.stage?.invalidate();
     this.scheduleUI();
   }
   scheduleUI(planChanged) {
@@ -306,16 +384,16 @@ export class HomeTwinPanel extends HTMLElement {
       const more = e.target.closest('[data-more]'); if (more) { e.stopPropagation(); return this.openDetail(more.dataset.more); }
       const t = e.target.closest('[data-ent]'); if (t) { if (this._tileLp) { this._tileLp = false; return; } return this.primaryAction(t.dataset.ent); }
       const r = e.target.closest('[data-room]'); if (r) { if (!r.dataset.room) { this.setLevel('all'); return this.setFocus(null); } return this.setFocus(r.dataset.room); }
-      const sc = e.target.closest('[data-scene]'); if (sc) { this.call('scene', 'turn_on', { entity_id: sc.dataset.scene }); this.toast(`Szene „${this.nameOf(sc.dataset.scene)}“`); return; }
+      const sc = e.target.closest('[data-scene]'); if (sc) { if (this._tileLp) { this._tileLp = false; return; } this.endPreview(); this.call('scene', 'turn_on', { entity_id: sc.dataset.scene }); this.toast(tr('panel.scene', {name: this.nameOf(sc.dataset.scene)})); return; }
       if (e.target.closest('#dBack')) this.closeDetail();
     });
     const c = this.$('stage');
-    c.addEventListener('pointerdown', (e) => { this._down = { x: e.clientX, y: e.clientY }; this._lastXY = null; if (this.mode === 'edit') return this.editor.pointerDown(e);
+    c.addEventListener('pointerdown', (e) => { this._down = { x: e.clientX, y: e.clientY, pick: this.stage.pick(e), started: performance.now() }; this._lastXY = null; if (this.mode === 'edit') return this.editor.pointerDown(e);
       clearTimeout(this._lp); this._lpFired = false; if (e.isPrimary === false) return;
-      this._lp = setTimeout(() => { const d = this._down; if (!d || this.mode !== 'view') return; const id = this.entityAt({ clientX: d.x, clientY: d.y }); if (id) { this._lpFired = true; navigator.vibrate?.(15); this.moreInfo(id); } }, 520); });
-    c.addEventListener('contextmenu', (e) => { if (this.mode !== 'view') return; const id = this.entityAt(e); if (id) { e.preventDefault(); this.moreInfo(id); } });
-    vp.addEventListener('contextmenu', (e) => { const t = e.target.closest('[data-ent]'); if (t) { e.preventDefault(); this.moreInfo(t.dataset.ent); } });
-    { let lt = null; vp.addEventListener('pointerdown', (e) => { const t = e.target.closest('[data-ent]'); if (!t || e.pointerType === 'mouse') return; lt = setTimeout(() => { lt = null; this._tileLp = true; navigator.vibrate?.(15); this.moreInfo(t.dataset.ent); }, 520); });
+      this._lp = setTimeout(() => { const d = this._down; if (!d || this.mode !== 'view') return; this._lpFired = true; this.inspectPick(d.pick); }, 520); });
+    c.addEventListener('contextmenu', (e) => { if (this.mode !== 'view') return; e.preventDefault(); clearTimeout(this._lp); this._lpFired = true; this.inspectPick(this.stage.pick(e)); });
+    vp.addEventListener('contextmenu', (e) => { const entity = e.target.closest('[data-ent]'); if (entity) { e.preventDefault(); this.moreInfo(entity.dataset.ent); } const scene = e.target.closest('[data-scene]'); if (scene) { e.preventDefault(); this.previewScene(scene.dataset.scene); } });
+    { let lt = null; vp.addEventListener('pointerdown', (e) => { const target = e.target.closest('[data-ent],[data-scene]'); if (!target || e.isPrimary === false) return; this._tileLp = false; lt = setTimeout(() => { lt = null; this._tileLp = true; navigator.vibrate?.(15); if (target.dataset.scene) this.previewScene(target.dataset.scene); else this.moreInfo(target.dataset.ent); }, 520); });
       ['pointerup', 'pointercancel', 'pointermove'].forEach((ev) => vp.addEventListener(ev, (e) => { if (ev === 'pointermove' && Math.abs(e.movementX) + Math.abs(e.movementY) < 4) return; clearTimeout(lt); lt = null; })); }
     c.addEventListener('pointermove', (e) => {
       if (this.stage.walk && this._down && !(this.mode === 'edit' && this.editor.drag)) { const l = this._lastXY || [this._down.x, this._down.y]; this.stage.walkLook(e.clientX - l[0], e.clientY - l[1]); this._lastXY = [e.clientX, e.clientY]; }
@@ -325,13 +403,15 @@ export class HomeTwinPanel extends HTMLElement {
       if (this._lpFired) { this._lpFired = false; return; }
       if (this.mode === 'edit') return this.editor.pointerUp(e, moved);
       if (moved || !was) return;
-      const p = this.stage.pick(e);
+      if (performance.now() - was.started >= 520) return this.inspectPick(was.pick);
+      const p = was.pick;
       if (!p) return this.setFocus(null);
-      if (p.type === 'device') { const d = findItem(this.plan, p.id)?.item; if (d?.entity_id) { if (d.kind === 'camera' || ['climate'].includes(d.entity_id.split('.')[0])) this.openDetail(d.entity_id); else this.primaryAction(d.entity_id); } }
+      if (p.type === 'device' || p.type === 'furniture') { const d = findItem(this.plan, p.id)?.item; if (d?.entity_id) { if (['camera', 'climate', 'media_player', 'image'].includes(d.entity_id.split('.')[0])) this.moreInfo(d.entity_id); else this.primaryAction(d.entity_id); } else this.inspectPick(p); }
       else if (p.type === 'opening') { const o = findItem(this.plan, p.id)?.item; if (o?.cover) this.primaryAction(o.cover); }
       else if (p.type === 'roofitem') { const o = (this.plan.site.roofItems || []).find((x) => x.id === p.id); if (o?.cover) this.primaryAction(o.cover); }
       else if (p.type === 'room') { const r = this.findRoom(p.level, p.id); if (r?.kind === 'outdoor' && polyArea(r.points) > 60) return this.setFocus(null); this.setFocus(this.focusRoom === p.id ? null : p.id, p.level); }
     });
+    c.addEventListener('pointercancel', () => { clearTimeout(this._lp); this._down = null; this._lpFired = false; });
     c.addEventListener('pointerleave', () => { this.$('tip').hidden = true; this.hoverRoom = null; });
   }
   hover(e) {
@@ -340,11 +420,11 @@ export class HomeTwinPanel extends HTMLElement {
     this.hoverRoom = p?.type === 'room' ? p.id : null;
     this.$('stage').style.cursor = p && (p.type !== 'room' || this.mode === 'view') ? 'pointer' : 'default';
     let html = null;
-    if (p?.type === 'device') { const d = findItem(this.plan, p.id)?.item; if (d) html = `${esc(d.entity_id ? this.nameOf(d.entity_id) : KINDS[d.kind]?.label)}<small>${d.entity_id ? esc(this.stateText(d.entity_id)) : 'nicht verknüpft'}</small>`; }
-    if (p?.type === 'opening') { const o = findItem(this.plan, p.id)?.item; const id = o?.cover || o?.contact; if (id) html = `${esc(this.nameOf(id))}<small>${esc(this.stateText(id))}${o.cover && this.mode === 'view' ? ' · antippen zum Fahren' : ''}</small>`; }
-    if (p?.type === 'roofitem') { const o = (this.plan.site.roofItems || []).find((x) => x.id === p.id); const id = o?.cover || o?.contact; html = `${o?.kind === 'dormer' ? 'Gaube' : 'Dachfenster'}${id ? `<small>${esc(this.nameOf(id))}: ${esc(this.stateText(id))}</small>` : ''}`; }
+    if (p?.type === 'device') { const d = findItem(this.plan, p.id)?.item; if (d) html = `${esc(d.entity_id ? this.nameOf(d.entity_id) : KINDS[d.kind]?.label)}<small>${d.entity_id ? esc(this.stateText(d.entity_id)) : tr('panel.unlinked')}</small>`; }
+    if (p?.type === 'opening') { const o = findItem(this.plan, p.id)?.item; const id = o?.cover || o?.contact; if (id) html = `${esc(this.nameOf(id))}<small>${esc(this.stateText(id))}${o.cover && this.mode === 'view' ? ' · ' + tr('panel.tapControl') : ''}</small>`; }
+    if (p?.type === 'roofitem') { const o = (this.plan.site.roofItems || []).find((x) => x.id === p.id); const id = o?.cover || o?.contact; html = `${o?.kind === 'dormer' ? tr('panel.dormer') : tr('panel.roofWindow')}${id ? `<small>${esc(this.nameOf(id))}: ${esc(this.stateText(id))}</small>` : ''}`; }
     if (p?.type === 'furniture') { const f = findItem(this.plan, p.id)?.item; if (f) html = esc(this.editor.furnLabel(f)); }
-    if (p?.type === 'xroof') { const x = (this.plan.site.roofs || []).find((r) => r.id === p.id); if (x) html = `${esc(x.name)}<small>antippen zum Bearbeiten</small>`; }
+    if (p?.type === 'xroof') { const x = (this.plan.site.roofs || []).find((r) => r.id === p.id); if (x) html = `${esc(x.name)}<small>${tr('panel.tapEdit')}</small>`; }
     if (html) { const r = this.getBoundingClientRect(); tip.innerHTML = html; tip.style.left = `${e.clientX - r.left + 14}px`; tip.style.top = `${e.clientY - r.top + 14}px`; tip.hidden = false; } else tip.hidden = true;
   }
   /* ---------- walkthrough ---------- */
@@ -376,8 +456,8 @@ export class HomeTwinPanel extends HTMLElement {
     this.stage.enterWalk(L, at, body); this.$('tWalk').setAttribute('aria-pressed', 'true');
     this.$('walkHud').hidden = false; this.$('whBody').value = body; this.$('whLevel').textContent = L.name;
     this.$('joy').hidden = !matchMedia('(pointer: coarse)').matches;
-    this.$('whHint').textContent = matchMedia('(pointer: coarse)').matches ? 'Joystick: gehen · Wischen: umsehen · Tippen: bedienen · lange drücken: Details' : 'W A S D / Pfeile: gehen · Shift: schneller · Ziehen: umsehen · Klick: bedienen · Esc: beenden';
-    if (this.mode === 'view') this.setSheet('peek'); this.toast('Begehen: viel Spaß beim Rundgang!');
+    this.$('whHint').textContent = matchMedia('(pointer: coarse)').matches ? tr('panel.walkTouch') : tr('panel.walkKeys');
+    if (this.mode === 'view') this.setSheet('peek'); this.toast(tr('panel.walkWelcome'));
   }
   stopWalk() {
     if (!this.stage.walk) return; this.stage.exitWalk(); this.$('tWalk').setAttribute('aria-pressed', 'false');
@@ -395,9 +475,15 @@ export class HomeTwinPanel extends HTMLElement {
     if (this.hass?.demo) { this.openDetail(entityId); this.setSheet('half'); return; }
     this.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId }, bubbles: true, composed: true }));
   }
-  entityAt(e) {
-    const p = this.stage.pick(e); if (!p) return null;
-    if (p.type === 'device') return findItem(this.plan, p.id)?.item?.entity_id || null;
+  inspectPick(p) {
+    const id = this.entityForPick(p);
+    if (id) return this.moreInfo(id);
+    if (p?.type === 'device' || (p?.type === 'furniture' && this.stage.levels.get(p.level)?.furnScreens?.get(p.id)?.screens.length)) this.toast(tr('panel.linkObject'));
+  }
+  entityAt(e) { return this.entityForPick(this.stage.pick(e)); }
+  entityForPick(p) {
+    if (!p) return null;
+    if (p.type === 'device' || p.type === 'furniture') return findItem(this.plan, p.id)?.item?.entity_id || null;
     if (p.type === 'opening') { const o = findItem(this.plan, p.id)?.item; return o?.cover || o?.contact || null; }
     if (p.type === 'roofitem') { const o = (this.plan.site.roofItems || []).find((x) => x.id === p.id); return o?.cover || o?.contact || null; }
     return null;
@@ -412,20 +498,20 @@ export class HomeTwinPanel extends HTMLElement {
     this.scheduleUI();
   }
   stateText(id) {
-    const s = this.states()[id]; if (!s) return 'nicht verfügbar'; const a = s.attributes, d = id.split('.')[0];
-    if (s.state === 'unavailable') return 'nicht erreichbar';
-    if (d === 'light') return s.state === 'on' ? (a.brightness != null ? `${Math.round(a.brightness / 2.55)} %` : 'An') : 'Aus';
-    if (d === 'cover') { if (a.current_position == null) return { open: 'Offen', closed: 'Geschlossen', opening: 'Öffnet', closing: 'Schließt' }[s.state] || s.state; const p = coverPercent(s, coverInverted(this.plan, id)); const t = a.current_tilt_position != null ? ` · Lamellen ${a.current_tilt_position} %` : ''; return (p === 0 ? 'Geschlossen' : p === 100 ? 'Offen' : `${p} % offen`) + t; }
-    if (d === 'binary_sensor') return ['motion', 'occupancy', 'presence'].includes(a.device_class) ? (s.state === 'on' ? 'Erkannt' : 'Ruhig') : ['smoke', 'carbon_monoxide', 'gas', 'moisture', 'safety'].includes(a.device_class) ? (s.state === 'on' ? 'ALARM' : 'OK') : s.state === 'on' ? 'Offen' : 'Geschlossen';
+    const s = this.states()[id]; if (!s) return tr('panel.unavailable'); const a = s.attributes, d = id.split('.')[0];
+    if (s.state === 'unavailable') return tr('panel.unreachable');
+    if (d === 'light') return s.state === 'on' ? (a.brightness != null ? `${Math.round(a.brightness / 2.55)} %` : tr('panel.on')) : tr('panel.off');
+    if (d === 'cover') { if (a.current_position == null) return { open: tr('panel.open'), closed: tr('panel.closed'), opening: tr('panel.opening'), closing: tr('panel.closing') }[s.state] || s.state; const p = coverPercent(s, coverInverted(this.plan, id)); const t = a.current_tilt_position != null ? tr('panel.slatState', {percent: a.current_tilt_position}) : ''; return (p === 0 ? tr('panel.closed') : p === 100 ? tr('panel.open') : tr('panel.percentOpen', {percent: p})) + t; }
+    if (d === 'binary_sensor') return ['motion', 'occupancy', 'presence'].includes(a.device_class) ? (s.state === 'on' ? tr('panel.detected') : tr('panel.clear')) : ['smoke', 'carbon_monoxide', 'gas', 'moisture', 'safety'].includes(a.device_class) ? (s.state === 'on' ? tr('panel.alarmUpper') : tr('panel.ok')) : s.state === 'on' ? tr('panel.open') : tr('panel.closed');
     if (d === 'sensor') return `${s.state} ${a.unit_of_measurement || ''}`;
-    if (d === 'climate') return `${fmtT(a.current_temperature)} → ${fmtT(a.temperature)}${a.hvac_action === 'heating' ? ' · heizt' : a.hvac_action === 'cooling' ? ' · kühlt' : ''}`;
-    if (d === 'media_player') return s.state === 'playing' ? `▶ ${a.media_title || 'Wiedergabe'}` : { paused: 'Pausiert', idle: 'Bereit', off: 'Aus', on: 'An' }[s.state] || s.state;
-    if (d === 'vacuum') return { docked: `Station${a.battery_level != null ? ' · ' + a.battery_level + ' %' : ''}`, cleaning: 'Saugt', returning: 'Fährt zurück', idle: 'Bereit', paused: 'Pausiert', error: 'Fehler' }[s.state] || s.state;
-    if (d === 'lawn_mower') return { docked: 'Station', mowing: 'Mäht', returning: 'Fährt zurück', paused: 'Pausiert', error: 'Fehler' }[s.state] || s.state;
-    if (d === 'camera') return { recording: 'Aufnahme', streaming: 'Live', idle: 'Bereit' }[s.state] || s.state;
-    if (d === 'fan') return s.state === 'on' ? (a.percentage != null ? `${a.percentage} %` : 'An') : 'Aus';
-    if (d === 'valve') return { open: 'Offen', closed: 'Geschlossen' }[s.state] || s.state;
-    return s.state === 'on' ? 'An' : s.state === 'off' ? 'Aus' : s.state;
+    if (d === 'climate') return `${fmtT(a.current_temperature)} → ${fmtT(a.temperature)}${a.hvac_action === 'heating' ? ' · ' + tr('panel.heating') : a.hvac_action === 'cooling' ? ' · ' + tr('panel.cooling') : ''}`;
+    if (d === 'media_player') return s.state === 'playing' ? `▶ ${a.media_title || tr('panel.playing')}` : { paused: tr('panel.paused'), idle: tr('panel.ready'), off: tr('panel.off'), on: tr('panel.on') }[s.state] || s.state;
+    if (d === 'vacuum') return { docked: `${tr('panel.dock')}${a.battery_level != null ? ' · ' + a.battery_level + ' %' : ''}`, cleaning: tr('panel.cleaning'), returning: tr('panel.returning'), idle: tr('panel.ready'), paused: tr('panel.paused'), error: tr('panel.error') }[s.state] || s.state;
+    if (d === 'lawn_mower') return { docked: tr('panel.dock'), mowing: tr('panel.mowing'), returning: tr('panel.returning'), paused: tr('panel.paused'), error: tr('panel.error') }[s.state] || s.state;
+    if (d === 'camera') return { recording: tr('panel.recording'), streaming: tr('panel.liveState'), idle: tr('panel.ready') }[s.state] || s.state;
+    if (d === 'fan') return s.state === 'on' ? (a.percentage != null ? `${a.percentage} %` : tr('panel.on')) : tr('panel.off');
+    if (d === 'valve') return { open: tr('panel.open'), closed: tr('panel.closed') }[s.state] || s.state;
+    return s.state === 'on' ? tr('panel.on') : s.state === 'off' ? tr('panel.off') : s.state;
   }
   primaryAction(id) {
     const d = id.split('.')[0], s = this.states()[id]; if (!s) return;
@@ -442,6 +528,7 @@ export class HomeTwinPanel extends HTMLElement {
     const out = []; const vis = this.plan.levels.filter((l) => this.stage.isVisible(l));
     for (const l of vis) {
       for (const d of l.devices) if (d.entity_id && this.states()[d.entity_id] && !out.some((x) => x.id === d.entity_id)) out.push({ id: d.entity_id, room: roomAt(l, d.pos)?.id, kind: d.kind, level: l });
+      for (const f of l.furniture) if (f.entity_id && this.states()[f.entity_id] && !out.some(x => x.id === f.entity_id)) out.push({ id: f.entity_id, room: roomAt(l, f.pos)?.id, kind: 'tv', level: l });
       for (const o of l.openings) { const r = roomOfOpening(l, o)?.id; if (o.cover && this.states()[o.cover]) out.push({ id: o.cover, room: r, kind: o.type === 'garage' ? 'garage' : 'cover', level: l }); if (o.contact && this.states()[o.contact]) out.push({ id: o.contact, room: r, kind: 'contact', level: l }); }
     }
     return out;
@@ -461,22 +548,22 @@ export class HomeTwinPanel extends HTMLElement {
     const open = ents.filter((e) => e.kind === 'contact' && S[e.id].state === 'on').length;
     const alarm = ents.some((e) => e.kind === 'smoke' && S[e.id].state === 'on');
     const pv = (this.plan.site.solar || []).filter((a) => a.entity_id && S[a.entity_id]).reduce((sum, a) => { const s = S[a.entity_id]; let v = parseFloat(s.state); if (/^w$/i.test(s.attributes.unit_of_measurement || '')) v /= 1000; return sum + (Number.isFinite(v) ? v : 0); }, null);
-    set(this.$('summary'), (pv != null ? `<div class="stat"><b style="color:var(--lamp)">${pv.toFixed(1)}</b><span>kW Solar</span></div>` : '') + `<div class="stat"><b>${lit}/${lights.length}</b><span>Lichter an</span></div><div class="stat"><b>${avg != null ? avg.toFixed(1) + '°' : '—'}</b><span>Ø Innen</span></div><div class="stat"><b style="color:${open || alarm ? 'var(--warn)' : 'inherit'}">${alarm ? 'Alarm' : open}</b><span>${alarm ? 'Rauchmelder' : 'offen'}</span></div>`);
+    set(this.$('summary'), (pv != null ? `<div class="stat"><b style="color:var(--lamp)">${formatNumber(pv, {minimumFractionDigits: 1, maximumFractionDigits: 1})}</b><span>${tr('panel.solarPower')}</span></div>` : '') + `<div class="stat"><b>${lit}/${lights.length}</b><span>${tr('panel.lightsOn')}</span></div><div class="stat"><b>${avg != null ? formatNumber(avg, {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '°' : '—'}</b><span>${tr('panel.inside')}</span></div><div class="stat"><b style="color:${open || alarm ? 'var(--warn)' : 'inherit'}">${alarm ? tr('panel.alarm') : open}</b><span>${alarm ? tr('panel.smoke') : tr('panel.openCount')}</span></div>`);
     const scenes = Object.keys(S).filter((id) => id.startsWith('scene.')).slice(0, 8);
     set(this.$('scenes'), scenes.map((id) => `<button class="chip scene" data-scene="${id}">${esc(this.nameOf(id))}</button>`).join(''));
     const rooms = this.plan.levels.filter((l) => this.stage.isVisible(l)).flatMap((l) => l.rooms.filter((r) => r.kind !== 'void').map((r) => ({ l, r })));
-    set(this.$('roomChips'), `<button class="chip" data-room="" aria-pressed="${!this.focusRoom}">Alle Räume</button>` + rooms.filter(({ l, r }) => ents.some((e) => e.room === r.id && e.level === l)).map(({ r }) => `<button class="chip" data-room="${r.id}" aria-pressed="${this.focusRoom === r.id}">${esc(r.name)}</button>`).join(''));
+    set(this.$('roomChips'), `<button class="chip" data-room="" aria-pressed="${!this.focusRoom}">${tr('panel.allRooms')}</button>` + rooms.filter(({ l, r }) => ents.some((e) => e.room === r.id && e.level === l)).map(({ r }) => `<button class="chip" data-room="${r.id}" aria-pressed="${this.focusRoom === r.id}">${esc(r.name)}</button>`).join(''));
     const fr = this.focusRoom && rooms.find((x) => x.r.id === this.focusRoom);
-    this.$('vpTitle').textContent = fr ? fr.r.name : this.levelSel === 'all' ? this.plan.name : this.levelSel === 'roof' ? 'Dach' : this.plan.levels.find((l) => l.id === this.levelSel)?.name;
+    this.$('vpTitle').textContent = fr ? fr.r.name : this.levelSel === 'all' ? this.plan.name : this.levelSel === 'roof' ? tr('panel.roof') : this.plan.levels.find((l) => l.id === this.levelSel)?.name;
     let html = '';
     for (const { l, r } of rooms.filter((x) => !this.focusRoom || x.r.id === this.focusRoom)) {
       const list = ents.filter((e) => e.room === r.id && e.level === l && !e.id.startsWith('sensor.')); if (!list.length) continue;
       const t = this.roomTemp(l, r);
-      html += `<div class="room-group"><h3>${esc(r.name)}<span>${t != null && !isNaN(t) ? t.toFixed(1) + ' °C' : ''}</span></h3><div class="tiles">`;
+      html += `<div class="room-group"><h3>${esc(r.name)}<span>${t != null && !isNaN(t) ? formatNumber(t, {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' °C' : ''}</span></h3><div class="tiles">`;
       for (const e of list) html += this.tileHtml(e);
       html += '</div></div>';
     }
-    set(this.$('tileArea'), html || '<p class="hint">Noch keine Geräte verknüpft. Im Editor unter „Entitäten“ oder mit dem Assistenten platzieren.</p>');
+    set(this.$('tileArea'), html || `<p class="hint">${tr('panel.noDevices')}</p>`);
     if (this.detailEntity) this.renderDetail();
   }
   tileHtml(e) {
@@ -486,7 +573,7 @@ export class HomeTwinPanel extends HTMLElement {
     const motion = d === 'binary_sensor' && s.state === 'on' && !alert;
     const cls = ['tile', on || motion ? 'on' : '', d === 'climate' ? 'heat' : '', alert ? 'alert' : ''].join(' ');
     const bar = d === 'light' && s.state === 'on' && a.brightness != null ? `<span class="bar"><i style="width:${Math.round(a.brightness / 2.55)}%"></i></span>` : d === 'cover' && a.current_position != null ? `<span class="bar"><i style="width:${coverPercent(s, coverInverted(this.plan, e.id))}%;background:var(--muted)"></i></span>` : '';
-    const more = ['light', 'cover', 'climate', 'camera', 'media_player'].includes(d) ? `<span class="more" data-more="${e.id}" role="button" aria-label="Details">${icon('dots')}</span>` : '';
+    const more = ['light', 'cover', 'climate', 'camera', 'media_player'].includes(d) ? `<span class="more" data-more="${e.id}" role="button" aria-label="${tr('panel.details')}">${icon('dots')}</span>` : '';
     return `<button class="${cls}" data-ent="${e.id}"><span class="ic">${icon(this.entIcon(e))}</span><span class="nm">${esc(a.friendly_name || e.id)}</span><span class="st">${esc(this.stateText(e.id))}</span>${more}${bar}</button>`;
   }
   openDetail(id) { this.detailEntity = id; this.$('vpList').hidden = true; this.$('vpDetail').hidden = false; this.renderDetail(true); }
@@ -500,23 +587,23 @@ export class HomeTwinPanel extends HTMLElement {
       const pal = [[255, 147, 56], [255, 214, 170], [255, 90, 70], [255, 60, 160], [140, 90, 255], [70, 140, 255], [60, 220, 170]];
       const modes = a.supported_color_modes || ['brightness', 'color_temp', 'rgb'];
       const hasCT = modes.some((m) => ['color_temp'].includes(m)), hasRGB = modes.some((m) => ['rgb', 'hs', 'xy', 'rgbw', 'rgbww'].includes(m)), hasB = !modes.includes('onoff');
-      body = `${hasB ? `<div class="field"><label for="dB">Helligkeit <output>${esc(this.stateText(id))}</output></label><input id="dB" type="range" min="1" max="255" value="${a.brightness ?? 255}"></div>` : ''}
-        ${hasCT ? `<div class="field"><label for="dK">Weißton <output>${a.color_temp_kelvin ? a.color_temp_kelvin + ' K' : '—'}</output></label><input id="dK" type="range" min="${a.min_color_temp_kelvin || 2200}" max="${a.max_color_temp_kelvin || 6500}" step="100" value="${a.color_temp_kelvin || 3000}"></div>` : ''}
-        ${hasRGB ? `<div class="field"><span class="lbl">Farbe</span><div class="swatches">${pal.map((c) => `<button data-rgb="${c.join(',')}" style="background:rgb(${c})" aria-label="Farbe"></button>`).join('')}</div></div>` : ''}
-        <button class="btn" id="dToggle">${s.state === 'on' ? 'Ausschalten' : 'Einschalten'}</button>`;
+      body = `${hasB ? `<div class="field"><label for="dB">${tr('panel.brightness')} <output>${esc(this.stateText(id))}</output></label><input id="dB" type="range" min="1" max="255" value="${a.brightness ?? 255}"></div>` : ''}
+        ${hasCT ? `<div class="field"><label for="dK">${tr('panel.white')} <output>${a.color_temp_kelvin ? a.color_temp_kelvin + ' K' : '—'}</output></label><input id="dK" type="range" min="${a.min_color_temp_kelvin || 2200}" max="${a.max_color_temp_kelvin || 6500}" step="100" value="${a.color_temp_kelvin || 3000}"></div>` : ''}
+        ${hasRGB ? `<div class="field"><span class="lbl">${tr('panel.color')}</span><div class="swatches">${pal.map((c) => `<button data-rgb="${c.join(',')}" style="background:rgb(${c})" aria-label="${tr('panel.color')}"></button>`).join('')}</div></div>` : ''}
+        <button class="btn" id="dToggle">${s.state === 'on' ? tr('panel.switchOff') : tr('panel.switchOn')}</button>`;
     } else if (d === 'cover') {
       const inv = coverInverted(this.plan, id);
-      body = (a.current_position != null ? `<div class="field"><label for="dP">Position (offen) <output>${esc(this.stateText(id).split(' · ')[0])}</output></label><input id="dP" type="range" min="0" max="100" step="5" value="${coverPercent(s, inv)}"></div>` : `<p class="hint">${esc(this.stateText(id))}</p>`)
-        + `<div class="actions"><button class="btn" data-cov="${inv ? 'close_cover' : 'open_cover'}">Öffnen</button><button class="btn" data-cov="stop_cover">Stopp</button><button class="btn" data-cov="${inv ? 'open_cover' : 'close_cover'}">Schließen</button></div>`
-        + (a.current_tilt_position != null ? `<div class="field" style="margin-top:12px"><label for="dTilt">Lamellen <output>${a.current_tilt_position} %</output></label><input id="dTilt" type="range" min="0" max="100" step="5" value="${a.current_tilt_position}"></div><div class="actions"><button class="btn small" data-cov="open_cover_tilt">Lamellen auf</button><button class="btn small" data-cov="close_cover_tilt">Lamellen zu</button></div>` : '');
+      body = (a.current_position != null ? `<div class="field"><label for="dP">${tr('panel.position')} <output>${esc(this.stateText(id).split(' · ')[0])}</output></label><input id="dP" type="range" min="0" max="100" step="5" value="${coverPercent(s, inv)}"></div>` : `<p class="hint">${esc(this.stateText(id))}</p>`)
+        + `<div class="actions"><button class="btn" data-cov="${inv ? 'close_cover' : 'open_cover'}">${tr('panel.openAction')}</button><button class="btn" data-cov="stop_cover">${tr('panel.stop')}</button><button class="btn" data-cov="${inv ? 'open_cover' : 'close_cover'}">${tr('panel.close')}</button></div>`
+        + (a.current_tilt_position != null ? `<div class="field" style="margin-top:12px"><label for="dTilt">${tr('panel.slats')} <output>${a.current_tilt_position} %</output></label><input id="dTilt" type="range" min="0" max="100" step="5" value="${a.current_tilt_position}"></div><div class="actions"><button class="btn small" data-cov="open_cover_tilt">${tr('panel.slatsOpen')}</button><button class="btn small" data-cov="close_cover_tilt">${tr('panel.slatsClose')}</button></div>` : '');
     } else if (d === 'climate') {
-      body = `<div class="big-temp"><button class="ibtn" data-dt="-0.5" aria-label="Kühler">−</button><div style="text-align:center"><b>${fmtT(a.temperature)}</b><div class="eid">Ist ${fmtT(a.current_temperature)} · ${{ heating: 'heizt', cooling: 'kühlt', idle: 'ruht', off: 'aus' }[a.hvac_action] || a.hvac_action || s.state}</div></div><button class="ibtn" data-dt="0.5" aria-label="Wärmer">+</button></div>`;
+      body = `<div class="big-temp"><button class="ibtn" data-dt="-0.5" aria-label="${tr('panel.cooler')}">−</button><div style="text-align:center"><b>${fmtT(a.temperature)}</b><div class="eid">${tr('panel.actual')} ${fmtT(a.current_temperature)} · ${{ heating: tr('panel.heating'), cooling: tr('panel.cooling'), idle: tr('panel.idle'), off: tr('panel.offState') }[a.hvac_action] || a.hvac_action || s.state}</div></div><button class="ibtn" data-dt="0.5" aria-label="${tr('panel.warmer')}">+</button></div>`;
     } else if (d === 'camera') {
-      body = `<img class="camimg" id="camImg" alt="Livebild ${esc(a.friendly_name)}"><p class="hint">Livebild über Home Assistant. Bei Kameras ohne MJPEG-Stream wird das Standbild jede Sekunde erneuert.</p>`;
+      body = `<img class="camimg" id="camImg" alt="${tr('panel.liveImage')} ${esc(a.friendly_name)}"><p class="hint">${tr('panel.cameraHint')}</p>`;
     } else if (d === 'media_player') {
-      body = `<p class="hint">${esc(a.media_title || '')}${a.media_artist ? ' · ' + esc(a.media_artist) : ''}</p><div class="actions"><button class="btn" data-mp="media_previous_track">◀◀</button><button class="btn" data-mp="media_play_pause">${s.state === 'playing' ? 'Pause' : 'Play'}</button><button class="btn" data-mp="media_next_track">▶▶</button></div>${a.volume_level != null ? `<div class="field"><label for="dV">Lautstärke <output>${Math.round(a.volume_level * 100)} %</output></label><input id="dV" type="range" min="0" max="100" value="${Math.round(a.volume_level * 100)}"></div>` : ''}`;
+      body = `<p class="hint">${esc(a.media_title || '')}${a.media_artist ? ' · ' + esc(a.media_artist) : ''}</p><div class="actions"><button class="btn" data-mp="media_previous_track">◀◀</button><button class="btn" data-mp="media_play_pause">${s.state === 'playing' ? tr('panel.pause') : tr('panel.play')}</button><button class="btn" data-mp="media_next_track">▶▶</button></div>${a.volume_level != null ? `<div class="field"><label for="dV">${tr('panel.volume')} <output>${Math.round(a.volume_level * 100)} %</output></label><input id="dV" type="range" min="0" max="100" value="${Math.round(a.volume_level * 100)}"></div>` : ''}`;
     }
-    el.innerHTML = `<div class="detail"><button class="btn" id="dBack" style="align-self:flex-start">${icon('back')}Zurück</button><div><h3>${esc(a.friendly_name || id)}</h3><div class="eid">${esc(id)}</div></div>${body}</div>`;
+    el.innerHTML = `<div class="detail"><button class="btn" id="dBack" style="align-self:flex-start">${icon('back')}${tr('panel.back')}</button><div><h3>${esc(a.friendly_name || id)}</h3><div class="eid">${esc(id)}</div></div>${body}</div>`;
     const q = (s2) => el.querySelector(s2);
     q('#dB')?.addEventListener('change', (e) => this.call('light', 'turn_on', { entity_id: id, brightness: +e.target.value }));
     q('#dK')?.addEventListener('change', (e) => this.call('light', 'turn_on', { entity_id: id, color_temp_kelvin: +e.target.value }));
@@ -542,31 +629,31 @@ export class HomeTwinPanel extends HTMLElement {
 }
 
 function set(el, html) { if (el._h !== html) { el.innerHTML = html; el._h = html; } }
-const short = (n) => { const m = { erdgeschoss: 'EG', obergeschoss: 'OG', dachgeschoss: 'DG', keller: 'KG', untergeschoss: 'UG', kellergeschoss: 'KG' }; return m[String(n).toLowerCase()] || n; };
-const fmtT = (v) => (v == null ? '—' : `${(+v).toFixed(1)}°`);
+const short = (n) => { const m = { 'ground floor': 'GF', 'upper floor': 'UF', attic: 'AT', basement: 'B', erdgeschoss: 'EG', obergeschoss: 'OG', dachgeschoss: 'DG', keller: 'KG', untergeschoss: 'UG', kellergeschoss: 'KG' }; return m[String(n).toLowerCase()] || n; };
+const fmtT = (v) => (v == null ? '—' : `${formatNumber(+v, {minimumFractionDigits: 1, maximumFractionDigits: 1})}°`);
 const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const fmtCoord = (v, h) => (v == null ? '—' : `${Math.abs(v).toFixed(3)}° ${v >= 0 ? h : h === 'N' ? 'S' : 'W'}`);
+const fmtCoord = (v, h) => (v == null ? '—' : `${formatNumber(Math.abs(v), {minimumFractionDigits: 3, maximumFractionDigits: 3})}° ${v >= 0 ? h : h === 'N' ? 'S' : 'W'}`);
 
-const TEMPLATE = `
-<canvas class="stage" id="stage" tabindex="0" aria-label="3D-Modell des Hauses"></canvas>
+const template = () => `
+<canvas class="stage" id="stage" tabindex="0" aria-label="${tr('panel.canvas')}" data-i18n-aria-label="panel.canvas"></canvas>
 <div class="labels" id="labels"></div>
 <div class="labels" id="dims"></div>
 <div class="tip" id="tip" hidden></div>
 <header class="topbar">
-  <button class="ibtn" id="menuBtn" title="Menü" data-ic="menu" hidden></button>
-  <div class="brand"><i class="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="ht-l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f6fd8"/><stop offset="1" stop-color="#22408f"/></linearGradient><linearGradient id="ht-r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#79a6ff"/><stop offset="1" stop-color="#4b7be6"/></linearGradient><linearGradient id="ht-t" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#b9d0ff"/><stop offset="1" stop-color="#e8f0ff"/></linearGradient><radialGradient id="ht-g"><stop offset="0" stop-color="#ffd59a"/><stop offset=".45" stop-color="#ffb35c"/><stop offset="1" stop-color="#ffb35c" stop-opacity="0"/></radialGradient></defs><path d="M10 27 L32 39.5 L32 60 L10 47.5 Z" fill="url(#ht-l)"/><path d="M32 39.5 L54 27 L54 47.5 L32 60 Z" fill="url(#ht-r)"/><path d="M32 39.5 L54 27 L43 21 Z" fill="#8fb4ff"/><path d="M10 27 L32 39.5 L43 21 L21 8.5 Z" fill="url(#ht-t)"/><path d="M21 8.5 L43 21" stroke="#ffffff" stroke-opacity=".7" stroke-width="1.2" stroke-linecap="round"/><circle cx="26.5" cy="24" r="9" fill="url(#ht-g)"/><circle cx="26.5" cy="24" r="3.1" fill="#fff4e3"/><path d="M21 50 L21 43.5 L26 46.3 L26 52.8 Z" fill="#ffb35c" fill-opacity=".85"/></svg></i><strong>HomeTwin</strong><span class="savestate edit-only" id="saveState">Gespeichert</span></div>
-  <div class="seg" id="levels" role="group" aria-label="Etage"></div>
-  <label class="roomsel view-only"><span class="sr">Raum</span><select id="roomSel" aria-label="Raum wählen"></select></label>
+  <button class="ibtn" id="menuBtn" title="${tr('panel.menu')}" data-i18n-title="panel.menu" data-ic="menu" hidden></button>
+  <div class="brand"><i class="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="ht-l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f6fd8"/><stop offset="1" stop-color="#22408f"/></linearGradient><linearGradient id="ht-r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#79a6ff"/><stop offset="1" stop-color="#4b7be6"/></linearGradient><linearGradient id="ht-t" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#b9d0ff"/><stop offset="1" stop-color="#e8f0ff"/></linearGradient><radialGradient id="ht-g"><stop offset="0" stop-color="#ffd59a"/><stop offset=".45" stop-color="#ffb35c"/><stop offset="1" stop-color="#ffb35c" stop-opacity="0"/></radialGradient></defs><path d="M10 27 L32 39.5 L32 60 L10 47.5 Z" fill="url(#ht-l)"/><path d="M32 39.5 L54 27 L54 47.5 L32 60 Z" fill="url(#ht-r)"/><path d="M32 39.5 L54 27 L43 21 Z" fill="#8fb4ff"/><path d="M10 27 L32 39.5 L43 21 L21 8.5 Z" fill="url(#ht-t)"/><path d="M21 8.5 L43 21" stroke="#ffffff" stroke-opacity=".7" stroke-width="1.2" stroke-linecap="round"/><circle cx="26.5" cy="24" r="9" fill="url(#ht-g)"/><circle cx="26.5" cy="24" r="3.1" fill="#fff4e3"/><path d="M21 50 L21 43.5 L26 46.3 L26 52.8 Z" fill="#ffb35c" fill-opacity=".85"/></svg></i><strong>HomeTwin</strong><span class="savestate edit-only" id="saveState" data-i18n="panel.saved">${tr('panel.saved')}</span></div>
+  <div class="seg" id="levels" role="group" aria-label="${tr('panel.floor')}" data-i18n-aria-label="panel.floor"></div>
+  <label class="roomsel view-only"><span class="sr" data-i18n="panel.room">${tr('panel.room')}</span><select id="roomSel" aria-label="${tr('panel.pickRoom')}" data-i18n-aria-label="panel.pickRoom"></select></label>
   <span class="spacer"></span>
-  <div class="seg mode" role="group" aria-label="Modus"><button id="mView" aria-pressed="true" data-ic="eye"><span class="wide">Ansicht</span></button><button id="mEdit" aria-pressed="false" data-ic="edit"><span class="wide">Bearbeiten</span></button></div>
- <button class="ibtn" id="tWalk" title="Begehen: in Augenhöhe durchs Haus gehen" aria-label="Begehen" aria-pressed="false" data-ic="walk"></button>
-  <button class="ibtn" id="tSun" title="Ansicht: Sonne, Kamera, Röntgen, Heatmap" aria-label="Ansicht"></button>
-  <button class="ibtn edit-only" id="tAI" aria-pressed="false" title="Assistent" data-ic="sparkle"></button>
+  <div class="seg mode" role="group" aria-label="${tr('panel.mode')}" data-i18n-aria-label="panel.mode"><button id="mView" aria-pressed="true" data-ic="eye"><span class="wide" data-i18n="panel.view">${tr('panel.view')}</span></button><button id="mEdit" aria-pressed="false" data-ic="edit"><span class="wide" data-i18n="panel.edit">${tr('panel.edit')}</span></button></div>
+ <button class="ibtn" id="tWalk" title="${tr('panel.walkTitle')}" data-i18n-title="panel.walkTitle" aria-label="${tr('panel.walk')}" data-i18n-aria-label="panel.walk" aria-pressed="false" data-ic="walk"></button>
+  <button class="ibtn" id="tSun" title="${tr('panel.viewTitle')}" data-i18n-title="panel.viewTitle" aria-label="${tr('panel.view')}" data-i18n-aria-label="panel.view"></button>
+  <button class="ibtn edit-only" id="tAI" aria-pressed="false" title="${tr('panel.assistant')}" data-i18n-title="panel.assistant" data-ic="sparkle"></button>
 </header>
 <aside class="panel popover" id="sunPop" hidden></aside>
-<aside class="panel vp view-only" id="vp" aria-label="Steuerung" data-sheet="half">
-  <button class="sheet-grip" id="sheetGrip" aria-label="Bereich vergrößern oder verkleinern"><i></i></button>
-  <div class="panel-head"><h2 id="vpTitle">Zuhause</h2></div>
+<aside class="panel vp view-only" id="vp" aria-label="${tr('panel.controls')}" data-i18n-aria-label="panel.controls" data-sheet="half">
+  <button class="sheet-grip" id="sheetGrip" aria-label="${tr('panel.resizeSheet')}" data-i18n-aria-label="panel.resizeSheet"><i></i></button>
+  <div class="panel-head"><h2 id="vpTitle" data-i18n="panel.home">${tr('panel.home')}</h2></div>
   <div id="vpList" style="display:flex;flex-direction:column;min-height:0;flex:1">
     <div class="summary" id="summary"></div>
     <div class="chips" id="scenes"></div>
@@ -575,36 +662,38 @@ const TEMPLATE = `
   </div>
   <div class="panel-body" id="vpDetail" hidden></div>
 </aside>
-<aside class="panel lib edit-only" id="lib" aria-label="Editor" lang="de">
-  <div class="tabs" id="ltabs" style="padding-top:12px"><button data-ltab="tree" aria-pressed="true">Ebenen</button><button data-ltab="insert" aria-pressed="false">Einfügen</button></div>
+<aside class="panel lib edit-only" id="lib" aria-label="Editor" lang="${getLanguage()}">
+  <div class="tabs" id="ltabs" style="padding-top:12px"><button data-ltab="tree" aria-pressed="true" data-i18n="panel.floors">${tr('panel.floors')}</button><button data-ltab="insert" aria-pressed="false" data-i18n="panel.insert">${tr('panel.insert')}</button></div>
   <div class="panel-body" id="lbody"></div>
 </aside>
-<aside class="panel insp edit-only" id="insp" aria-label="Eigenschaften" hidden>
-  <div class="panel-head"><h2 id="inspTitle">Eigenschaften</h2><button class="ibtn" id="inspClose" style="margin-left:auto;width:30px;height:30px" title="Auswahl aufheben" data-ic="x"></button></div>
+<aside class="panel insp edit-only" id="insp" aria-label="${tr('panel.properties')}" data-i18n-aria-label="panel.properties" hidden>
+  <div class="panel-head"><h2 id="inspTitle" data-i18n="panel.properties">${tr('panel.properties')}</h2><button class="ibtn" id="inspClose" style="margin-left:auto;width:30px;height:30px" title="${tr('panel.deselect')}" data-i18n-title="panel.deselect" data-ic="x"></button></div>
   <div class="form" id="inspBody"></div>
 </aside>
-<aside class="panel agent edit-only" id="agent" aria-label="Assistent" hidden>
-  <div class="panel-head"><h2>Assistent</h2><span class="model" id="aiModel"></span><button class="ibtn" id="aiClose" style="width:30px;height:30px" title="Schließen" data-ic="x"></button></div>
+<aside class="panel agent edit-only" id="agent" aria-label="${tr('panel.assistant')}" data-i18n-aria-label="panel.assistant" hidden>
+  <div class="panel-head"><h2 data-i18n="panel.assistant">${tr('panel.assistant')}</h2><span class="model" id="aiModel"></span><button class="ibtn" id="aiClose" style="width:30px;height:30px" title="${tr('panel.close')}" data-i18n-title="panel.close" data-ic="x"></button></div>
   <div class="msgs" id="msgs"></div>
   <form class="composer" id="aiForm">
-    <input type="text" id="aiInput" placeholder="z. B. Ich möchte das Büro einbinden" autocomplete="off">
-    <button class="btn primary" type="submit" id="aiSend">Senden</button>
-    <label class="check" id="aiImgWrap" hidden><input type="checkbox" id="aiImg"> Grundriss-Bild mitsenden</label>
+    <input type="text" id="aiInput" placeholder="${tr('panel.prompt')}" data-i18n-placeholder="panel.prompt" autocomplete="off">
+    <button class="btn primary" type="submit" id="aiSend" data-i18n="panel.send">${tr('panel.send')}</button>
+    <label class="check" id="aiImgWrap" hidden><input type="checkbox" id="aiImg" data-i18n="panel.attachPlan"> ${tr('panel.attachPlan')}</label>
   </form>
 </aside>
 <div class="toolhint" id="toolHint" hidden></div>
-<div class="edbar edit-only" id="edBar" role="toolbar" aria-label="Werkzeuge"></div>
+<div class="edbar edit-only" id="edBar" role="toolbar" aria-label="${tr('panel.tools')}" data-i18n-aria-label="panel.tools"></div>
 <div class="edstatus edit-only" id="edStatus"></div>
 <div class="modal" id="modal" hidden><div class="card" id="modalCard"></div></div>
 <div class="wzwrap" id="wizard" hidden></div>
 <div class="onboard" id="onboard" hidden></div>
 <div class="toast" id="toast" hidden></div>
+<div class="stats" id="stats" hidden></div>
+<div class="sceneprev" id="scenePrev" hidden></div>
 <div class="walkhud" id="walkHud" hidden>
-  <div class="wh-row"><strong>Begehen</strong><span class="wh-lvl" id="whLevel"></span>
-    <button class="btn small" id="whDown" title="Etage tiefer">▼</button><button class="btn small" id="whUp" title="Etage höher">▲</button>
-    <label class="wh-body">Körpergröße <input type="number" id="whBody" min="1" max="2.2" step="0.01"> m</label>
-    <button class="btn small primary" id="whExit">Beenden</button></div>
-  <div class="wh-hint" id="whHint">W A S D / Pfeile: gehen · Shift: schneller · Ziehen: umsehen · Klick: bedienen · Esc: beenden</div>
+  <div class="wh-row"><strong data-i18n="panel.walk">${tr('panel.walk')}</strong><span class="wh-lvl" id="whLevel"></span>
+    <button class="btn small" id="whDown" title="${tr('panel.floorDown')}" data-i18n-title="panel.floorDown">▼</button><button class="btn small" id="whUp" title="${tr('panel.floorUp')}" data-i18n-title="panel.floorUp">▲</button>
+    <label class="wh-body" data-i18n="panel.bodyHeight">${tr('panel.bodyHeight')} <input type="number" id="whBody" min="1" max="2.2" step="0.01"> m</label>
+    <button class="btn small primary" id="whExit" data-i18n="panel.exit">${tr('panel.exit')}</button></div>
+  <div class="wh-hint" id="whHint" data-i18n="panel.walkKeys">${tr('panel.walkKeys')}</div>
 </div>
 <div class="joy" id="joy" hidden><i></i></div>
 `;

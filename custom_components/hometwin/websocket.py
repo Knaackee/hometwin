@@ -12,20 +12,36 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .agent import AgentConfig, job_state, run_agent, run_detect, start_detect_job
-from .const import DOMAIN, SIGNAL_PLAN_UPDATED
+from .const import CONF_UI_LANGUAGE, UI_LANGUAGES, DOMAIN, SIGNAL_PLAN_UPDATED
+from .i18n import hass_message
 
 
 def _store(hass: HomeAssistant):
     store = hass.data.get(DOMAIN, {}).get("store")
     if store is None:
-        raise HomeAssistantError("HomeTwin ist nicht eingerichtet")
+        raise HomeAssistantError(hass_message(hass, "not_loaded"))
     return store
 
 
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
-    for cmd in (ws_plan_get, ws_plan_save, ws_plan_subscribe, ws_agent_info, ws_agent_chat, ws_agent_detect, ws_detect_start, ws_job, ws_job_consume):
+    for cmd in (ws_language_set, ws_plan_get, ws_plan_save, ws_plan_subscribe, ws_agent_info, ws_agent_chat, ws_agent_detect, ws_detect_start, ws_job, ws_job_consume):
         websocket_api.async_register_command(hass, cmd)
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "hometwin/language/set",
+    vol.Required("language"): vol.In(UI_LANGUAGES),
+})
+@websocket_api.require_admin
+@callback
+def ws_language_set(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    entry = hass.data.get(DOMAIN, {}).get("entry")
+    if entry is None:
+        connection.send_error(msg["id"], "not_loaded", hass_message(hass, "not_loaded"))
+        return
+    hass.config_entries.async_update_entry(entry, options={**entry.options, CONF_UI_LANGUAGE: msg["language"]})
+    connection.send_result(msg["id"], {})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "hometwin/plan/get"})
@@ -86,7 +102,7 @@ async def ws_agent_chat(hass: HomeAssistant, connection: websocket_api.ActiveCon
     entry = hass.data.get(DOMAIN, {}).get("entry")
     cfg = AgentConfig.from_options(entry.options if entry else {})
     if not cfg.configured:
-        connection.send_error(msg["id"], "not_configured", "Der Assistent ist nicht eingerichtet (Optionen der Integration).")
+        connection.send_error(msg["id"], "not_configured", hass_message(hass, "not_configured"))
         return
     plan = msg.get("plan") or (_store(hass).plan or {"levels": []})
     try:
@@ -119,10 +135,10 @@ async def ws_agent_detect(hass: HomeAssistant, connection: websocket_api.ActiveC
     entry = hass.data.get(DOMAIN, {}).get("entry")
     cfg = AgentConfig.from_options(entry.options if entry else {})
     if not cfg.configured:
-        connection.send_error(msg["id"], "not_configured", "Der Assistent ist nicht eingerichtet (Optionen der Integration).")
+        connection.send_error(msg["id"], "not_configured", hass_message(hass, "not_configured"))
         return
     if msg["mode"] == "rooms" and not msg.get("mpp"):
-        connection.send_error(msg["id"], "invalid", "Maßstab fehlt")
+        connection.send_error(msg["id"], "invalid", hass_message(hass, "scale_missing"))
         return
     try:
         result = await run_detect(hass, cfg, msg)
@@ -157,7 +173,7 @@ def ws_detect_start(hass: HomeAssistant, connection: websocket_api.ActiveConnect
     entry = hass.data.get(DOMAIN, {}).get("entry")
     cfg = AgentConfig.from_options(entry.options if entry else {})
     if not cfg.configured:
-        connection.send_error(msg["id"], "not_configured", "Der Assistent ist nicht eingerichtet (Optionen der Integration).")
+        connection.send_error(msg["id"], "not_configured", hass_message(hass, "not_configured"))
         return
     req = {k: v for k, v in msg.items() if k not in ("id", "type")}
     connection.send_result(msg["id"], {"job_id": start_detect_job(hass, cfg, req)})

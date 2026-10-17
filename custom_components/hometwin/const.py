@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "hometwin"
-VERSION = "0.5.1"
+VERSION = "0.6.0b1"
 
 PANEL_URL_PATH = "hometwin"
 PANEL_COMPONENT = "hometwin-panel"
@@ -23,6 +23,7 @@ CONF_TITLE = "title"
 CONF_BASE_URL = "base_url"
 CONF_API_KEY = "api_key"
 CONF_MODEL = "model"
+CONF_UI_LANGUAGE = "ui_language"
 CONF_REASONING = "reasoning_effort"
 CONF_MAX_STEPS = "max_steps"
 CONF_SYSTEM_PROMPT = "system_prompt"
@@ -31,9 +32,11 @@ CONF_DEMO = "demo_when_empty"
 DEFAULT_TITLE = "HomeTwin"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = ""
+DEFAULT_UI_LANGUAGE = "en"
 DEFAULT_REASONING = "none"
 DEFAULT_MAX_STEPS = 12
 REASONING_LEVELS = ["none", "low", "medium", "high"]
+UI_LANGUAGES = ["en", "de"]
 
 MAX_PLAN_BYTES = 5 * 1024 * 1024
 MAX_UNDERLAY_BYTES = 15 * 1024 * 1024

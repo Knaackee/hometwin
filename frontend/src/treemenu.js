@@ -1,9 +1,10 @@
 // Context menu, inline renaming and drag & drop for the layer tree of the editor.
 import { icon } from './icons.js';
 import { esc } from './panel.js';
-import { findItem, newId, computeElevations, roomAt, roomCenter } from './plan.js';
+import { findItem, newId, computeElevations, slabThickness, roomAt, roomCenter } from './plan.js';
 import { placeItem, wallSegments } from './walls.js';
 import { bbox } from './geometry.js';
+import { t } from './i18n.js';
 
 const RENAMABLE = new Set(['house', 'level', 'room', 'furniture']);
 const DRAGGABLE = new Set(['level', 'room', 'device', 'furniture']);
@@ -33,24 +34,24 @@ export function installTreeMenu(ed) {
     const L = levelOf(it.level), f = ['device', 'furniture', 'room', 'opening'].includes(it.type) ? findItem(app.plan, it.id) : null;
     const multi = (ed.multi || []).length > 1;
     const others = app.plan.levels.filter((l) => l.id !== it.level);
-    const moveTo = others.length && ['device', 'furniture', 'room'].includes(it.type) ? others.map((l) => ({ act: `moveTo:${l.id}`, label: `Auf „${l.name}“ verschieben`, ic: 'layers' })) : [];
+    const moveTo = others.length && ['device', 'furniture', 'room'].includes(it.type) ? others.map((l) => ({ act: `moveTo:${l.id}`, label: t('data.tree.moveTo', { name: l.name }), ic: 'layers' })) : [];
     switch (it.type) {
-      case 'house': return [{ act: 'rename', label: 'Umbenennen', ic: 'edit', key: 'F2' }];
+      case 'house': return [{ act: 'rename', label: t('data.tree.rename'), ic: 'edit', key: 'F2' }];
       case 'level': {
         const i = app.plan.levels.indexOf(L);
-        return [{ act: 'rename', label: 'Umbenennen', ic: 'edit', key: 'F2' }, { act: 'zoom', label: 'Hinzoomen', ic: 'search' }, { act: 'wizard', label: 'Bauplan-Assistent …', ic: 'image' }, '-',
-          { act: 'dupLevel', label: 'Etage duplizieren', ic: 'layers' }, { act: 'up', label: 'Nach oben', ic: 'back', disabled: i === app.plan.levels.length - 1 }, { act: 'down', label: 'Nach unten', ic: 'back', disabled: i === 0 },
-          { act: 'eye', label: app.hiddenLevels.has(it.id) ? 'Einblenden' : 'Ausblenden', ic: app.hiddenLevels.has(it.id) ? 'eye' : 'eyeoff' }, '-',
-          { act: 'delLevel', label: 'Etage löschen', ic: 'x', danger: true, disabled: app.plan.levels.length < 2 }];
+        return [{ act: 'rename', label: t('data.tree.rename'), ic: 'edit', key: 'F2' }, { act: 'zoom', label: t('data.tree.zoom'), ic: 'search' }, { act: 'wizard', label: t('data.tree.floorPlanAssistant'), ic: 'image' }, '-',
+          { act: 'dupLevel', label: t('data.tree.duplicateLevel'), ic: 'layers' }, { act: 'up', label: t('data.tree.moveUp'), ic: 'back', disabled: i === app.plan.levels.length - 1 }, { act: 'down', label: t('data.tree.moveDown'), ic: 'back', disabled: i === 0 },
+          { act: 'eye', label: app.hiddenLevels.has(it.id) ? t('data.tree.show') : t('data.tree.hide'), ic: app.hiddenLevels.has(it.id) ? 'eye' : 'eyeoff' }, '-',
+          { act: 'delLevel', label: t('data.tree.deleteLevel'), ic: 'x', danger: true, disabled: app.plan.levels.length < 2 }];
       }
-      case 'room': return [{ act: 'rename', label: 'Umbenennen', ic: 'edit', key: 'F2' }, { act: 'zoom', label: 'Hinzoomen', ic: 'search' }, ...(moveTo.length ? ['-', ...moveTo] : []), '-', { act: 'delete', label: 'Raum löschen', ic: 'x', danger: true, key: 'Entf' }];
+      case 'room': return [{ act: 'rename', label: t('data.tree.rename'), ic: 'edit', key: 'F2' }, { act: 'zoom', label: t('data.tree.zoom'), ic: 'search' }, ...(moveTo.length ? ['-', ...moveTo] : []), '-', { act: 'delete', label: t('data.tree.deleteRoom'), ic: 'x', danger: true, key: t('data.key.delete') }];
       case 'device': case 'furniture': return [
-        ...(it.type === 'furniture' ? [{ act: 'rename', label: 'Umbenennen', ic: 'edit', key: 'F2' }] : []), { act: 'zoom', label: 'Hinzoomen', ic: 'search' },
-        { act: 'dup', label: multi ? 'Auswahl duplizieren' : 'Duplizieren', ic: 'plus', key: 'Strg+D' }, { act: 'rot', label: 'Um 90° drehen', ic: 'redo', key: 'R' },
-        { act: 'hide', label: f?.item.hidden ? 'Einblenden' : 'Ausblenden', ic: f?.item.hidden ? 'eye' : 'eyeoff' }, { act: 'lock', label: f?.item.locked ? 'Entsperren' : 'Sperren', ic: f?.item.locked ? 'unlock' : 'lock' },
-        ...(moveTo.length ? ['-', ...moveTo] : []), '-', { act: 'delete', label: multi ? 'Auswahl löschen' : 'Löschen', ic: 'x', danger: true, key: 'Entf' }];
-      case 'opening': return [{ act: 'zoom', label: 'Hinzoomen', ic: 'search' }, '-', { act: 'delete', label: 'Löschen', ic: 'x', danger: true, key: 'Entf' }];
-      case 'solar': case 'roofitem': return [{ act: 'dup', label: 'Duplizieren', ic: 'plus', disabled: it.type === 'solar' }, '-', { act: 'delete', label: 'Löschen', ic: 'x', danger: true }];
+        ...(it.type === 'furniture' ? [{ act: 'rename', label: t('data.tree.rename'), ic: 'edit', key: 'F2' }] : []), { act: 'zoom', label: t('data.tree.zoom'), ic: 'search' },
+        { act: 'dup', label: multi ? t('data.tree.duplicateSelection') : t('data.tree.duplicate'), ic: 'plus', key: t('data.key.duplicate') }, { act: 'rot', label: t('data.tree.rotate90'), ic: 'redo', key: 'R' },
+        { act: 'hide', label: f?.item.hidden ? t('data.tree.show') : t('data.tree.hide'), ic: f?.item.hidden ? 'eye' : 'eyeoff' }, { act: 'lock', label: f?.item.locked ? t('data.tree.unlock') : t('data.tree.lock'), ic: f?.item.locked ? 'unlock' : 'lock' },
+        ...(moveTo.length ? ['-', ...moveTo] : []), '-', { act: 'delete', label: multi ? t('data.tree.deleteSelection') : t('data.tree.delete'), ic: 'x', danger: true, key: t('data.key.delete') }];
+      case 'opening': return [{ act: 'zoom', label: t('data.tree.zoom'), ic: 'search' }, '-', { act: 'delete', label: t('data.tree.delete'), ic: 'x', danger: true, key: t('data.key.delete') }];
+      case 'solar': case 'roofitem': return [{ act: 'dup', label: t('data.tree.duplicate'), ic: 'plus', disabled: it.type === 'solar' }, '-', { act: 'delete', label: t('data.tree.delete'), ic: 'x', danger: true }];
       default: return [];
     }
   }
@@ -92,22 +93,22 @@ export function installTreeMenu(ed) {
     }
     if (a === 'dupLevel') {
       app.pushUndo(); const src = levelOf(it.id); const copy = JSON.parse(JSON.stringify(src)); const map = new Map();
-      copy.id = newId('l'); copy.name = `${src.name} (Kopie)`; copy.underlay = null; delete copy.floor_id; delete copy.autoElevation;
+      copy.id = newId('l'); copy.name = t('data.tree.copyName', { name: src.name }); copy.underlay = null; delete copy.floor_id; delete copy.autoElevation;
       for (const k of ['rooms', 'openings', 'devices', 'furniture']) for (const x of copy[k]) { const n = newId(k[0]); map.set(x.id, n); x.id = n; if (k === 'devices') delete x.entity_id; if (k === 'openings') { delete x.cover; delete x.contact; } if (k === 'rooms') x.area_id = null; }
       copy.rooms = copy.rooms.filter((r) => r.kind !== 'void');
-      p.levels.splice(p.levels.indexOf(src) + 1, 0, copy); computeElevations(p); refreshAll(); app.toast(`„${copy.name}“ angelegt – Entitäten und Bereiche sind nicht mitkopiert`); return;
+      p.levels.splice(p.levels.indexOf(src) + 1, 0, copy); computeElevations(p); refreshAll(); app.toast(t('data.tree.levelCopied', { name: copy.name })); return;
     }
     if (a === 'delLevel') {
       const lv = levelOf(it.id); const n = lv.rooms.length + lv.devices.length + lv.furniture.length;
-      if (n && !confirm(`„${lv.name}“ mit ${lv.rooms.length} Räumen, ${lv.devices.length} Geräten und ${lv.furniture.length} Möbeln löschen?`)) return;
-      app.pushUndo(); p.levels.splice(p.levels.indexOf(lv), 1); computeElevations(p); app.hiddenLevels.delete(lv.id); refreshAll(); app.setLevel(p.levels[0].id); ed.select(null); app.toast('Etage gelöscht (Rückgängig mit Strg+Z)'); return;
+      if (n && !confirm(t('data.tree.confirmDeleteLevel', { name: lv.name, rooms: lv.rooms.length, devices: lv.devices.length, furniture: lv.furniture.length }))) return;
+      app.pushUndo(); p.levels.splice(p.levels.indexOf(lv), 1); computeElevations(p); app.hiddenLevels.delete(lv.id); refreshAll(); app.setLevel(p.levels[0].id); ed.select(null); app.toast(t('data.tree.levelDeleted')); return;
     }
     if (a.startsWith('moveTo:')) return moveToLevel(it, a.slice(7));
   }
   // Re-stacks the levels in their current array order (bottom first), keeping the lowest floor height.
   function restack(p) {
     const base = Math.min(...p.levels.map((l) => l.elevation));
-    p.levels.forEach((l, i) => { const below = p.levels[i - 1]; l.elevation = i === 0 ? base : Math.round((below.elevation + below.height + (l.slab ?? 0.25)) * 1000) / 1000; delete l.autoElevation; });
+    p.levels.forEach((l, i) => { const below = p.levels[i - 1]; l.elevation = i === 0 ? base : Math.round((below.elevation + below.height + (slabThickness(l))) * 1000) / 1000; delete l.autoElevation; });
     computeElevations(p);
   }
   function refreshAll() { app.stage.rebuildAll(); app.renderLevels(); app.buildLabels(); app.markDirty(); ed.renderLeft(); ed.renderInspector(); ed.renderStatus?.(); }
@@ -124,7 +125,7 @@ export function installTreeMenu(ed) {
       else (f.type === 'device' ? T.devices : T.furniture).push(f.item);
       n++;
     }
-    if (!n) return; refreshAll(); app.setLevel(T.id); ed.select({ type: it.type, id: it.id, level: T.id }); app.toast(`${n === 1 ? 'Objekt' : `${n} Objekte`} nach „${T.name}“ verschoben`);
+    if (!n) return; refreshAll(); app.setLevel(T.id); ed.select({ type: it.type, id: it.id, level: T.id }); app.toast(t(n === 1 ? 'data.tree.objectMoved' : 'data.tree.objectsMoved', { count: n, name: T.name }));
   }
 
   /* ---------- inline rename ---------- */
@@ -132,7 +133,7 @@ export function installTreeMenu(ed) {
     if (!row) return; const it = info(row); const nm = row.querySelector('.nm'); if (!nm || row.querySelector('input.rename')) return;
     const p = app.plan, f = it.type === 'house' ? { item: p } : it.type === 'level' ? { item: levelOf(it.id) } : findItem(p, it.id); if (!f?.item) return;
     const cur = it.type === 'furniture' ? f.item.label || ed.furnLabel(f.item) : f.item.name || '';
-    const inp = document.createElement('input'); inp.className = 'rename'; inp.value = cur; inp.setAttribute('aria-label', 'Neuer Name'); nm.replaceWith(inp); inp.focus(); inp.select();
+    const inp = document.createElement('input'); inp.className = 'rename'; inp.value = cur; inp.setAttribute('aria-label', t('data.tree.newName')); nm.replaceWith(inp); inp.focus(); inp.select();
     let done = false;
     const finish = (ok) => {
       if (done) return; done = true; const v = inp.value.trim();
@@ -169,7 +170,7 @@ export function installTreeMenu(ed) {
     const p = app.plan;
     if (d.type === 'level') { // tree shows the top level first: "before" = above
       app.pushUndo(); const src = levelOf(d.id); p.levels.splice(p.levels.indexOf(src), 1); let j = p.levels.findIndex((l) => l.id === tg.t.id); if (tg.mode === 'before') j += 1; p.levels.splice(j, 0, src);
-      restack(p); refreshAll(); app.toast(`„${src.name}“ verschoben`); return;
+      restack(p); refreshAll(); app.toast(t('data.tree.levelMoved', { name: src.name })); return;
     }
     if (tg.t.type === 'level') return moveToLevel(d, tg.t.id);
     if (tg.t.type === 'room') { // drop an object into a room: same level → move to the room centre; other level → move level, then centre
@@ -177,7 +178,7 @@ export function installTreeMenu(ed) {
       app.pushUndo();
       if (f.level.id !== room.level.id) { f.list.splice(f.list.indexOf(f.item), 1); (f.type === 'device' ? room.level.devices : room.level.furniture).push(f.item); }
       if (roomAt(room.level, f.item.pos)?.id !== room.item.id) { f.item.pos = roomCenter(room.item).map((v) => Math.round(v * 1000) / 1000); placeItem(room.level, f.type, f.item, wallSegments(room.level)); }
-      refreshAll(); ed.select({ type: d.type, id: d.id, level: room.level.id }); app.toast(`In „${room.item.name}“ verschoben`);
+      refreshAll(); ed.select({ type: d.type, id: d.id, level: room.level.id }); app.toast(t('data.tree.movedIntoRoom', { name: room.item.name }));
     }
   });
   // make tree rows draggable and keyboard-focusable after every render

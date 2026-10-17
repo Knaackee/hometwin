@@ -1,3 +1,6 @@
+import { objectBounds, surfaceElevation, automaticPlacement } from './object-placement.js';
+import { clipRoomEffects } from './room-effects.js';
+import { t as tr } from './i18n.js';
 // The 3D stage: renderer, cameras, levels, sun, shared lights, picking.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -8,26 +11,41 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { buildLevel, isIndoor, capMat } from './house.js';
 import { buildRoof, buildExtraRoof } from './roof.js';
 import { buildFurniture } from './furniture.js';
+import { MediaHub, bindScreen, screenMaterial } from './media.js';
 import { buildDevice } from './devices.js';
 import { planBounds, roomAt, coverPercent } from './plan.js';
 import { bbox, pointInPolygon } from './geometry.js';
 import { sunVector } from './sun.js';
 
-const LIGHT_POOL = 12;
+const LIGHT_POOL = 4;
 const EXPLODE_GAP = 3.6;
 
+// Does this device animate in this state (drives the frame rate when nothing else happens)?
+function isAnimated(kind, s) {
+  const st = s?.state; if (!st) return false;
+  switch (kind) {
+    case 'tv': return st === 'playing' || st === 'on' || st === 'idle'; case 'speaker': return st === 'playing';
+    case 'motion': case 'smoke': return st === 'on'; case 'fan': return st === 'on'; case 'radiator': return s.attributes?.hvac_action === 'heating';
+    case 'ac': return ['cooling', 'heating', 'fan', 'drying'].includes(s.attributes?.hvac_action) || (s.entity_id.startsWith('fan.') && st === 'on');
+    case 'vacuum': return st === 'cleaning' || st === 'returning'; case 'mower': return st === 'mowing' || st === 'returning'; case 'valve': return st === 'on' || st === 'open';
+    case 'camera': return st === 'recording' || st === 'streaming'; case 'washer': case 'fireplace': case 'frame': return true;
+    default: return false;
+  }
+}
 export class Stage {
   constructor(canvas, app) {
     this.app = app; this.canvas = canvas;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); this.perf = false;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.shadowMap.autoUpdate = false; r.info.autoReset = false;
+    this._wake = performance.now(); this._next = 0; this._lastShadow = 0; this._shadowDirty = true; this.fpsCount = 0; this.fps = 0; this._fpsT = 0;
     const s = this.scene = new THREE.Scene(); s.background = new THREE.Color('#0b0f17');
     this.persp = new THREE.PerspectiveCamera(36, 1, 0.1, 400);
     this.ortho = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 200); this.ortho.up.set(0, 0, -1);
     this.camera = this.persp;
     const c = this.controls = new OrbitControls(this.persp, canvas);
+    for (const ev of ['pointerdown', 'pointermove', 'wheel', 'touchstart', 'keydown']) canvas.addEventListener(ev, () => this.wake(), { passive: true });
     c.enableDamping = true; c.dampingFactor = 0.08; c.maxPolarAngle = 1.38; c.minDistance = 3; c.maxDistance = 70; c.screenSpacePanning = false;
     const c2 = this.controls2 = new OrbitControls(this.ortho, canvas);
     c2.enableRotate = false; c2.screenSpacePanning = true; c2.enabled = false; c2.minZoom = 0.2; c2.maxZoom = 12;
@@ -39,7 +57,7 @@ export class Stage {
     this.moon = new THREE.DirectionalLight(0x9fb4ff, 0.35); this.moon.position.set(-20, 30, -10); s.add(this.moon);
     this.ground = new THREE.Mesh(new THREE.CircleGeometry(90, 64), new THREE.MeshStandardMaterial({ color: '#151b27', roughness: 1 }));
     this.ground.rotation.x = -Math.PI / 2; this.ground.position.y = -0.02; this.ground.receiveShadow = true; s.add(this.ground);
-    this.pool = []; for (let i = 0; i < LIGHT_POOL; i++) { const l = new THREE.PointLight(0xffffff, 0, 7, 2); s.add(l); this.pool.push(l); }
+    this.pool = []; for (let i = 0; i < LIGHT_POOL; i++) { const l = new THREE.PointLight(0xffffff, 0, 7, 2); l.castShadow = true; l.shadow.mapSize.set(512, 512); l.shadow.bias = -0.0001; l.shadow.normalBias = 0.01; l.shadow.camera.near = 0.05; l.shadow.camera.far = 7; s.add(l); this.pool.push(l); }
 
     this.composer = new EffectComposer(r);
     this.renderPass = new RenderPass(s, this.persp); this.composer.addPass(this.renderPass);
@@ -69,10 +87,13 @@ export class Stage {
   disposeLevel(id) {
     const o = this.levels.get(id); if (!o) return;
     this.root.remove(o.group);
+    for (const e of o.dev.values()) e.built.dispose?.();
+    for (const f of o.furnScreens?.values() || []) for (const b of f.screens) b.dispose();
     o.group.traverse((m) => { if (m.geometry) m.geometry.dispose(); });
     this.levels.delete(id);
   }
   rebuildLevel(id) {
+    this._shadowDirty = true; this._next = 0;
     const level = this.app.plan.levels.find((l) => l.id === id); const old = this.levels.get(id);
     const underlay = old?.underlay; this.disposeLevel(id); if (!level) return;
     const group = new THREE.Group(); group.userData.level = id;
@@ -89,12 +110,27 @@ export class Stage {
     // Keep the sun's shadow frustum around the current house and re-aim the sun.
     this.fitSunShadow(); if (this._sunArgs && !this.topView) { const [a, e, n] = this._sunArgs; this.setSun(a, e, n); }
   }
-  place(obj, item) { obj.position.set(item.pos[0], 0, item.pos[1]); obj.rotation.y = ((item.rot || 0) * Math.PI) / 180; }
+  place(obj, item) { const bottom = objectBounds(obj).min.y; obj.position.set(item.pos[0], Number.isFinite(item.elevation) && Number.isFinite(bottom) ? item.elevation - bottom : 0, item.pos[1]); obj.rotation.y = ((item.rot || 0) * Math.PI) / 180; }
+  itemElevation(levelId, type, id) {
+    const o = this.levels.get(levelId), root = type === 'device' ? o?.dev.get(id)?.built.root : o?.furn.get(id);
+    if (!root) return 0;
+    const bottom = objectBounds(root).min.y;
+    return Number.isFinite(bottom) ? bottom + root.position.y : 0;
+  }
+  supportElevation(levelId, type, id) {
+    const o = this.levels.get(levelId), root = type === 'device' ? o?.dev.get(id)?.built.root : o?.furn.get(id);
+    if (!root) return 0;
+    this.scene.updateMatrixWorld(true);
+    return surfaceElevation(root, [...o.furn.values(), ...[...o.dev.values()].map(e => e.built.root)].filter(x => x !== root && x.visible), o.group.position.y);
+  }
   addFurniture(levelId, f) {
     const o = this.levels.get(levelId); const obj = buildFurniture(f); obj.userData = { furn: f.id, level: levelId };
+    // library objects with a display surface (role "screen") show live content of a bound entity
+    const screens = []; obj.traverse((m) => { if (m.isMesh && m.userData.role === 'screen') { m.material = screenMaterial(); m.geometry.computeBoundingBox(); const size = m.geometry.boundingBox.getSize(new THREE.Vector3()); const b = bindScreen(m.material, { glowPower: 1.2, aspect: Math.max(0.2, size.x / Math.max(0.01, size.y)) }); b.emitter.anchor = m; screens.push(b); } });
+    o.furnScreens ||= new Map(); if (screens.length) o.furnScreens.set(f.id, { item: f, screens }); else o.furnScreens.delete(f.id);
     this.place(obj, f); obj.visible = !f.hidden; o.furnGroup.add(obj); o.furn.set(f.id, obj); return obj;
   }
-  removeFurniture(levelId, id) { const o = this.levels.get(levelId); const obj = o?.furn.get(id); if (obj) { o.furnGroup.remove(obj); o.furn.delete(id); } }
+  removeFurniture(levelId, id) { const o = this.levels.get(levelId); const obj = o?.furn.get(id); if (obj) { o.furnGroup.remove(obj); o.furn.delete(id); } for (const b of o?.furnScreens?.get(id)?.screens || []) b.dispose(); o?.furnScreens?.delete(id); }
   addDevice(levelId, d) {
     const o = this.levels.get(levelId);
     const built = buildDevice(d, { height: o.level.height });
@@ -106,18 +142,46 @@ export class Stage {
     const entry = { dev: d, built, hit, room: null }; o.dev.set(d.id, entry); this.updateDeviceRoom(levelId, d.id);
     return entry;
   }
-  removeDevice(levelId, id) { const o = this.levels.get(levelId); const e = o?.dev.get(id); if (e) { o.devGroup.remove(e.built.root); o.dev.delete(id); } }
+  removeDevice(levelId, id) { const o = this.levels.get(levelId); const e = o?.dev.get(id); if (e) { e.built.dispose?.(); o.devGroup.remove(e.built.root); o.dev.delete(id); } }
   refreshItem(levelId, type, item) {
     if (type === 'device') { this.removeDevice(levelId, item.id); this.addDevice(levelId, item); }
     else if (type === 'furniture') { this.removeFurniture(levelId, item.id); this.addFurniture(levelId, item); }
   }
   moveItem(levelId, type, item) {
     const o = this.levels.get(levelId); const obj = type === 'device' ? o.dev.get(item.id)?.built.root : o.furn.get(item.id);
-    if (obj) this.place(obj, item); if (type === 'device') this.updateDeviceRoom(levelId, item.id);
+    if (obj) { this.place(obj, item); this.settleItem(levelId, type, item); } if (type === 'device') this.updateDeviceRoom(levelId, item.id);
+  }
+  settleAutomaticItems() {
+    for (const [levelId, o] of this.levels) {
+      const entries = [...o.level.furniture.map(item => ({ item, type: 'furniture', root: o.furn.get(item.id) })), ...o.level.devices.map(item => ({ item, type: 'device', root: o.dev.get(item.id)?.built.root }))].filter(e => e.root && e.root.visible);
+      const automatic = entries.filter(e => automaticPlacement(e.item, e.type));
+      const supports = entries.filter(e => !automaticPlacement(e.item, e.type)).map(e => e.root);
+      // Resolve existing stacks bottom-up; unresolved automatic objects cannot support each other cyclically.
+      automatic.sort((a, b) => {
+        const height = (a.item.elevation || 0) - (b.item.elevation || 0);
+        if (height) return height;
+        const size = root => { const b = objectBounds(root); return (b.max.x - b.min.x) * (b.max.z - b.min.z); };
+        return size(b.root) - size(a.root) || a.item.id.localeCompare(b.item.id);
+      });
+      for (const e of automatic) {
+        e.item.autoElevation = true;
+        this.scene.updateMatrixWorld(true);
+        e.item.elevation = surfaceElevation(e.root, supports, o.group.position.y);
+        this.place(e.root, e.item); supports.push(e.root);
+      }
+    }
+  }
+  settleItem(levelId, type, item) {
+    if (!automaticPlacement(item, type)) return;
+    item.autoElevation = true;
+    item.elevation = this.supportElevation(levelId, type, item.id);
+    const o = this.levels.get(levelId), root = type === 'device' ? o?.dev.get(item.id)?.built.root : o?.furn.get(item.id);
+    if (root) this.place(root, item);
   }
   updateDeviceRoom(levelId, id) {
     const o = this.levels.get(levelId), e = o.dev.get(id); const r = roomAt(o.level, e.dev.pos);
-    e.room = r ? bbox(r.points) : null;
+    e.room = r ? bbox(r.points) : null; e.roomPolygon = r?.points || null; e.roomId = r?.id || null;
+    clipRoomEffects(e.built.root, e.roomPolygon);
   }
 
   /* ---------- level layout / visibility ---------- */
@@ -145,6 +209,9 @@ export class Stage {
     });
   }
   layout() {
+    this._shadowDirty = true; this._next = 0;
+    const groundLevel = this.app.plan.levels.find(l => l.rooms.some(r => r.kind === "outdoor")) || [...this.app.plan.levels].sort((a, b) => Math.abs(a.elevation) - Math.abs(b.elevation))[0];
+    this.ground.position.y = (groundLevel?.elevation ?? 0) - 0.02;
     const plan = this.app.plan; const top = [...plan.levels].reverse().find((l) => l.rooms.some(isIndoor));
     for (const [id, o] of this.levels) {
       o.group.visible = this.isVisible(o.level); o.group.position.y = this.displayY(o.level);
@@ -312,11 +379,19 @@ export class Stage {
     this.setRay(e);
     const vis = [...this.levels.values()].filter((o) => o.group.visible && (!levelId || o.level.id === levelId));
     if (handles && this.handles.length) { const h = this.ray.intersectObjects(this.handles, false)[0]; if (h) return { type: 'handle', ...h.object.userData }; }
-    const dh = this.ray.intersectObjects(vis.flatMap((o) => [...o.dev.values()].filter((x) => !x.dev.hidden).map((x) => x.hit)), false)[0];
+    const deviceMeshes = [], owners = new Map();
+    for (const o of vis) for (const e of o.dev.values()) if (!e.dev.hidden) e.built.root.traverseVisible(mesh => {
+      if (!mesh.isMesh || mesh === e.hit || mesh.userData.pool || mesh.userData.roomEffect || mesh.material?.visible === false) return;
+      deviceMeshes.push(mesh); owners.set(mesh, { id: e.dev.id, level: o.level.id });
+    });
+    const visibleDevice = this.ray.intersectObjects(deviceMeshes, false)[0];
+    const dh = visibleDevice || this.ray.intersectObjects(vis.flatMap(o => [...o.dev.values()].filter(x => !x.dev.hidden).map(x => x.hit)), false)[0];
     const oh = this.ray.intersectObjects(vis.flatMap((o) => o.house.openingHits), false)[0];
     let fh = null;
-    if (furniture) { const x = this.ray.intersectObjects(vis.flatMap((o) => o.furnGroup.children.filter((c) => c.visible)), true)[0]; if (x) { let ob = x.object; while (ob && !ob.userData.furn) ob = ob.parent; if (ob) fh = { d: x.distance, type: 'furniture', id: ob.userData.furn, level: ob.userData.level }; } }
-    const cands = [dh && { d: dh.distance, type: 'device', id: dh.object.userData.dev, level: dh.object.userData.level }, oh && { d: oh.distance + 0.3, type: 'opening', id: oh.object.userData.opening, level: oh.object.userData.level }, fh].filter(Boolean).sort((a, b) => a.d - b.d);
+    { const x = this.ray.intersectObjects(vis.flatMap((o) => o.furnGroup.children.filter((c) => c.visible)), true)[0]; if (x) { let ob = x.object; while (ob && !ob.userData.furn) ob = ob.parent; if (ob) fh = { d: x.distance, type: 'furniture', id: ob.userData.furn, level: ob.userData.level }; } }
+    const device = dh && { d: dh.distance, type: 'device', ...(visibleDevice ? owners.get(dh.object) : { id: dh.object.userData.dev, level: dh.object.userData.level }) };
+    // Generous touch targets must not intercept a visible object in front of them.
+    const cands = [(visibleDevice || !fh) && device, oh && { d: oh.distance + 0.3, type: 'opening', id: oh.object.userData.opening, level: oh.object.userData.level }, fh].filter(Boolean).sort((a, b) => a.d - b.d);
     if (furniture) { const roofs = [...this.levels.values()].filter((o) => o.group.visible && o.roof?.panels?.length); const sh = this.ray.intersectObjects(roofs.flatMap((o) => o.roof.panels), false)[0]; if (sh && (!cands[0] || sh.distance < cands[0].d)) return { type: 'solar', id: sh.object.userData.solar, level: roofs[0].level.id }; }
     { const roofs = [...this.levels.values()].filter((o) => o.group.visible && o.roof?.items?.length && o.roof.group.visible); const ri = this.ray.intersectObjects(roofs.flatMap((o) => o.roof.items), false)[0]; if (ri && (!cands[0] || ri.distance < cands[0].d)) return { type: 'roofitem', id: ri.object.userData.roofItem, level: roofs[0].level.id }; }
     if (furniture && this.xroofs?.children.length) { const xh = this.ray.intersectObject(this.xroofs, true)[0]; if (xh && (!cands[0] || xh.distance < cands[0].d)) { let ob = xh.object; while (ob && !ob.userData.xroof) ob = ob.parent; if (ob) return { type: 'xroof', id: ob.userData.xroof }; } }
@@ -400,7 +475,8 @@ export class Stage {
     this.perf = !!on; const dpr = window.devicePixelRatio || 1;
     this.renderer.setPixelRatio(on ? Math.min(dpr, 1.25) : Math.min(dpr, 2)); this.bloom.enabled = !on;
     this.sun.shadow.mapSize.set(on ? 1024 : 2048, on ? 1024 : 2048); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null;
-    this.resize?.();
+    for (const light of this.pool) { light.shadow.mapSize.set(on ? 256 : 512, on ? 256 : 512); light.shadow.map?.dispose(); light.shadow.map = null; }
+    this._shadowDirty = true; this.resize?.();
   }
   // "Walls rise": storeys grow out of the ground (after the plan wizard, and when the dashboard opens).
   // Groups are looked up by id every frame, so a rebuild during the animation does not break it.
@@ -424,6 +500,25 @@ export class Stage {
       g.scale.y = k <= 0 ? 0.001 : k < 1 ? Math.max(0.001, 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2)) : 1;
     }
     if (done) { this.rise = null; this.sun.castShadow = r.shadow; this.layout(); }
+  }
+  // Speakers playing as a group (e.g. Sonos) are joined by a faint pulsing line.
+  speakerGroups(pos, t) {
+    const pairs = []; if (pos) for (const [id, p] of Object.entries(pos)) for (const m of p.m) if (m > id && pos[m] && p.room && p.room === pos[m].room) pairs.push([p, pos[m]]);
+    const sig = JSON.stringify(pairs.map(([a, b]) => [a.toArray(), b.toArray(), a.polygon]));
+    if (sig !== this._grpSig) {
+      this._grpSig = sig;
+      if (this.grpLines) { this.scene.remove(this.grpLines); this.grpLines.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); }); }
+      this.grpLines = new THREE.Group();
+      for (const [a, b] of pairs) {
+        const mid = a.clone().add(b).multiplyScalar(0.5); mid.y += 0.4 + a.distanceTo(b) * 0.08;
+        const curve = new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(24), points = [];
+        for (let i = 1; i < curve.length; i++) points.push(curve[i - 1], curve[i]);
+        const line = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: '#ffb35c', transparent: true, opacity: 0.5, depthWrite: false }));
+        line.renderOrder = 4; line.userData.roomEffect = true; clipRoomEffects(line, a.polygon); this.grpLines.add(line);
+      }
+      this.scene.add(this.grpLines);
+    }
+    this.grpLines?.traverse(o => { if (o.material) o.material.opacity = this.perf ? 0.45 : 0.3 + 0.25 * Math.sin(t * 2.4); });
   }
   /* ---------- walkthrough (first person) ---------- */
   // Eye height = body height × 0.93. Moves with WASD/arrows (Shift = faster), looks by dragging; touch: joystick + drag.
@@ -458,15 +553,20 @@ export class Stage {
     this.persp.lookAt(this.controls.target);
   }
   walkLook(dx, dy) { const w = this.walk; if (!w) return; w.yaw -= dx * 0.005; w.pitch = Math.max(-1.2, Math.min(1.1, w.pitch - dy * 0.004)); }
-  start() { if (this.running) return; this.running = true; this.clock.getDelta(); const loop = () => { if (!this.running) return; this.tick(); this.raf = requestAnimationFrame(loop); }; this.raf = requestAnimationFrame(loop); }
+  // Frame pacing: full rate while the user interacts or something moves the camera; 30 fps while
+  // devices animate; 4 fps when nothing happens (tablets stay cool). Shadows are re-rendered only on change.
+  invalidate() { this._next = 0; } // render the next frame (state change), without switching to full rate
+  wake(shadow = false) { this._wake = performance.now(); this._next = 0; if (shadow) this._shadowDirty = true; }
+  start() { if (this.running) return; this.running = true; this.clock.getDelta(); const loop = (now) => { if (!this.running) return; this.raf = requestAnimationFrame(loop); if (now < this._next) return; this.tick(); }; this.raf = requestAnimationFrame(loop); }
   stop() { this.running = false; cancelAnimationFrame(this.raf); }
   tick() {
-    const dt = Math.min(0.05, this.clock.getDelta()), t = this.clock.elapsedTime, app = this.app;
+    const dt = Math.min(0.05, this.clock.getDelta()), t = this.clock.elapsedTime, app = this.app; let anim = false, animGeom = false, groupPos = null;
+    this.renderer.info.reset();
     if (this.tween) { const tw = this.tween; tw.t = Math.min(1, tw.t + dt * 1.6); const k = 1 - Math.pow(1 - tw.t, 3); this.controls.target.lerpVectors(tw.ft, tw.tt, k); this.persp.position.lerpVectors(tw.fp, tw.tp, k); if (tw.t >= 1) this.tween = null; }
     if (this.rise) this.applyRise();
     if (this.walk) this.walkStep(dt); else if (this.topView) this.controls2.update(); else this.controls.update();
     const cd = this._camDir.copy(this.persp.position).sub(this.controls.target); cd.y = 0; cd.normalize();
-    const states = app.states(); const env = { day: this.day > 0.5, editing: app.mode === 'edit', showCones: false, room: null };
+    const states = app.states(); const env = { day: this.day > 0.5, editing: app.mode === 'edit', showCones: false, room: null, media: (this.media ||= new MediaHub(app)), perf: this.perf };
     const emitters = []; const wp = this._v;
     for (const o of this.levels.values()) {
       if (!o.group.visible) continue;
@@ -476,21 +576,23 @@ export class Stage {
         const w = o.house.windows[op.id];
         if (w) {
           if (op.cover) {
-            const s = states[op.cover]; const p = s ? (coverPercent(s, op.coverInvert) ?? 100) / 100 : 1; w.cur += (p - w.cur) * Math.min(1, dt * 3); w.shutter.visible = true; w.shutter.scale.y = Math.max(0.02, 1 - w.cur);
+            const s = states[op.cover]; const p = s ? (coverPercent(s, op.coverInvert) ?? 100) / 100 : 1; if (Math.abs(p - w.cur) > 0.002) animGeom = true; w.cur += (p - w.cur) * Math.min(1, dt * 3); w.shutter.visible = true; w.shutter.scale.y = Math.max(0.02, 1 - w.cur);
             const tilt = s?.attributes?.current_tilt_position; // venetian blinds: open slats let light through
             if (tilt != null) { if (!w.shutter.userData.ownMat) { w.shutter.material = w.shutter.material.clone(); w.shutter.userData.ownMat = true; w.shutter.material.transparent = true; } w.shutter.material.opacity = 1 - (tilt / 100) * 0.6; }
           } else w.shutter.visible = false;
           const open = op.contact && states[op.contact]?.state === 'on'; w.glassMat.emissive.set(open ? '#ff7a45' : '#3d5fae'); w.glassMat.opacity = open ? 0.4 : 0.22;
         }
         const d = o.house.doors[op.id];
-        if (d) { const tgt = op.contact ? (states[op.contact]?.state === 'on' ? 1.3 : 0) : d.ext ? 0 : 1.15; d.cur += (tgt - d.cur) * Math.min(1, dt * 4); d.hinge.rotation.y = d.base + d.swing * d.cur; }
+        if (d) { const tgt = op.contact ? (states[op.contact]?.state === 'on' ? 1.3 : 0) : d.ext ? 0 : 1.15; if (Math.abs(tgt - d.cur) > 0.002) animGeom = true; d.cur += (tgt - d.cur) * Math.min(1, dt * 4); d.hinge.rotation.y = d.base + d.swing * d.cur; }
         const gd = o.house.garages[op.id];
-        if (gd) { const s = op.cover ? states[op.cover] : null; const p = s ? (s.attributes.current_position ?? (['open', 'opening'].includes(s.state) ? 100 : 0)) / 100 : 0; gd.cur += (p - gd.cur) * Math.min(1, dt * 1.5); gd.panel.scale.y = Math.max(0.03, 1 - gd.cur); }
+        if (gd) { const s = op.cover ? states[op.cover] : null; const p = s ? (s.attributes.current_position ?? (['open', 'opening'].includes(s.state) ? 100 : 0)) / 100 : 0; if (Math.abs(p - gd.cur) > 0.002) animGeom = true; gd.cur += (p - gd.cur) * Math.min(1, dt * 1.5); gd.panel.scale.y = Math.max(0.03, 1 - gd.cur); }
       }
       for (const e of o.dev.values()) {
-        env.room = e.room; e.built.update(e.dev.entity_id ? states[e.dev.entity_id] : null, dt, t, env);
+        env.room = e.room; const est = e.dev.entity_id ? states[e.dev.entity_id] : null; e.built.update(est, dt, t, env); if (e.built.animating ? e.built.animating(est) : isAnimated(e.dev.kind, est)) anim = true;
+        if (est?.state === 'playing' && est.attributes?.group_members?.length > 1) { (groupPos ||= {})[est.entity_id] = e.built.root.getWorldPosition(new THREE.Vector3()); groupPos[est.entity_id].y += 0.35; groupPos[est.entity_id].m = est.attributes.group_members; groupPos[est.entity_id].room = e.roomId ? `${o.level.id}:${e.roomId}` : null; groupPos[est.entity_id].polygon = e.roomPolygon; }
         for (const em of e.built.emitters) if (em.power > 0.05) { em.anchor.getWorldPosition(wp); emitters.push({ x: wp.x, y: wp.y, z: wp.z, color: em.color, power: em.power }); }
       }
+      if (o.furnScreens) for (const { item, screens } of o.furnScreens.values()) { const est = item.entity_id ? states[item.entity_id] : null; for (const b of screens) { b.update(est, dt, t, env); if (b.animating(est)) anim = true; if (b.emitter.power > 0.05) { b.emitter.anchor.getWorldPosition(wp); emitters.push({ x: wp.x, y: wp.y, z: wp.z, color: b.emitter.color, power: b.emitter.power }); } } }
       o.roof?.update(states, t);
       for (const r of o.level.rooms) {
         const ov = o.house.overlays[r.id]; if (!ov) continue; let op = 0;
@@ -498,11 +600,17 @@ export class Stage {
         ov.material.opacity += (op - ov.material.opacity) * Math.min(1, dt * 8);
       }
     }
+    this.speakerGroups(groupPos, t);
     emitters.sort((a, b) => b.power - a.power);
     const damp = 1 - 0.55 * this.day;
-    this.pool.forEach((l, i) => { const em = emitters[i]; if (em) { l.position.set(em.x, em.y, em.z); l.color.copy(em.color); l.intensity = em.power * damp; } else l.intensity = 0; });
+    this.pool.forEach((l, i) => { const em = emitters[i]; if (em && (l.position.x !== em.x || l.position.y !== em.y || l.position.z !== em.z)) this._shadowDirty = true; if (em) { l.position.set(em.x, em.y, em.z); l.color.copy(em.color); l.intensity = this.perf && i >= 2 ? 0 : em.power * damp; } else l.intensity = 0; });
     for (const h of this.selHelpers) h.update();
+    const now = performance.now(), interactive = now - this._wake < 2500 || this.tween || this.rise || this.walk || app._down;
+    const animMove = animGeom || !!this.rise || (app.mode === 'edit' && app._down);
+    if (this._shadowDirty || animMove || now - this._lastShadow > 1000) { this.renderer.shadowMap.needsUpdate = true; this._lastShadow = now; this._shadowDirty = false; }
     this.composer.render();
+    this._next = interactive || animGeom ? 0 : now + (anim ? 1000 / 30 : 250); this.pace = interactive || animGeom ? tr('media.active') : anim ? tr('media.animated') : tr('media.idle');
+    this.fpsCount++; if (now - this._fpsT > 1000) { this.fps = Math.round((this.fpsCount * 1000) / (now - this._fpsT)); this.fpsCount = 0; this._fpsT = now; }
     app.onFrame?.();
   }
   project(x, y, z) { const v = this._v.set(x, y, z).project(this.camera); return [(v.x * 0.5 + 0.5) * this.canvas.clientWidth, (-v.y * 0.5 + 0.5) * this.canvas.clientHeight, v.z]; }
