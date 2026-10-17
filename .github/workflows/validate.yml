@@ -63,6 +63,7 @@ jobs:
           node tools/test-projector-split.mjs
           node tools/test-level-slabs.mjs
           node tools/test-house-geometry.mjs
+          node tools/test-plan-text.mjs
           npm run build
           test -z "$(git status --porcelain -- custom_components/hometwin/frontend library/index.json frontend/src/library.gen.js docs/demo/index.html)"
 

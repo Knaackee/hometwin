@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Floor-plan recognition, international and plan-agnostic:
+  - Vector PDFs: the scale is read from the PDF (printed scale such as "1:100", "M 1:50" or "1/4\" = 1'-0\"") and checked against the printed dimensions; without a printed scale it is calculated from the dimensions. No measuring needed.
+  - The model gets the exact printed texts (dimensions, room names, areas, opening sizes) with their positions instead of reading them from pixels.
+  - Readings for all common notations (metres, centimetres with raised half units, millimetres, feet and inches) are chosen by consistency, not by country.
+  - The model suggests where the floor plan is on the sheet; the crop frame is only a proposal and the vector PDF is re-rendered sharply for it. Images are sent as lossless PNG at the size the configured model reads (Claude 1568 px, Gemini 3072 px, GPT 2048 px).
+  - New detail pass for doors and windows on enlarged sections; printed opening sizes, sill and head heights, hinge side and opening direction are taken over. Doors in the plan now have a hinge side and an opening direction (editable in the door inspector).
+  - The recognition no longer stops when the scale cannot be read: the rooms are kept and scaled after one measurement. Printed room areas serve as a further scale source.
+  - The review step points out rooms without windows and printed opening sizes without an opening.
 - Storeys join cleanly: the plinth is only built on the storey standing on the terrain, interior walls end inside the exterior wall instead of poking through the facade, and plinth corners close flush.
 - Raised ground floors stand on the terrain: the plinth reaches down to the ground. The plinth height is adjustable (House → Facade).
 - Floor-plan assistant: new storeys are stacked without gaps. Room height and slab thickness come from the plan when stated, otherwise from defaults that are marked for review and can be corrected before applying. Basements keep the floor level of the storey above.

@@ -85,6 +85,22 @@ const frameMat = (c = '#2c3142') => mat(c, { rough: 0.6 });
 
 // opts.terrain: terrain height relative to this floor (only for the storey standing on the
 // terrain). Only that storey gets a plinth; it reaches from the terrain to plinth height.
+// Door orientation. opening.hinge: 'from' | 'to' (end with the hinges, default 'from');
+// opening.swing: +1 | -1 = side the leaf opens to, relative to the left normal of from→to
+// (default: towards the room on the wall's first side, as before).
+export function doorSwingVector(o, l, side) {
+  if (o.swing === 1 || o.swing === -1) { const L = Math.hypot(o.to[0] - o.from[0], o.to[1] - o.from[1]) || 1; const ux = (o.to[0] - o.from[0]) / L, uz = (o.to[1] - o.from[1]) / L; return [-uz * o.swing, ux * o.swing]; }
+  return [side * l.nx, side * l.nz];
+}
+// Hinge end on the wall segment (a = segment start along l.u) and rotation sign for the 3D leaf.
+export function doorGeometry(o, l, side, pa, pb) {
+  const hp = o.hinge === 'to' ? o.to : o.from;
+  const atA = !o.hinge && o.swing == null ? true : Math.hypot(hp[0] - pa.x, hp[1] - pa.z) <= Math.hypot(hp[0] - pb.x, hp[1] - pb.z);
+  const d = atA ? [l.ux, l.uz] : [-l.ux, -l.uz]; const N = doorSwingVector(o, l, side);
+  // rotating the hinge group by +θ about y moves the leaf tip towards (d.z, −d.x)
+  return { atA, swing: Math.sign(d[1] * N[0] - d[0] * N[1]) || 1 };
+}
+
 export function buildLevel(level, site = {}, opts = {}) {
   const fac = facadeMaterial(site.facade), plinthM = mat(site.facade?.plinth || '#5f636b', { rough: 0.9 }), frameColor = site.facade?.frame || '#2c3142';
   const H = level.height, Hi = Math.min(level.cutHeight ?? 1.2, H), slabDepth = slabThickness(level);
@@ -138,8 +154,9 @@ export function buildLevel(level, site = {}, opts = {}) {
     if (type === 'door') {
       const hinge = new THREE.Group(); const L = s.b - s.a - 0.04, h = ext ? (o.head ?? 2.1) : Math.min(o.head ?? 2.05, Hi - 0.02);
       const leaf = box(L, h, 0.04, mat(ext ? '#3a3f4b' : '#d6d0c4', { rough: 0.7 }), 0.01); leaf.position.x = L / 2; leaf.castShadow = true;
-      hinge.add(leaf); hinge.position.copy(at(s.a + 0.02)); hinge.rotation.y = wallRot; hinge.userData.keep = true;
-      doors[o.id] = { hinge, base: wallRot, swing: -s.side, cur: 0, ext };
+      const dg = doorGeometry(o, s.l, s.side, at(s.a), at(s.b));
+      hinge.add(leaf); hinge.position.copy(dg.atA ? at(s.a + 0.02) : at(s.b - 0.02)); const base = dg.atA ? wallRot : wallRot + Math.PI; hinge.rotation.y = base; hinge.userData.keep = true;
+      doors[o.id] = { hinge, base, swing: dg.swing, cur: 0, ext, N: doorSwingVector(o, s.l, s.side) };
     }
     if (type === 'garage') {
       const head = o.head ?? 2.2, w = s.b - s.a;
@@ -222,10 +239,10 @@ export function buildLevel(level, site = {}, opts = {}) {
     if (o.type === 'window') bar(w, Math.max(0.04, info.t * 0.35), glassM, ys + 0.01);
     if (o.type === 'garage') bar(w, 0.05, gateM, ys + 0.01);
     if (o.type === 'door') {
-      const nx = info.side * info.l.nx, nz = info.side * info.l.nz; const pts = [];
-      const hx = o.from[0], hz = o.from[1];
+      const sw = doorSwingVector(o, info.l, info.side); const nx = sw[0], nz = sw[1]; const pts = [];
+      const hp = o.hinge === 'to' ? o.to : o.from, op2 = o.hinge === 'to' ? o.from : o.to; const hx = hp[0], hz = hp[1], dx = (op2[0] - hx) / w, dz = (op2[1] - hz) / w;
       pts.push(new THREE.Vector3(hx, ys + 0.02, hz));
-      for (let i = 0; i <= 16; i++) { const th = (i / 16) * Math.PI / 2; pts.push(new THREE.Vector3(hx + w * (Math.cos(th) * ux + Math.sin(th) * nx), ys + 0.02, hz + w * (Math.cos(th) * uz + Math.sin(th) * nz))); }
+      for (let i = 0; i <= 16; i++) { const th = (i / 16) * Math.PI / 2; pts.push(new THREE.Vector3(hx + w * (Math.cos(th) * dx + Math.sin(th) * nx), ys + 0.02, hz + w * (Math.cos(th) * dz + Math.sin(th) * nz))); }
       pts.push(new THREE.Vector3(hx, ys + 0.02, hz));
       symbols.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineM));
     }

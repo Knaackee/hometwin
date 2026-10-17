@@ -153,6 +153,8 @@
   "editor.opening.shutter": "Shutter (cover)",
   "editor.opening.sill": "Sill (m)",
   "editor.opening.topEdge": "Top edge (m)",
+  "editor.opening.flipHinge": "Swap hinge side",
+  "editor.opening.flipSwing": "Swap opening direction",
   "editor.openingType.door": "Door",
   "editor.openingType.garage": "Garage door",
   "editor.openingType.open": "Opening",

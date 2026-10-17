@@ -85,4 +85,23 @@ const two = (extra = {}) => level('two', 0, 2.6, { rooms: [rect('a', 0, 0, 2, 4)
   // Exterior corners still close flush.
   const b = bounds(upper.group); close(b.min.x, -EXT_T / 2, 'outer corner x', 1e-4); close(b.min.z, -EXT_T / 2, 'outer corner z', 1e-4);
 }
+/* ---------- door hinge side and opening direction ---------- */
+{
+  const { doorGeometry, doorSwingVector } = await import('../frontend/src/house.js');
+  const door = (extra) => buildLevel(two({ openings: [{ id: 'd', type: 'door', from: [2, 1], to: [2, 1.9], ...extra }] })).doors.d;
+  const def = door({}), flipped = door({ hinge: 'to' }), sw1 = door({ swing: 1 }), sw2 = door({ swing: -1 });
+  assert.ok(def && flipped && sw1 && sw2, 'doors built');
+  close(def.hinge.position.z, 1.02, 'default hinge at "from"', 1e-6); close(flipped.hinge.position.z, 1.88, 'hinge at "to"', 1e-6);
+  assert.notEqual(sw1.swing, sw2.swing, 'swing ±1 opens to opposite sides');
+  // the leaf tip moves towards the requested side: open the door and check where the tip is
+  for (const [d, side] of [[sw1, 1], [sw2, -1]]) {
+    d.hinge.rotation.y = d.base + d.swing * 1.2; d.hinge.updateMatrixWorld(true);
+    const tip = new THREE.Vector3(0.8, 0, 0).applyMatrix4(d.hinge.matrixWorld);
+    // left normal of from→to (0,+1) is (−1, 0): swing +1 → x < 2
+    assert.ok(side === 1 ? tip.x < 2 - 0.3 : tip.x > 2 + 0.3, `swing ${side} opens to the expected side (tip x ${tip.x.toFixed(2)})`);
+  }
+  const l = { ux: 0, uz: 1, nx: -1, nz: 0 };
+  assert.deepEqual(doorSwingVector({ from: [2, 1], to: [2, 2], swing: -1 }, l, 1), [1, -0]);
+  assert.equal(doorGeometry({ from: [2, 1], to: [2, 2] }, l, 1, { x: 2, z: 1 }, { x: 2, z: 2 }).atA, true);
+}
 console.log('house geometry tests passed');

@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .agent import AgentConfig, job_state, run_agent, run_detect, start_detect_job
+from .agent import AgentConfig, image_max_px, job_state, run_agent, run_detect, start_detect_job
 from .const import CONF_UI_LANGUAGE, UI_LANGUAGES, DOMAIN, SIGNAL_PLAN_UPDATED
 from .i18n import hass_message
 
@@ -84,7 +84,7 @@ def ws_plan_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveConne
 def ws_agent_info(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
     entry = hass.data.get(DOMAIN, {}).get("entry")
     cfg = AgentConfig.from_options(entry.options if entry else {})
-    connection.send_result(msg["id"], {"configured": cfg.configured, "model": cfg.model, "base_url": cfg.base_url})
+    connection.send_result(msg["id"], {"configured": cfg.configured, "model": cfg.model, "base_url": cfg.base_url, "image_max_px": image_max_px(cfg.model)})
 
 
 @websocket_api.websocket_command(
@@ -152,7 +152,10 @@ _DETECT_SCHEMA = {
     vol.Required("image"): str,
     vol.Required("width"): int,
     vol.Required("height"): int,
-    vol.Optional("mode", default="rooms"): vol.In(["rooms", "scale", "refine"]),
+    vol.Optional("mode", default="rooms"): vol.In(["rooms", "scale", "refine", "layout", "openings"]),
+    vol.Optional("labels"): [dict],
+    vol.Optional("walls"): [list],
+    vol.Optional("rooms"): [dict],
     vol.Optional("mpp"): vol.Any(None, vol.Coerce(float)),
     vol.Optional("overlay"): str,
     vol.Optional("current"): dict,

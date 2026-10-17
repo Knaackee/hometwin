@@ -153,6 +153,8 @@
   "editor.opening.shutter": "Rollladen (cover)",
   "editor.opening.sill": "Brüstung (m)",
   "editor.opening.topEdge": "Oberkante (m)",
+  "editor.opening.flipHinge": "Anschlagseite wechseln",
+  "editor.opening.flipSwing": "Aufschlagrichtung wechseln",
   "editor.openingType.door": "Tür",
   "editor.openingType.garage": "Garagentor",
   "editor.openingType.open": "Durchgang",

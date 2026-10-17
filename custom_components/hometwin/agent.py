@@ -526,9 +526,9 @@ Image size: {w} × {h} px. Scale: 1 px = {mpp:.5f} m (so 1 m = {ppm:.1f} px).
 Return:
 {{
   "rooms": [{{"name": "Kitchen", "kind": "room", "points": [[px, py], ...], "label_area_m2": 12.4, "clear_w": 3.51, "clear_d": 2.76}}],
-  "openings": [{{"type": "door", "from": [px, py], "to": [px, py]}}],
+  "openings": [{{"type": "door", "from": [px, py], "to": [px, py], "label": "t12", "width_m": 0.885, "height_m": null, "sill_m": null, "hinge": "from", "opens_into": "Kitchen"}}],
   "stairs": [{{"points": [[px, py], ...], "up_from": [px, py], "up_to": [px, py], "width_m": 1.0}}],
-  "dimensions": [{{"from": [px, py], "to": [px, py], "meters": 11.49}}],
+  "dimensions": [{{"from": [px, py], "to": [px, py], "meters": 11.49, "text": "11,49"}}],
   "level": {{"name": "Erdgeschoss", "floor_elevation_m": 0.0, "room_height_m": 2.6, "slab_thickness_m": null}},
   "roof": {{"type": "gable", "pitch_deg": 38, "ridge": "x", "main_building": [[px, py], ...]}},
   "notes": "short remarks on anything unclear"
@@ -546,10 +546,40 @@ Rules:
 - stairs: footprint polygon of the flight, "up_from"/"up_to" = start and end of the walking line in the direction going UP (follow the arrow / "S" marks / step numbers), width_m = flight width.
 - level: the storey shown (name as printed, e.g. "Erdgeschoss", "Obergeschoss", "Kellergeschoss"), floor elevation (e.g. "OKFF ±0,00" or "+2,85") and clear room height if printed (e.g. "RH 2,50", "lichte Höhe"). floor_elevation_m is relative to the ground floor (±0,00), never metres above sea level. slab_thickness_m: thickness of the floor slab under this storey including screed, only if dimensioned (section, "Decke 22 cm + Estrich"). null values if not printed; never guess.
 - roof: only if the plan shows or states it (roof outline, "SD 38°", "Satteldach", ridge line "First"): type one of flat, shed, gable, hip; pitch in degrees; ridge "x" if the ridge runs left-right in the image, "y" if top-bottom; main_building = outline of the part the roof covers (without garage/carport). Otherwise null.
-- dimensions: up to 6 long printed dimension lines (outer chains preferred) with their two end points in pixels and the printed length in metres. They are used to verify the scale.
+- dimensions: up to 8 printed dimension lines (long outer chains preferred) with their two end points in pixels, the printed text exactly as written in "text" and your reading in metres. They are used to verify the scale.
 - PRINTED DIMENSIONS BEAT PIXELS: place walls so that the printed dimensions are met.
-- openings: doors ("door"), windows ("window"), garage doors ("garage"), openings without door ("open"); from/to are the two ends ON the wall centre line.{skip}
-{locked}{hints}"""
+- openings: doors ("door"), windows ("window"), garage doors ("garage"), openings without door ("open"); from/to are the two ends ON the wall centre line.
+  Be exhaustive: walk along EVERY wall of EVERY room and report each gap in the wall. A door usually shows a leaf line and a quarter-circle swing arc; a window shows two or three thin parallel lines inside the wall; glazed doors (to terraces, balconies) count as doors; sliding doors show overlapping leaves.
+  hinge: "from" or "to" = the end where the door leaf is attached (where the arc starts); opens_into: name of the room (or "outside") the leaf swings into. null for windows and openings without a door.
+  width_m / height_m / sill_m: from the printed opening label if there is one (often "width/height", sometimes a sill mark), else null. label: id of that label from the label list, if a list is given.{skip}
+{notation}{labels}{locked}{hints}"""
+
+NOTATION_HELP = """
+Plans use different notations: lengths in metres ("3,40" or "3.40"), centimetres for values under one metre ("87,5", "49"), millimetres ("3400") or feet and inches ("12'-6\""). A small raised digit after a number adds a fraction of the last digit ("3,31⁵" = 3.315; "11⁵" = 11.5 cm). Opening labels are often "width/height". Ignore title blocks, legends, site plans, sections and other drawings on the sheet: only the floor plan counts.
+"""
+
+LABELS_HELP = """
+Text labels printed on this plan (exact text from the PDF; x/y = label centre in pixels of the attached image; interpretation = possible readings):
+id | text | x | y | angle | interpretation
+{rows}
+Use these labels for all printed numbers instead of reading them from the pixels. Assign room names and areas to the rooms they are in, and opening labels to their openings (return the id in "label").
+"""
+
+OPENINGS_PROMPT = """You check one section of a floor plan for doors and windows. Return ONLY a JSON object, no prose.
+Coordinates are PIXELS of the attached image ({w} × {h} px, origin top-left). Scale: 1 px = {mpp:.5f} m (1 m = {ppm:.1f} px).
+Known walls in this section (index: [x1, y1, x2, y2] kind):
+{walls}
+Rooms (polygons in pixels): {rooms}
+Report EVERY door, glazed door, sliding door, window, garage door and opening without door that lies on one of these walls. Walk along each wall from end to end; do not skip small ones (WC, storage, technical rooms).
+Return: {{"openings": [{{"wall": 3, "type": "door", "from": [px, py], "to": [px, py], "label": "t7", "width_m": 0.885, "height_m": null, "sill_m": null, "hinge": "from", "opens_into": "Hall"}}]}}
+type: door, window, garage or open. from/to: both ends on the wall centre line. hinge ("from"/"to") and opens_into (room name or "outside") for doors only. width_m/height_m/sill_m from the printed label if any, else null.
+{notation}{labels}"""
+
+LAYOUT_PROMPT = """You look at a drawing sheet. Return ONLY a JSON object, no prose.
+List every separate drawing on the sheet with its bounding box in PIXELS of the attached image ({w} × {h} px, origin top-left): floor plans of a storey, site plan, sections, elevations, details, title block, legend, other.
+A floor plan box must include its dimension lines and labels, but not the site plan, title block or other drawings around it.
+Return: {{"drawings": [{{"type": "floor_plan", "label": "printed storey name or null", "box": [x0, y0, x1, y1]}}]}}
+type is one of floor_plan, site_plan, section, elevation, detail, title_block, legend, other."""
 
 REFINE_PROMPT = """You check an automatic floor plan reading. Image 1 is the original plan. Image 2 is the same plan with the current reading drawn on top: every room is a coloured, numbered polygon.
 Compare carefully: wrong or missing walls, rooms that are too large/small, rooms overlapping or leaving gaps, missing rooms (hallway, storage, stairs area), wrong names, missing doors/windows, wrong stair direction.
@@ -746,9 +776,15 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
         raise HomeAssistantError(message(language, "image_missing"))
     if req.get("mode") == "scale":
         text = SCALE_PROMPT.format(w=w, h=h)
+    elif req.get("mode") == "layout":
+        text = LAYOUT_PROMPT.format(w=w, h=h)
+    elif req.get("mode") == "openings":
+        text = OPENINGS_PROMPT.format(w=w, h=h, mpp=float(req.get("mpp") or 0.01), ppm=1 / float(req.get("mpp") or 0.01), notation=NOTATION_HELP, labels=_labels_block(req),
+                                      walls="\n".join(f"{i}: [{', '.join(str(round(v)) for v in wl[:4])}] {wl[4] if len(wl) > 4 else ''}" for i, wl in enumerate(req.get("walls") or [])[:200]),
+                                      rooms=json.dumps([{"name": r.get("name"), "points": [[round(p[0]), round(p[1])] for p in r.get("points") or []]} for r in (req.get("rooms") or [])[:60]], ensure_ascii=False))
     elif req.get("mode") == "refine":
         text = DETECT_PROMPT.format(
-            w=w, h=h, mpp=float(req.get("mpp") or 0.01), ppm=1 / float(req.get("mpp") or 0.01), lang=req.get("language") or "the user's language", skip="", locked="", hints=(f"Hints from the owner: {req['hints']}\n" if req.get("hints") else "")) + "\n\n" + REFINE_PROMPT.format(
+            w=w, h=h, mpp=float(req.get("mpp") or 0.01), ppm=1 / float(req.get("mpp") or 0.01), lang=req.get("language") or "the user's language", skip="", locked="", notation=NOTATION_HELP, labels=_labels_block(req), hints=(f"Hints from the owner: {req['hints']}\n" if req.get("hints") else "")) + "\n\n" + REFINE_PROMPT.format(
             w=w, h=h, current=json.dumps(req.get("current") or {}, ensure_ascii=False)[:30000])
     else:
         auto_scale = not req.get("mpp")
@@ -763,7 +799,7 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
         text = tmpl.format(
             w=w, h=h, mpp=mpp, ppm=1 / mpp, lang=req.get("language") or "the user's language",
             skip=("" if opts.get("openings", True) else "\n- Return an empty openings list."),
-            locked=locked_txt, hints=(f"Hints from the owner: {req['hints']}\n" if req.get("hints") else ""))
+            locked=locked_txt, notation=NOTATION_HELP, labels=_labels_block(req), hints=(f"Hints from the owner: {req['hints']}\n" if req.get("hints") else ""))
     payload: dict[str, Any] = {"model": cfg.model, "messages": [
         {"role": "system", "content": "You are a precise floor plan reader. Output strictly valid JSON."},
         {"role": "user", "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image}},
@@ -786,6 +822,10 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
     content = await _post_stream(hass, cfg, payload, on_text)
     _LOGGER.info("HomeTwin: model answered in %.1f s (%d characters)", _time_mod.monotonic() - t0, len(content))
     report("parsing", chars=len(content), raw=content[:20000])
+    if req.get("mode") == "layout":
+        return _layout_post(_json_from(content, language), w, h)
+    if req.get("mode") == "openings":
+        return {"openings": _openings_from(_json_from(content, language), req, language)}
     if req.get("mode") != "scale":
         # geometry work runs in a worker thread so Home Assistant stays responsive
         return await hass.async_add_executor_job(_detect_post, content, {**req, "_ui_language": language}, report)
@@ -803,6 +843,193 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
                 continue
         return {"dimensions": dims}
 
+
+
+def image_max_px(model: str) -> int:
+    """Largest image side the model reads without resampling (OpenAI-compatible ids, any provider prefix)."""
+    m = (model or "").lower()
+    if "claude" in m or m.startswith("anthropic/"):
+        return 1568
+    if "gemini" in m or m.startswith("google/"):
+        return 3072
+    if "gpt" in m or m.startswith("openai/"):
+        return 2048
+    return 2048
+
+
+def _labels_block(req: dict[str, Any]) -> str:
+    rows = []
+    for lb in (req.get("labels") or [])[:400]:
+        if not isinstance(lb, dict):
+            continue
+        try:
+            rows.append(f"{str(lb.get('id'))[:8]} | {str(lb.get('text'))[:40]} | {round(float(lb.get('x')))} | {round(float(lb.get('y')))} | {round(float(lb.get('angle') or 0))} | {str(lb.get('interp') or '')[:80]}")
+        except (TypeError, ValueError):
+            continue
+    return LABELS_HELP.format(rows="\n".join(rows)) if rows else ""
+
+
+def _layout_post(out: dict[str, Any], w: int, h: int) -> dict[str, Any]:
+    kinds = {"floor_plan", "site_plan", "section", "elevation", "detail", "title_block", "legend", "other"}
+    drawings = []
+    for d in out.get("drawings") or []:
+        try:
+            x0, y0, x1, y1 = (_num(v) for v in d["box"][:4])
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+        x0, x1 = sorted((max(0.0, min(w, x0)), max(0.0, min(w, x1))))
+        y0, y1 = sorted((max(0.0, min(h, y0)), max(0.0, min(h, y1))))
+        if x1 - x0 < w * 0.03 or y1 - y0 < h * 0.03:
+            continue
+        drawings.append({"type": d.get("type") if d.get("type") in kinds else "other", "label": str(d.get("label") or "")[:40] or None, "box": [x0, y0, x1, y1]})
+    return {"drawings": drawings}
+
+
+def _label_size(req: dict[str, Any], lid: Any) -> tuple[float | None, float | None]:
+    """Printed width/height of an opening label (from the client's label list), in metres."""
+    for lb in req.get("labels") or []:
+        if isinstance(lb, dict) and lb.get("id") == lid:
+            w, h = lb.get("w"), lb.get("h")
+            return (float(w) if isinstance(w, (int, float)) else None, float(h) if isinstance(h, (int, float)) else None)
+    return None, None
+
+
+def _opening(o: dict[str, Any], tm: Any, req: dict[str, Any]) -> dict[str, Any] | None:
+    if o.get("type") not in ("door", "window", "garage", "open"):
+        return None
+    a, b = tm(o["from"]), tm(o["to"])
+    length = math.hypot(b[0] - a[0], b[1] - a[1])
+    if not math.isfinite(length) or length < 0.2:
+        return None
+    item: dict[str, Any] = {"type": o["type"], "from": a, "to": b}
+    lw, lh = _label_size(req, o.get("label")) if o.get("label") else (None, None)
+    width = lw if lw is not None else (_num(o["width_m"]) if isinstance(o.get("width_m"), (int, float, str)) and o.get("width_m") not in ("", None) else None)
+    if width is not None and 0.4 <= width <= 6 and 0.6 <= width / length <= 1.6:
+        cx, cz, ux, uz = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (b[0] - a[0]) / length, (b[1] - a[1]) / length
+        item["from"], item["to"] = [cx - ux * width / 2, cz - uz * width / 2], [cx + ux * width / 2, cz + uz * width / 2]
+        item["printed"] = True
+    height = lh if lh is not None else (_num(o["height_m"]) if isinstance(o.get("height_m"), (int, float, str)) and o.get("height_m") not in ("", None) else None)
+    sill = _num(o["sill_m"]) if isinstance(o.get("sill_m"), (int, float, str)) and o.get("sill_m") not in ("", None) else None
+    if o["type"] == "window":
+        if sill is not None and 0 <= sill <= 2.5:
+            item["sill"] = round(sill, 3)
+        if height is not None and 0.3 <= height <= 3:
+            item["head"] = round((item.get("sill", 0.9 if height < 1.9 else 0.0)) + height, 3)
+            item.setdefault("sill", 0.9 if height < 1.9 else 0.0)
+    elif o["type"] in ("door", "garage") and height is not None and 1.7 <= height <= 3.2:
+        item["head"] = round(height, 3)
+    if o["type"] == "door":
+        if o.get("hinge") in ("from", "to"):
+            item["hinge"] = o["hinge"]
+        if isinstance(o.get("opens_into"), str) and o["opens_into"].strip():
+            item["opens_into"] = o["opens_into"].strip()[:60]
+    return item
+
+
+def _openings_from(out: dict[str, Any], req: dict[str, Any], language: str) -> list[dict[str, Any]]:
+    mpp, x0, z0 = float(req.get("mpp") or 0.01), float(req.get("x0") or 0), float(req.get("z0") or 0)
+    tm = lambda p: (lambda q: [x0 + q[0] * mpp, z0 + q[1] * mpp])(_pt(p))  # noqa: E731
+    res = []
+    for o in out.get("openings") or []:
+        try:
+            item = _opening(o, tm, req) if isinstance(o, dict) else None
+        except (KeyError, TypeError, ValueError, IndexError):
+            item = None
+        if item:
+            if isinstance(o.get("wall"), int):
+                item["wall"] = o["wall"]
+            res.append(item)
+    return res
+
+
+_SUP = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹", "0123456789")
+
+
+def _readings(text: Any) -> list[float]:
+    """All plausible metre readings of a printed length (m, cm, mm, feet-inches); mirrors dimtext.js."""
+    t = str(text or "").strip().replace("\u00a0", " ").replace("’", "'").replace("”", '"')
+    if not t:
+        return []
+    imp = re.fullmatch(r"(?:(\d+)\s*')?\s*-?\s*(?:(\d+)(?:\s+(\d+)/(\d+))?\s*\"?)?", t)
+    if imp and ("'" in t or '"' in t) and (imp.group(1) or imp.group(2)):
+        inch = float(imp.group(2) or 0) + (float(imp.group(3)) / float(imp.group(4)) if imp.group(3) else 0)
+        return [float(imp.group(1) or 0) * 0.3048 + inch * 0.0254]
+    sup = None
+    m = re.fullmatch(r"(.*?\d)([⁰¹²³⁴⁵⁶⁷⁸⁹])", t)
+    if m:
+        t, sup = m.group(1), int(m.group(2).translate(_SUP))
+    unit = re.search(r"(mm|cm|m)$", t, re.I)
+    core = re.sub(r"\s*(mm|cm|m)$", "", t, flags=re.I).replace(" ", "")
+    if not re.fullmatch(r"\d+(?:[.,]\d+)*", core):
+        return []
+    last = max(core.rfind(","), core.rfind("."))
+    v = float(core) if last < 0 else float(re.sub(r"[.,]", "", core[:last]) + "." + core[last + 1:])
+    decimals = len(core) - last - 1 if last >= 0 else 0
+    if sup is not None:
+        v += sup / 10 * (10 ** -decimals if decimals else 1)
+    if unit:
+        return [v * {"m": 1, "cm": 0.01, "mm": 0.001}[unit.group(1).lower()]]
+    out = []
+    if last >= 0 and decimals <= 3:
+        out.append(v)
+    if last < 0 or decimals <= 1:
+        out.append(v / 100)
+    if last < 0 and v >= 10:
+        out.append(v / 1000)
+    return [x for x in out if 0.005 < x < 500]
+
+
+def _scale_from_dimensions(dims: list[Any], px: Any) -> float | None:
+    """Metres per pixel that the most printed dimensions agree on (each may be read as m, cm, mm or ft-in)."""
+    cands: list[tuple[float, int]] = []
+    for i, d in enumerate(dims):
+        try:
+            a, b = px(d["from"]), px(d["to"])
+            dist = math.hypot(b[0] - a[0], b[1] - a[1])
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+        if not (dist > 30 and math.isfinite(dist)):
+            continue
+        vals = _readings(d.get("text")) if d.get("text") else []
+        try:
+            vals.append(_num(d.get("meters", d.get("m"))))
+        except (TypeError, ValueError):
+            pass
+        for v in sorted({round(x, 6) for x in vals if 0.05 < x < 300}):
+            cands.append((v / dist, i, v))
+    best: tuple[int, bool, float] | None = None
+    for k, _, _ in cands:
+        near = [(i, v) for k2, i, v in cands if abs(k2 / k - 1) < 0.02]
+        support = len({i for i, _ in near})
+        # equal support happens when a whole plan reads in two units (cm vs mm): prefer a plausible building size
+        plausible = 2 <= max(v for _, v in near) <= 60
+        if best is None or (support, plausible) > (best[0], best[1]):
+            best = (support, plausible, k)
+    if not best or best[0] < (2 if len(dims) >= 2 else 1):
+        return None
+    close = sorted(k2 for k2, _, _ in cands if abs(k2 / best[2] - 1) < 0.02)
+    return close[len(close) // 2]
+
+
+def _scale_from_areas(rooms: list[Any], px: Any) -> float | None:
+    """Metres per pixel from printed room areas: sqrt(m² / px²), when at least three rooms agree within 5 %."""
+    ks = []
+    for r in rooms:
+        if not isinstance(r, dict) or not isinstance(r.get("label_area_m2"), (int, float)) or r["label_area_m2"] <= 0.5:
+            continue
+        try:
+            pts = [px(p) for p in _room_points(r) or []]
+        except (TypeError, ValueError, KeyError, IndexError):
+            continue
+        a = geo.area(pts) if len(pts) >= 3 else 0
+        if a > 100 and math.isfinite(a):
+            ks.append(math.sqrt(r["label_area_m2"] / a))
+    if len(ks) < 3:
+        return None
+    ks.sort()
+    med = ks[len(ks) // 2]
+    close = [k for k in ks if abs(k / med - 1) < 0.05]
+    return med if len(close) >= max(3, len(ks) // 2) else None
 
 
 def _num(v: Any) -> float:
@@ -882,21 +1109,15 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
         _LOGGER.warning("HomeTwin: model answered in %s coordinates; converted to pixels", frame)
     px = lambda p: (lambda q: [q[0] * sx, q[1] * sy])(_pt(p))  # noqa: E731
     mpp, x0, z0 = float(req.get("mpp") or 0), float(req.get("x0") or 0), float(req.get("z0") or 0)
-    if not mpp:  # scale from the printed dimension chains
-        cands = []
-        for d in out.get("dimensions") or []:
-            try:
-                a, b = px(d["from"]), px(d["to"])
-                dist = math.hypot(b[0] - a[0], b[1] - a[1])
-                m = _num(d.get("meters", d.get("m")))
-                if dist > 40 and 0.5 < m < 100:
-                    cands.append(m / dist)
-            except (KeyError, TypeError, ValueError, IndexError):
-                continue
-        if not cands:
-            raise HomeAssistantError(message(language, "dimensions_missing"))
-        cands.sort()
-        mpp = cands[len(cands) // 2]
+    scale_source = "measured"
+    if not mpp:  # scale from the printed dimension chains, then from printed room areas
+        mpp = _scale_from_dimensions(out.get("dimensions") or [], px)
+        scale_source = "dimensions"
+        if not mpp:
+            mpp = _scale_from_areas(out.get("rooms") or [], px)
+            scale_source = "areas"
+        if not mpp:  # keep the rooms; the wizard asks for one measured length and rescales them
+            mpp, scale_source = 0.01, "unknown"
         req = {**req, "mpp": mpp, "_auto": True}
     report("fitting")
     tm = lambda p: (lambda q: [x0 + q[0] * mpp, z0 + q[1] * mpp])(px(p))  # noqa: E731
@@ -935,10 +1156,11 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
     openings = []
     for o in out.get("openings") or []:
         try:
-            if o.get("type") in ("door", "window", "garage", "open"):
-                openings.append({"type": o["type"], "from": tm(o["from"]), "to": tm(o["to"])})
+            item = _opening(o, tm, req) if isinstance(o, dict) else None
         except (KeyError, TypeError, ValueError, IndexError):
-            continue
+            item = None
+        if item:
+            openings.append(item)
     stairs = []
     for st in out.get("stairs") or []:
         try:
@@ -987,7 +1209,7 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
         scale = {"factor": round(f, 4), "samples": len(ratios)}
     return {"rooms": rooms, "openings": openings, "stairs": stairs, "problems": problems, "adjusted": fit_notes, "scale_check": scale, "notes": out.get("notes") or "",
             "level": level_info, "roof": roof_info,
-            "mpp": mpp, "scale_source": "dimensions" if req.get("_auto") else "measured",
+            "mpp": mpp, "scale_source": scale_source,
             "dimensions": [{"from": d.get("from"), "to": d.get("to"), "meters": d.get("meters")} for d in (out.get("dimensions") or []) if isinstance(d, dict)][:6]}
 
 

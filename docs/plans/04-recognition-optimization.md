@@ -1,5 +1,7 @@
 # Plan 4: Floor-plan recognition optimisation (international)
 
+> **Status:** R1 and R2 are implemented (`dimtext.js`, `wizardpdf.js`, `pdfload.js` analysis, backend modes `layout` and `openings`, tests `test-plan-text.mjs`, `test-detect-parsing.py`, `test-recognition-pipeline.mjs`, generator `tools/plangen.mjs`). Still open: the evaluation script `tools/eval-recognition.mjs` (R2 tests) and the `image_max_px` override in the integration options (the size is chosen automatically per model).
+
 Branch `feature/recognition-v2`, two commits (R1, then R2). Do this **before** plan 1. Recognition quality decides whether users get started at all.
 
 Read [README.md](README.md) (rules for all plans) first.
