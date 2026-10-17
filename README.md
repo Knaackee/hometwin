@@ -24,7 +24,7 @@ Upload your floor plan, let AI read the rooms, control every device right where 
   <a href="README.de.md">🇩🇪 Deutsch</a>
 </p>
 
-<p align="center"><img src="docs/assets/screenshot-house.png" alt="HomeTwin: a two-storey house in 3D with the control panel" width="100%"></p>
+<p align="center"><img src="docs/assets/screenshot-room.png" alt="HomeTwin: an illuminated room in the interactive 3D view" width="100%"></p>
 
 > [!WARNING]
 > **HomeTwin is a public beta.** It runs in daily use, but data formats can still change. Export a backup now and then (*Edit → House → Backup*). HomeTwin currently supports **English and German**. The interface defaults to English; choose German in the integration options. For setup help, see [Installation](#-installation). Want to improve HomeTwin? See [Contribute in 5 minutes](#-contribute-in-5-minutes).

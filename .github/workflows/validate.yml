@@ -47,7 +47,7 @@ jobs:
           path: custom_components/hometwin/frontend/
       - name: Built panel is committed and up to date
         run: |
-          changes=$(git status --porcelain -- custom_components/hometwin/frontend library/index.json frontend/src/library.gen.js docs/demo/index.html)
+          changes=$(git status --porcelain -- custom_components/hometwin/frontend library/index.json frontend/src/library.gen.js docs/demo/index.html docs/landing.js)
           if [ -n "$changes" ]; then
             echo "$changes"
             echo "::error::Run 'cd frontend && npm ci && node build.mjs' and commit all generated files. The built-panel artifact contains the Linux CI output."
@@ -65,7 +65,7 @@ jobs:
           node tools/test-house-geometry.mjs
           node tools/test-plan-text.mjs
           npm run build
-          test -z "$(git status --porcelain -- custom_components/hometwin/frontend library/index.json frontend/src/library.gen.js docs/demo/index.html)"
+          test -z "$(git status --porcelain -- custom_components/hometwin/frontend library/index.json frontend/src/library.gen.js docs/demo/index.html docs/landing.js)"
 
   library:
     runs-on: ubuntu-latest
