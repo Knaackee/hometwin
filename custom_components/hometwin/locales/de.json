@@ -37,6 +37,8 @@
   "unexpected_response": "Unerwartete Antwort: {response}",
   "model_no_json": "Das Modell hat kein JSON geliefert. Ein Modell mit Bildverständnis verwenden.",
   "model_invalid_json": "Antwort des Modells ist kein gültiges JSON ({error}). Bitte erneut versuchen.",
+  "rooms_unusable": "Das Modell hat {count} Räume geliefert, aber keiner war verwertbar ({reason}). Mit „Modellantwort kopieren“ melden oder ein anderes Modell versuchen.",
+  "rooms_none": "Das Modell hat keine Räume geliefert. Erneut versuchen, Hinweise ergänzen oder ein anderes Modell mit Bildverständnis verwenden.",
   "image_missing": "Bild fehlt",
   "dimensions_missing": "Im Plan wurden keine lesbaren Maßketten gefunden. Bitte im Schritt Maßstab eine Strecke messen.",
   "dimension_mismatch": "„{room}“: Maß {wanted:.2f} m aus dem Plan passt nicht zur Zeichnung ({actual:.2f} m) – bitte prüfen",

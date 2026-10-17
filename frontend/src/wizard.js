@@ -434,7 +434,8 @@ export class PlanWizard {
       const cx = r.points.reduce((a, p) => a + p[0], 0) / r.points.length, cy = r.points.reduce((a, p) => a + p[1], 0) / r.points.length; g.fillStyle = '#fff'; g.beginPath(); g.arc(cx, cy, g.lineWidth * 6, 0, 7); g.fill(); g.fillStyle = '#000'; g.fillText(String(r.nr), cx, cy); });
     return c.toDataURL('image/jpeg', 0.8);
   }
-  modelImage() { const s = this.st; const img = limit(s.img, 1600); return { url: img.toDataURL('image/jpeg', 0.8), w: img.width, h: img.height, k: s.img.width / img.width }; }
+  // 1568 px is the largest side Claude reads without resampling; Gemini and GPT handle it as well.
+  modelImage() { const s = this.st; const img = limit(s.img, 1568); return { url: img.toDataURL('image/jpeg', 0.8), w: img.width, h: img.height, k: s.img.width / img.width }; }
   // Runs a recognition job on the server and polls it; survives reconnects and closed dialogs.
   async runJob(req) {
     const app = this.app; const run = (this.detectRun = { id: null }); this.detectStart = Date.now(); this.job = { stage: 'upload', elapsed: 0 };
@@ -501,7 +502,7 @@ export class PlanWizard {
       <div class="actions"><button class="btn" data-wz="back2">${t('assistant.common.back')}</button><button class="btn primary" data-act="manual">${t('assistant.wizard.useAsTemplate')}</button></div></div>`;
     return `<div class="wz-two"><div class="wz-canvas scanning" id="wzWrap"><canvas id="wzCv"></canvas>${s.busy ? '<div class="wz-scan"></div>' : ''}</div>
       <div class="wz-side">
-        ${s.busy ? this.progressHtml(this.passTitle || t(s.opts.refine !== false ? 'assistant.wizard.firstPassRecognizing' : 'assistant.wizard.recognizingRooms')) : `<h3>${t('assistant.wizard.recognition')}</h3>${s.err ? `<p class="warn">${esc(s.err)}</p>` : ''}<p class="hint">${t('assistant.wizard.modelRecommendation', { model: esc(this.ai?.model || '–'), scale: s.mpp ? '' : t('assistant.wizard.scaleReadDuringRecognition') })}</p>`}
+        ${s.busy ? this.progressHtml(this.passTitle || t(s.opts.refine !== false ? 'assistant.wizard.firstPassRecognizing' : 'assistant.wizard.recognizingRooms')) : `<h3>${t('assistant.wizard.recognition')}</h3>${s.err ? `<p class="warn">${esc(s.err)}</p>${this.jobId ? `<div class="actions"><button class="btn small" data-act="copyRaw">${icon('code')}${t('assistant.wizard.copyModelAnswer')}</button></div><textarea class="wz-raw" id="wzRaw" rows="6" readonly hidden></textarea>` : ''}` : ''}<p class="hint">${t('assistant.wizard.modelRecommendation', { model: esc(this.ai?.model || '–'), scale: s.mpp ? '' : t('assistant.wizard.scaleReadDuringRecognition') })}</p>`}
         <fieldset ${s.busy ? 'disabled' : ''}><legend class="lbl">${t('assistant.wizard.whatToRecognize')}</legend>
           <label class="chk"><input type="checkbox" checked disabled> ${t('assistant.wizard.roomsAndOutdoor')}</label>
           <label class="chk"><input type="checkbox" id="wzOpen" ${s.opts.openings ? 'checked' : ''}> ${t('assistant.wizard.doorsAndWindows')}</label>
@@ -522,7 +523,19 @@ export class PlanWizard {
     R.querySelector('#wzRefine').onchange = (e) => (s.opts.refine = e.target.checked);
     R.querySelector('#wzHints').oninput = (e) => (s.hints = e.target.value);
     R.querySelector('[data-act="detect"]').onclick = () => this.detect();
+    R.querySelector('[data-act="copyRaw"]')?.addEventListener('click', () => this.copyRaw());
 
+  }
+  // Diagnostics for failed recognitions: model, error and the raw model answer (copied and shown).
+  async copyRaw() {
+    const box = this.root.querySelector('#wzRaw'); if (!box) return;
+    let text;
+    try {
+      const { job } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: this.jobId, with_raw: true });
+      text = `HomeTwin ${t('assistant.wizard.recognition')}\nmodel: ${job?.model || this.ai?.model || '?'}\nstatus: ${job?.status}\nerror: ${job?.error || this.st.err || ''}\nrooms: ${job?.rooms_raw ?? '?'} → ${job?.rooms_used ?? '?'} ${JSON.stringify(job?.dropped || {})}\n\n${job?.raw || t('assistant.wizard.noModelAnswer')}`;
+    } catch (e) { text = String(e.message || e); }
+    box.value = text; box.hidden = false; box.select();
+    try { await navigator.clipboard.writeText(text); this.msg(t('assistant.wizard.modelAnswerCopied')); } catch { /* selection stays for manual copy */ }
   }
   async detect({ keepLocked = false } = {}) {
     const s = this.st; if (s.busy) return;
@@ -532,6 +545,7 @@ export class PlanWizard {
       const im = this.modelImage();
       const res = await this.runJob({ mode: 'rooms', image: im.url, width: im.w, height: im.h, mpp: s.mpp ? s.mpp * im.k : null, x0: 0, z0: 0,
         options: s.opts, hints: s.hints || undefined, language: getLanguage(), locked: locked.map((r) => ({ name: r.name, points: r.points })) });
+      if (!res?.rooms?.length && !locked.length) throw new Error(t('assistant.wizard.noRoomsReturned'));
       const t0 = this.detectStart; let out = res;
       if (s.opts.refine !== false && res.rooms?.length) { // pass 2: the model checks its own reading on an overlay
         this.passTitle = t('assistant.wizard.secondPassChecking'); this.render();
@@ -550,11 +564,14 @@ export class PlanWizard {
       }
       this.passTitle = null; this.detectStart = t0;
       this.stopTicker(); this.useResult(out, im.k, locked, Math.round((Date.now() - t0) / 1000));
-    } catch (e) { this.passTitle = null; if (e.cancelled) return; this.stopTicker(); s.busy = false; s.err = t('assistant.wizard.recognitionFailed', { error: e.message || e.code || e }); if (keepLocked) this.go(4); else this.go(3); }
+    } catch (e) { this.passTitle = null; if (e.cancelled) return; this.stopTicker(); s.busy = false;
+      // go() clears the error, so set it afterwards: a failed recognition must never look like an empty result.
+      const err = t('assistant.wizard.recognitionFailed', { error: e.message || e.code || e }); this.go(keepLocked ? 4 : 3); s.err = err; this.render(); this.msg(err, true); }
   }
   // Takes a recognition result (metres; model image scale k) into the review step.
   useResult(res, k = 1, locked = [], seconds = null) {
     const s = this.st;
+    if (!res?.rooms?.length && !locked.length) { s.busy = false; this.go(3); s.err = t('assistant.wizard.noRoomsReturned'); this.render(); return; }
     if (!s.mpp && res.mpp) { s.mpp = res.mpp / k; s.measure = { a: null, b: null, m: '' }; s.scaleFromDims = true; }
     const rooms = res.rooms.map((r, i) => ({ ...r, id: newId('wr'), color: COLORS[(locked.length + i) % COLORS.length] }));
     const sc = res.scale_check && Math.abs(res.scale_check.factor - 1) > 0.025 ? res.scale_check : null;
@@ -570,11 +587,11 @@ export class PlanWizard {
   async resumeJob() {
     const s = this.st, job = this.pending; this.pending = null; if (!job) return;
     try {
-      const { job: full } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: job.id, with_image: true });
+      const { job: full } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: job.id, with_image: true }); this.jobId = full.id;
       const img = new Image(); img.src = full.image; await img.decode(); s.img = canvasOf(img); s.src = s.img; s.srcName = t('assistant.wizard.lastDetection'); this.rotated = s.img; s.quad = [[0, 0], [s.img.width, 0], [s.img.width, s.img.height], [0, s.img.height]];
       if (full.level_id && this.app.plan.levels.some((l) => l.id === full.level_id)) s.levelId = full.level_id;
       if (full.status === 'running') { s.step = 3; s.busy = true; this.render(); const run = (this.detectRun = { id: full.id }); this.detectStart = Date.now() - full.elapsed * 1000; this.job = full; this.startTicker();
-        for (;;) { await new Promise((r) => setTimeout(r, 1200)); if (this.detectRun !== run) return; const { job: j } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: full.id }); this.job = j; if (j.status === 'done') { this.stopTicker(); this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {}); return this.useResult(j.result, 1, [], Math.round(j.elapsed)); } if (j.status === 'error') { this.stopTicker(); s.busy = false; s.err = j.error; return this.go(3); } } }
+        for (;;) { await new Promise((r) => setTimeout(r, 1200)); if (this.detectRun !== run) return; const { job: j } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: full.id }); this.job = j; if (j.status === 'done') { this.stopTicker(); this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {}); return this.useResult(j.result, 1, [], Math.round(j.elapsed)); } if (j.status === 'error') { this.stopTicker(); s.busy = false; this.go(3); s.err = j.error; return this.render(); } } }
       this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {});
       this.useResult(full.result, 1, [], Math.round(full.elapsed));
     } catch (e) { this.msg(t('assistant.wizard.resultLoadFailed', { error: e.message || e }), true); }

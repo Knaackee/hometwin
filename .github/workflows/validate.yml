@@ -28,6 +28,7 @@ jobs:
           python-version: "3.13"
       - run: python -m py_compile custom_components/hometwin/*.py
       - run: python tools/test-language-options.py
+      - run: python tools/test-detect-parsing.py
 
   frontend:
     runs-on: ubuntu-latest

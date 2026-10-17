@@ -5,6 +5,7 @@
 - Storeys join cleanly: the plinth is only built on the storey standing on the terrain, interior walls end inside the exterior wall instead of poking through the facade, and plinth corners close flush.
 - Raised ground floors stand on the terrain: the plinth reaches down to the ground. The plinth height is adjustable (House → Facade).
 - Floor-plan assistant: new storeys are stacked without gaps. Room height and slab thickness come from the plan when stated, otherwise from defaults that are marked for review and can be corrected before applying. Basements keep the floor level of the storey above.
+- Floor-plan recognition: failed recognitions now show their error instead of an empty result. Answers wrapped in prose or code fences, points as objects, decimal commas, normalised coordinates and nested answers are read correctly (e.g. Claude models). "Copy model answer" helps to report problems. The image sent to the model is at most 1568 px, the size Claude reads without resampling.
 - Recognition reads the slab thickness when the plan dimensions it and treats storey levels as relative to ±0.00.
 
 ## 0.6.0b1 (2026-10-17)
