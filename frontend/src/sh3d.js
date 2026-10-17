@@ -2,11 +2,12 @@
 // (units: centimetres, y axis = our z, angles in radians clockwise).
 import { newId, PLAN_VERSION } from './plan.js';
 import { lineOf, projectOnSeg, distToSeg, edges, r3, pointInPolygon } from './geometry.js';
+import { t } from './i18n.js';
 
 async function unzipEntry(file, name) {
   const buf = new Uint8Array(await file.arrayBuffer()); const dv = new DataView(buf.buffer);
   let eocd = -1; for (let i = buf.length - 22; i >= Math.max(0, buf.length - 66000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-  if (eocd < 0) throw new Error('Keine gültige .sh3d-Datei (kein ZIP)');
+  if (eocd < 0) throw new Error(t('assistant.sh3d.invalidArchive'));
   const count = dv.getUint16(eocd + 10, true); let p = dv.getUint32(eocd + 16, true);
   for (let i = 0; i < count; i++) {
     if (dv.getUint32(p, true) !== 0x02014b50) break;
@@ -16,7 +17,7 @@ async function unzipEntry(file, name) {
       const lstart = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true); const data = buf.subarray(lstart, lstart + csize);
       if (method === 0) return new TextDecoder().decode(data);
       if (method === 8) { const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')); return await new Response(ds).text(); }
-      throw new Error(`Komprimierung ${method} nicht unterstützt`);
+      throw new Error(t('assistant.sh3d.unsupportedCompression', { method }));
     }
     p += 46 + nlen + xlen + clen;
   }
@@ -98,17 +99,17 @@ function snapOpening(o, rooms) {
 
 export async function importSh3d(file, current) {
   const xml = await unzipEntry(file, 'Home.xml');
-  if (!xml) throw new Error('Datei enthält kein Home.xml. Bitte mit Sweet Home 3D ab Version 5.3 speichern.');
-  const doc = new DOMParser().parseFromString(xml, 'application/xml'); const home = doc.querySelector('home'); if (!home) throw new Error('Home.xml nicht lesbar');
+  if (!xml) throw new Error(t('assistant.sh3d.missingHomeXml'));
+  const doc = new DOMParser().parseFromString(xml, 'application/xml'); const home = doc.querySelector('home'); if (!home) throw new Error(t('assistant.sh3d.unreadableHomeXml'));
   const levelEls = [...doc.querySelectorAll('home > level')];
   const levels = new Map(); const wallH = M(home.getAttribute('wallHeight') || 250);
-  if (!levelEls.length) levels.set('', { id: newId('l'), name: 'Erdgeschoss', floor_id: null, elevation: 0, height: wallH || 2.5, cutHeight: 1.2, rooms: [], openings: [], furniture: [], devices: [] });
-  levelEls.forEach((el) => { if (el.getAttribute('viewable') === 'false') return; levels.set(el.getAttribute('id'), { id: newId('l'), name: el.getAttribute('name') || 'Etage', floor_id: null, elevation: M(el.getAttribute('elevation')), height: M(el.getAttribute('height')) || 2.5, cutHeight: 1.2, rooms: [], openings: [], furniture: [], devices: [] }); });
+  if (!levelEls.length) levels.set('', { id: newId('l'), name: t('assistant.sh3d.defaultGroundFloor'), floor_id: null, elevation: 0, height: wallH || 2.5, cutHeight: 1.2, rooms: [], openings: [], furniture: [], devices: [] });
+  levelEls.forEach((el) => { if (el.getAttribute('viewable') === 'false') return; levels.set(el.getAttribute('id'), { id: newId('l'), name: el.getAttribute('name') || t('assistant.sh3d.defaultLevel'), floor_id: null, elevation: M(el.getAttribute('elevation')), height: M(el.getAttribute('height')) || 2.5, cutHeight: 1.2, rooms: [], openings: [], furniture: [], devices: [] }); });
   const lvlOf = (el) => levels.get(el.getAttribute('level') || '') || [...levels.values()][0];
   const stats = { rooms: 0, openings: 0, furniture: 0, levels: levels.size };
   for (const el of doc.querySelectorAll('room')) {
     const pts = [...el.querySelectorAll('point')].map((p) => [M(p.getAttribute('x')), M(p.getAttribute('y'))]); if (pts.length < 3) continue;
-    const name = el.getAttribute('name') || `Raum ${stats.rooms + 1}`; const n = name.toLowerCase();
+    const name = el.getAttribute('name') || t('assistant.sh3d.defaultRoom', { number: stats.rooms + 1 }); const n = name.toLowerCase();
     const kind = has(n, 'garage', 'carport') ? 'garage' : has(n, 'terras', 'balkon', 'balcon', 'garten', 'garden', 'patio') ? 'outdoor' : 'room';
     lvlOf(el).rooms.push({ id: newId('r'), name, kind, surface: kind === 'outdoor' ? 'terrace' : kind === 'garage' ? 'concrete' : has(n, 'bad', 'bath', 'wc', 'küche', 'kitchen') ? 'tile' : 'oak', area_id: null, points: pts }); stats.rooms++;
   }

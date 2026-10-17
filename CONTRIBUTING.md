@@ -44,14 +44,19 @@ Use the [issue templates](https://github.com/knaackee/hometwin/issues/new/choose
 If possible, also add a backup file (*Edit → House → Backup*) and remove anything private first.
 
 ## 3. Code and translations
+Code contributions follow [AGENTS.md](AGENTS.md). English is the default UI language and German is supported.
 
-Read **[AGENTS.md](AGENTS.md)** first (architecture, build, tests). Then:
-- Keep pull requests focused.
-- Test in the demo, desktop and mobile.
-- Describe what you checked.
+### Translation contributions
 
-Translations will be welcome as soon as the i18n groundwork lands. Watch the roadmap.
+Translations may be drafted with AI, but a native speaker of the target language must manually review every translated string and check it in the running application before merge. Do not submit bulk unreviewed machine translations or claim native review on someone else's behalf.
 
+- Frontend strings: `frontend/src/locales/<area>.<language>.json`; English files define the semantic keys. Keep all areas complete, preserve placeholders and never translate user-authored room/device names or entity IDs.
+- Integration strings: `custom_components/hometwin/translations/<language>.json`; runtime backend text: `custom_components/hometwin/locales/<language>.json`. Follow each existing file's format.
+- New languages also require explicit registration in the frontend language list and Home Assistant options, a repository-owned flag asset, and validation updates. Ask maintainers to coordinate this; adding JSON alone does not enable a language.
+- Run `npm run test:i18n`, `python tools/test-language-options.py` and `npm run build`. Check welcome, editor, device controls, wizard and integration options, including mobile layouts.
+- In the PR, state the target language, native reviewer, manual review status, tested screens and any AI tool/model used. Missing native review means the translation stays a draft and is not enabled for users.
+
+Agents must preserve these review gates and report missing human review honestly. English and German remain the supported languages until another complete, reviewed translation is accepted.
 ## Code of conduct
 
 Be kind and constructive. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

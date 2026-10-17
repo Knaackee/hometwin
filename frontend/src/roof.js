@@ -4,18 +4,19 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { canvasTex, rng, shade, mat } from './kit.js';
 import { bbox } from './geometry.js';
 import { sunVector } from './sun.js';
+import { t as tr } from './i18n.js';
 
-export const ROOF_TYPES = { none: 'Kein Dach', flat: 'Flachdach', shed: 'Pultdach', gable: 'Satteldach', hip: 'Walmdach', pyramid: 'Zeltdach' };
+export const ROOF_TYPES = { get none() { return tr('data.roofType.none'); }, get flat() { return tr('data.roofType.flat'); }, get shed() { return tr('data.roofType.shed'); }, get gable() { return tr('data.roofType.gable'); }, get hip() { return tr('data.roofType.hip'); }, get pyramid() { return tr('data.roofType.pyramid'); } };
 export const ROOF_COVERS = {
-  pfanne: { label: 'Frankfurter Pfanne', color: '#7d3a2c' },
-  biber: { label: 'Biberschwanz', color: '#9a4a33' },
-  flach: { label: 'Flachziegel', color: '#3b3d42' },
-  schiefer: { label: 'Schiefer', color: '#3e434b' },
-  blech: { label: 'Stehfalz-Blech', color: '#5b636e' },
-  kies: { label: 'Kies (Flachdach)', color: '#b8b2a6', flat: true },
-  gruen: { label: 'Gründach (Flachdach)', color: '#6b8f4e', flat: true },
+  pfanne: { get label() { return tr('data.roofCover.pfanne'); }, color: '#7d3a2c' },
+  biber: { get label() { return tr('data.roofCover.biber'); }, color: '#9a4a33' },
+  flach: { get label() { return tr('data.roofCover.flach'); }, color: '#3b3d42' },
+  schiefer: { get label() { return tr('data.roofCover.schiefer'); }, color: '#3e434b' },
+  blech: { get label() { return tr('data.roofCover.blech'); }, color: '#5b636e' },
+  kies: { get label() { return tr('data.roofCover.kies'); }, color: '#b8b2a6', flat: true },
+  gruen: { get label() { return tr('data.roofCover.gruen'); }, color: '#6b8f4e', flat: true },
 };
-export const FACADES = { plaster: 'Putz', brick: 'Klinker', wood: 'Holzschalung' };
+export const FACADES = { get plaster() { return tr('data.facade.plaster'); }, get brick() { return tr('data.facade.brick'); }, get wood() { return tr('data.facade.wood'); } };
 export const FACADE_PRESETS = ['#f4f1ea', '#ece7de', '#e3ddd0', '#d9d4cb', '#c9c6c0', '#a9aaa8', '#e8d9bf', '#d6b98f', '#c8d3cf', '#b9c6d6', '#5d6168', '#3a3d43'];
 
 /* ---------- textures: drawn in light neutrals, the material colour tints them; 1 texture = 1 m ---------- */
@@ -109,15 +110,15 @@ export function buildRoof(level, site, isIndoor) {
   const local = new THREE.Group(); group.add(local);
   local.position.set(R.cx, H, R.cz); local.rotation.y = -(R.rot * Math.PI) / 180;
   const L = R.length, S = R.width, hx = L / 2, hz = S / 2;
-  const t = Math.tan(THREE.MathUtils.degToRad(Math.min(70, Math.max(2, roof.pitch ?? 35))));
+  const slopeTan = Math.tan(THREE.MathUtils.degToRad(Math.min(70, Math.max(2, roof.pitch ?? 35))));
   const addPlane = (pts, eaveA, eaveB, top, gable = false) => { const f = frameOf(eaveA, eaveB, top); const m = planeMesh(pts, covMat, f); m.userData.roofPlane = planes.length; local.add(m); planes.push({ frame: f, pts, mesh: m, gable }); };
   const wall = (pts) => { const f = frameOf(pts[0], pts[1], pts[2]); const m = planeMesh(pts, gableMat, f); local.add(m); };
   // Knee wall (Kniestock): facade band between the top ceiling and the roof base.
   // The roof rests on the outer face of the walls: lift it by half a wall thickness along the slope,
   // and close the gap with a wall band (also forms the knee wall).
-  const lift = roof.type === 'flat' ? 0 : 0.14 * t;
+  const lift = roof.type === 'flat' ? 0 : 0.14 * slopeTan;
   if (roof.type !== 'flat') {
-    const eaveH = knee + 0.02 * t, endH = ['gable', 'shed'].includes(roof.type) ? knee + lift : eaveH;
+    const eaveH = knee + 0.02 * slopeTan, endH = ['gable', 'shed'].includes(roof.type) ? knee + lift : eaveH;
     for (const [w, d, x, z, h] of [[L + 0.24, 0.24, 0, hz, eaveH], [L + 0.24, 0.24, 0, -hz, eaveH], [0.24, S, hx, 0, endH], [0.24, S, -hx, 0, endH]]) { if (h < 0.01) continue; const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), gableMat); m.position.set(x, h / 2, z); m.castShadow = m.receiveShadow = true; local.add(m); }
   }
   const B = knee + lift; // roof base height above the top ceiling
@@ -129,18 +130,18 @@ export function buildRoof(level, site, isIndoor) {
     for (const [w, d, x, z] of [[L + 0.1, 0.12, 0, hz], [L + 0.1, 0.12, 0, -hz], [0.12, S + 0.1, hx, 0], [0.12, S + 0.1, -hx, 0]]) { const p = new THREE.Mesh(new THREE.BoxGeometry(w, 0.28, d), gableMat); p.position.set(x, 0.44, z); p.castShadow = true; local.add(p); const c = new THREE.Mesh(new THREE.BoxGeometry(w + 0.02, 0.03, d + 0.04), capM); c.position.set(x, 0.595, z); local.add(c); }
     planes.push({ frame: { origin: V(0, 0.32, 0), u: V(1, 0, 0), v: V(0, 0, -1), n: V(0, 1, 0), width: L - 0.6, slope: S - 0.6 }, flat: true });
   } else if (roof.type === 'shed') {
-    const rise = S * t;
-    addPlane([V2(-hx - ohg, -oh * t, hz + oh), V2(hx + ohg, -oh * t, hz + oh), V2(hx + ohg, rise + oh * t, -hz - oh), V2(-hx - ohg, rise + oh * t, -hz - oh)], V2(-hx - ohg, -oh * t, hz + oh), V2(hx + ohg, -oh * t, hz + oh), V2(0, rise + oh * t, -hz - oh), true);
+    const rise = S * slopeTan;
+    addPlane([V2(-hx - ohg, -oh * slopeTan, hz + oh), V2(hx + ohg, -oh * slopeTan, hz + oh), V2(hx + ohg, rise + oh * slopeTan, -hz - oh), V2(-hx - ohg, rise + oh * slopeTan, -hz - oh)], V2(-hx - ohg, -oh * slopeTan, hz + oh), V2(hx + ohg, -oh * slopeTan, hz + oh), V2(0, rise + oh * slopeTan, -hz - oh), true);
     for (const sx of [-1, 1]) wall([V2(sx * hx, 0, hz), V2(sx * hx, 0, -hz), V2(sx * hx, rise, -hz)]);
     wall([V2(-hx, 0, -hz), V2(hx, 0, -hz), V2(hx, rise, -hz), V2(-hx, rise, -hz)]);
   } else if (roof.type === 'gable') {
-    const z0 = Math.max(-0.45, Math.min(0.45, roof.ridgeOffset || 0)) * hz, Hr = hz * t;
+    const z0 = Math.max(-0.45, Math.min(0.45, roof.ridgeOffset || 0)) * hz, Hr = hz * slopeTan;
     const tf = Hr / (hz - z0), tb = Hr / (hz + z0);
     addPlane([V2(-hx - ohg, -oh * tf, hz + oh), V2(hx + ohg, -oh * tf, hz + oh), V2(hx + ohg, Hr, z0), V2(-hx - ohg, Hr, z0)], V2(-hx - ohg, -oh * tf, hz + oh), V2(hx + ohg, -oh * tf, hz + oh), V2(0, Hr, z0), true);
     addPlane([V2(hx + ohg, -oh * tb, -hz - oh), V2(-hx - ohg, -oh * tb, -hz - oh), V2(-hx - ohg, Hr, z0), V2(hx + ohg, Hr, z0)], V2(hx + ohg, -oh * tb, -hz - oh), V2(-hx - ohg, -oh * tb, -hz - oh), V2(0, Hr, z0), true);
     for (const sx of [-1, 1]) wall([V2(sx * hx, 0, -hz), V2(sx * hx, 0, hz), V2(sx * hx, Hr, z0)]);
   } else if (roof.type === 'hip' || roof.type === 'pyramid') {
-    const Hr = hz * t, r = roof.type === 'pyramid' ? 0 : Math.max(0, hx - hz), He = -oh * t;
+    const Hr = hz * slopeTan, r = roof.type === 'pyramid' ? 0 : Math.max(0, hx - hz), He = -oh * slopeTan;
     const e = [V2(-hx - oh, He, hz + oh), V2(hx + oh, He, hz + oh), V2(hx + oh, He, -hz - oh), V2(-hx - oh, He, -hz - oh)];
     const ra = V2(-r, Hr, 0), rb = V2(r, Hr, 0);
     addPlane(r > 0.01 ? [e[0], e[1], rb, ra] : [e[0], e[1], rb], e[0], e[1], rb);
@@ -149,15 +150,15 @@ export function buildRoof(level, site, isIndoor) {
     addPlane([e[3], e[0], ra], e[3], e[0], ra);
   }
   // Constructive details: underside, rafters, purlins, barge boards, brackets.
-  if (roof.type !== 'flat') addDetails(local, planes, roof, { hx, hz, oh, ohg, t, B, type: roof.type, Hr: hz * t, z0: Math.max(-0.45, Math.min(0.45, roof.ridgeOffset || 0)) * hz, S });
+  if (roof.type !== 'flat') addDetails(local, planes, roof, { hx, hz, oh, ohg, t: slopeTan, B, type: roof.type, Hr: hz * slopeTan, z0: Math.max(-0.45, Math.min(0.45, roof.ridgeOffset || 0)) * hz, S });
   // Facing of each plane as a compass label (for picking the PV plane).
   const north = site.north || 0;
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, local.rotation.y, 0));
   for (const p of planes) {
     const n = p.frame.n.clone().applyQuaternion(q);
-    if (p.flat) { p.label = 'Flachdach'; continue; }
+    if (p.flat) { p.label = tr('data.roofType.flat'); continue; }
     const az = ((Math.atan2(n.x, -n.z) * 180) / Math.PI + north + 360) % 360;
-    p.label = ['Nord', 'Nordost', 'Ost', 'Südost', 'Süd', 'Südwest', 'West', 'Nordwest'][Math.round(az / 45) % 8]; p.azimuth = az;
+    p.label = tr(`data.direction.${['north', 'northEast', 'east', 'southEast', 'south', 'southWest', 'west', 'northWest'][Math.round(az / 45) % 8]}`); p.azimuth = az;
   }
   // PV arrays
   const panels = [];
@@ -291,10 +292,10 @@ function panelTex() {
 }
 
 /* ---------- constructive roof details ---------- */
-export const HEAD_SHAPES = { straight: 'Gerader Schnitt', bevel: 'Schrägschnitt', round: 'Rundschnitt', ogee: 'Schweif / S-Profil', step: 'Stufenschnitt', cove: 'Hohlkehle', carved: 'Geschnitzter Kopf', bracket: 'Konsole / Knagge' };
-export const SOFFITS = { open: 'Offen (Sparren sichtbar)', closed: 'Geschlossen (verkleidet)', shadow: 'Schattenfuge (modern)' };
-export const BARGES = { none: 'Kein Ortgangbrett', plain: 'Schlicht', profiled: 'Profiliert' };
-export const WOOD_PRESETS = { '#c9a273': 'Natur hell', '#a8763e': 'Lärche', '#8a5a35': 'Fichte lasiert', '#5a3b22': 'Eiche dunkel', '#7c7a74': 'Grau lasiert', '#ece8df': 'Weiß' };
+export const HEAD_SHAPES = {}; for (const key of ['straight', 'bevel', 'round', 'ogee', 'step', 'cove', 'carved', 'bracket']) Object.defineProperty(HEAD_SHAPES, key, { enumerable: true, get: () => tr(`data.roofHead.${key}`) });
+export const SOFFITS = {}; for (const key of ['open', 'closed', 'shadow']) Object.defineProperty(SOFFITS, key, { enumerable: true, get: () => tr(`data.soffit.${key}`) });
+export const BARGES = {}; for (const key of ['none', 'plain', 'profiled']) Object.defineProperty(BARGES, key, { enumerable: true, get: () => tr(`data.barge.${key}`) });
+export const WOOD_PRESETS = {}; for (const [color, key] of [['#c9a273', 'naturalLight'], ['#a8763e', 'larch'], ['#8a5a35', 'spruce'], ['#5a3b22', 'darkOak'], ['#7c7a74', 'grey'], ['#ece8df', 'white']]) Object.defineProperty(WOOD_PRESETS, color, { enumerable: true, get: () => tr(`data.wood.${key}`) });
 export const DEFAULT_DETAILS = { soffit: 'closed', rafters: false, spacing: 0.8, rw: 0.08, rh: 0.16, purlins: false, purlinOut: 0.35, flyRafter: false, barge: 'plain', brackets: false, braces: false, head: 'straight', wood: '#8a5a35' };
 
 // Side profile of a beam end, x from 0 (inside) to len (visible end), top at y = 0, bottom at y = -h.
@@ -416,14 +417,14 @@ function addDetailParts(local, planes, roof, c) {
 
 /* ---------- style presets ---------- */
 export const ROOF_STYLES = {
-  bayern: { label: 'Bayern / Oberpfalz', roof: { type: 'gable', pitch: 26, overhang: 1.0, overhangGable: 1.0, cover: 'pfanne', color: '#6e3428', knee: 0.6 }, facade: { material: 'plaster', color: '#f4f1ea', frame: '#5a3b22' }, details: { soffit: 'open', rafters: true, spacing: 0.8, rw: 0.08, rh: 0.16, purlins: true, purlinOut: 0.35, flyRafter: true, barge: 'plain', brackets: false, braces: false, head: 'bevel', wood: '#8a5a35' } },
-  tirol: { label: 'Tirol / Österreich', roof: { type: 'gable', pitch: 22, overhang: 1.4, overhangGable: 1.4, cover: 'flach', color: '#4a4744', knee: 0.8 }, facade: { material: 'plaster', color: '#f2eee6', frame: '#4a3020' }, details: { soffit: 'open', rafters: true, spacing: 0.75, rw: 0.1, rh: 0.18, purlins: true, purlinOut: 0.55, flyRafter: true, barge: 'profiled', brackets: true, braces: true, head: 'carved', wood: '#6b4423' } },
-  chalet: { label: 'Chalet (Schweiz)', roof: { type: 'gable', pitch: 25, overhang: 1.5, overhangGable: 1.5, cover: 'flach', color: '#5a4a40', knee: 0.7 }, facade: { material: 'wood', color: '#b07a4a', frame: '#3d2817' }, details: { soffit: 'open', rafters: true, spacing: 0.7, rw: 0.1, rh: 0.18, purlins: true, purlinOut: 0.6, flyRafter: true, barge: 'profiled', brackets: true, braces: true, head: 'ogee', wood: '#9a6232' } },
-  schwarzwald: { label: 'Schwarzwald', roof: { type: 'hip', pitch: 48, overhang: 1.6, cover: 'schiefer', color: '#4a3a30', knee: 0 }, facade: { material: 'wood', color: '#7a5434', frame: '#3a2618' }, details: { soffit: 'open', rafters: true, spacing: 0.9, rw: 0.12, rh: 0.2, head: 'straight', wood: '#5a3b22', barge: 'none' } },
-  skandi: { label: 'Skandinavisch', roof: { type: 'gable', pitch: 35, overhang: 0.4, overhangGable: 0.3, cover: 'blech', color: '#2e2f33', knee: 0 }, facade: { material: 'wood', color: '#8c2f25', frame: '#f0eee8' }, details: { soffit: 'open', rafters: true, spacing: 0.6, rw: 0.06, rh: 0.14, purlins: false, flyRafter: false, barge: 'plain', head: 'straight', wood: '#f0eee8' } },
-  craftsman: { label: 'Craftsman (USA)', roof: { type: 'gable', pitch: 30, overhang: 0.9, overhangGable: 0.8, cover: 'flach', color: '#4b4f55', knee: 0 }, facade: { material: 'wood', color: '#7b8a6a', frame: '#efe9dd' }, details: { soffit: 'open', rafters: true, spacing: 0.6, rw: 0.06, rh: 0.15, purlins: true, purlinOut: 0.3, flyRafter: true, barge: 'plain', brackets: true, braces: false, head: 'cove', wood: '#6b4a2e' } },
-  japan: { label: 'Japanisch', roof: { type: 'hip', pitch: 25, overhang: 1.2, cover: 'flach', color: '#3a3d42', knee: 0 }, facade: { material: 'plaster', color: '#efe9dd', frame: '#3a2a1e' }, details: { soffit: 'open', rafters: true, spacing: 0.4, rw: 0.06, rh: 0.1, head: 'straight', wood: '#4a3626', barge: 'none' } },
-  modern: { label: 'Modern', roof: { type: 'shed', pitch: 8, overhang: 0.15, overhangGable: 0.15, cover: 'blech', color: '#3b3d42', knee: 0 }, facade: { material: 'plaster', color: '#e9e9e7', frame: '#2c2f35' }, details: { soffit: 'shadow', rafters: false, purlins: false, flyRafter: false, barge: 'none', brackets: false, braces: false, head: 'straight', wood: '#7c7a74' } },
+  bayern: { get label() { return tr('data.roofStyle.bayern'); }, roof: { type: 'gable', pitch: 26, overhang: 1.0, overhangGable: 1.0, cover: 'pfanne', color: '#6e3428', knee: 0.6 }, facade: { material: 'plaster', color: '#f4f1ea', frame: '#5a3b22' }, details: { soffit: 'open', rafters: true, spacing: 0.8, rw: 0.08, rh: 0.16, purlins: true, purlinOut: 0.35, flyRafter: true, barge: 'plain', brackets: false, braces: false, head: 'bevel', wood: '#8a5a35' } },
+  tirol: { get label() { return tr('data.roofStyle.tirol'); }, roof: { type: 'gable', pitch: 22, overhang: 1.4, overhangGable: 1.4, cover: 'flach', color: '#4a4744', knee: 0.8 }, facade: { material: 'plaster', color: '#f2eee6', frame: '#4a3020' }, details: { soffit: 'open', rafters: true, spacing: 0.75, rw: 0.1, rh: 0.18, purlins: true, purlinOut: 0.55, flyRafter: true, barge: 'profiled', brackets: true, braces: true, head: 'carved', wood: '#6b4423' } },
+  chalet: { get label() { return tr('data.roofStyle.chalet'); }, roof: { type: 'gable', pitch: 25, overhang: 1.5, overhangGable: 1.5, cover: 'flach', color: '#5a4a40', knee: 0.7 }, facade: { material: 'wood', color: '#b07a4a', frame: '#3d2817' }, details: { soffit: 'open', rafters: true, spacing: 0.7, rw: 0.1, rh: 0.18, purlins: true, purlinOut: 0.6, flyRafter: true, barge: 'profiled', brackets: true, braces: true, head: 'ogee', wood: '#9a6232' } },
+  schwarzwald: { get label() { return tr('data.roofStyle.schwarzwald'); }, roof: { type: 'hip', pitch: 48, overhang: 1.6, cover: 'schiefer', color: '#4a3a30', knee: 0 }, facade: { material: 'wood', color: '#7a5434', frame: '#3a2618' }, details: { soffit: 'open', rafters: true, spacing: 0.9, rw: 0.12, rh: 0.2, head: 'straight', wood: '#5a3b22', barge: 'none' } },
+  skandi: { get label() { return tr('data.roofStyle.skandi'); }, roof: { type: 'gable', pitch: 35, overhang: 0.4, overhangGable: 0.3, cover: 'blech', color: '#2e2f33', knee: 0 }, facade: { material: 'wood', color: '#8c2f25', frame: '#f0eee8' }, details: { soffit: 'open', rafters: true, spacing: 0.6, rw: 0.06, rh: 0.14, purlins: false, flyRafter: false, barge: 'plain', head: 'straight', wood: '#f0eee8' } },
+  craftsman: { get label() { return tr('data.roofStyle.craftsman'); }, roof: { type: 'gable', pitch: 30, overhang: 0.9, overhangGable: 0.8, cover: 'flach', color: '#4b4f55', knee: 0 }, facade: { material: 'wood', color: '#7b8a6a', frame: '#efe9dd' }, details: { soffit: 'open', rafters: true, spacing: 0.6, rw: 0.06, rh: 0.15, purlins: true, purlinOut: 0.3, flyRafter: true, barge: 'plain', brackets: true, braces: false, head: 'cove', wood: '#6b4a2e' } },
+  japan: { get label() { return tr('data.roofStyle.japan'); }, roof: { type: 'hip', pitch: 25, overhang: 1.2, cover: 'flach', color: '#3a3d42', knee: 0 }, facade: { material: 'plaster', color: '#efe9dd', frame: '#3a2a1e' }, details: { soffit: 'open', rafters: true, spacing: 0.4, rw: 0.06, rh: 0.1, head: 'straight', wood: '#4a3626', barge: 'none' } },
+  modern: { get label() { return tr('data.roofStyle.modern'); }, roof: { type: 'shed', pitch: 8, overhang: 0.15, overhangGable: 0.15, cover: 'blech', color: '#3b3d42', knee: 0 }, facade: { material: 'plaster', color: '#e9e9e7', frame: '#2c2f35' }, details: { soffit: 'shadow', rafters: false, purlins: false, flyRafter: false, barge: 'none', brackets: false, braces: false, head: 'straight', wood: '#7c7a74' } },
 };
 export function applyStyle(site, key, { keepType = true } = {}) {
   const st = ROOF_STYLES[key]; if (!st) return;
@@ -439,7 +440,7 @@ export function applyStyle(site, key, { keepType = true } = {}) {
 // Each entry of site.roofs: { id, name, type, pitch, overhang, cover, levelId, height (eaves above that floor), rect, posts }
 export function newExtraRoof(plan, { levelId, rect, name, type = 'flat', posts = false, height } = {}) {
   const L = plan.levels.find((l) => l.id === levelId) || plan.levels[0];
-  return { id: 'xr' + Math.random().toString(36).slice(2, 8), name: name || `Dach ${(plan.site.roofs || []).length + 2}`, type, pitch: type === 'flat' ? 3 : 25, overhang: type === 'flat' ? 0.15 : 0.3, cover: type === 'flat' ? (posts ? 'blech' : 'kies') : 'pfanne', levelId: L?.id, height: height ?? (posts ? 2.3 : Math.min(L?.height || 2.6, 2.75)), rect, posts };
+  return { id: 'xr' + Math.random().toString(36).slice(2, 8), name: name || tr('data.defaults.roofNumber', { number: (plan.site.roofs || []).length + 2 }), type, pitch: type === 'flat' ? 3 : 25, overhang: type === 'flat' ? 0.15 : 0.3, cover: type === 'flat' ? (posts ? 'blech' : 'kies') : 'pfanne', levelId: L?.id, height: height ?? (posts ? 2.3 : Math.min(L?.height || 2.6, 2.75)), rect, posts };
 }
 export function rectOfPoints(pts, ridge = 'auto') {
   const b = bbox(pts); const alongX = ridge === 'auto' ? b.w >= b.d : ridge === 'x';

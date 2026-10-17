@@ -86,6 +86,10 @@ Common keys for every part:
 
 Cylinders lying down: `"rot": [0, 0, 90]` (axis along x) or `"rot": [90, 0, 0]` (axis along z); remember the origin is the bottom face centre, so the cylinder then extends from `pos` in −x or +z.
 
+
+Display surfaces use `"shape": "screen"` with `w`, `h` and optional `radius` (metres, 0 = flat). The bottom centre is the origin; the front faces +z. The engine assigns `role: "screen"` automatically. A custom display mesh may also use `"role": "screen"`. Display parts stay separate when static geometry is merged so the editor can bind the object to a media-player, camera or image entity. Use a dark material; never embed third-party artwork in recipes.
+
+The engine merges static meshes per material and reduces tessellation for tiny parts. Keep interactive or display parts separate using their role. Validate the resulting object, not an estimated primitive count.
 ## Example: 4-leg table
 
 ```json
@@ -107,5 +111,4 @@ Cylinders lying down: `"rot": [0, 0, 90]` (axis along x) or `"rot": [90, 0, 0]` 
 ```
 
 ## Limits
-
-400 parts in the file, 2000 built parts after repeat/mirror, 15 000 triangles recommended (30 000 hard limit), 64 KB per recipe.
+400 parts in the file, 2000 built parts after repeat/mirror, 64 KB per recipe. Strict triangle budgets by largest dimension: under 0.3 m: 4,000; under 1 m: 8,000; otherwise 15,000 (absolute limit 20,000). At most 12 draw calls after merging static parts by material. Display surfaces remain separate.

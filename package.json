@@ -4,6 +4,7 @@
   "type": "module",
   "description": "HomeTwin \u2013 your home in 3D for Home Assistant: object library tools and recipe engine",
   "scripts": {
+    "test:i18n": "node tools/check-locales.mjs && node tools/test-i18n.mjs && node tools/test-data-i18n.mjs",
     "validate": "node tools/validate.mjs",
     "preview": "node tools/render-preview.mjs",
     "new": "node tools/new-object.mjs",

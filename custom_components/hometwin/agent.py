@@ -35,6 +35,7 @@ from .const import (
     RELEVANT_DOMAINS,
 )
 from . import geometry as geo
+from .i18n import hass_message, language_from_hass, message, normalize_language
 from .views import read_underlay
 
 _LOGGER = logging.getLogger(__name__)
@@ -135,12 +136,12 @@ def _tools(cat: dict[str, Any]) -> list[dict[str, Any]]:
             {"opening_id": {"type": "string"}, "type": {"type": "string", "enum": cat["opening_types"]}, "sill": {"type": "number"}, "head": {"type": "number"}, "cover": {"type": "string"}, "contact": {"type": "string"}}, ["opening_id"]),
         _fn("place_device", "Gerät setzen und optional mit einer Entität verknüpfen.",
             {"level_id": {"type": "string"}, "kind": {"type": "string", "enum": kinds}, "style": {"type": "string", "enum": styles}, "entity_id": {"type": "string"}, "pos": _PT,
-             "y": {"type": "number", "description": "Montagehöhe in m (optional)"}, "rot": {"type": "number"}, "length": {"type": "number"}}, ["level_id", "kind", "pos"]),
+             "y": {"type": "number", "description": "Montagehöhe in m (optional)"}, "elevation": {"type": "number", "description": "Object bottom above this floor in metres (independent of object dimensions)."}, "autoElevation": {"type": "boolean", "description": "Automatically settle onto supporting furniture or floor when moved; false keeps the explicit elevation."}, "rot": {"type": "number"}, "length": {"type": "number"}}, ["level_id", "kind", "pos"]),
         _fn("update_device", "Gerät ändern (Entität, Darstellung, Position).",
-            {"device_id": {"type": "string"}, "entity_id": {"type": "string"}, "kind": {"type": "string", "enum": kinds}, "style": {"type": "string", "enum": styles}, "pos": _PT, "y": {"type": "number"}, "rot": {"type": "number"}, "length": {"type": "number"}}, ["device_id"]),
+            {"device_id": {"type": "string"}, "entity_id": {"type": "string"}, "kind": {"type": "string", "enum": kinds}, "style": {"type": "string", "enum": styles}, "pos": _PT, "y": {"type": "number"}, "elevation": {"type": "number", "description": "Object bottom above this floor in metres (independent of object dimensions)."}, "autoElevation": {"type": "boolean", "description": "Automatically settle onto supporting furniture or floor when moved; false keeps the explicit elevation."}, "rot": {"type": "number"}, "length": {"type": "number"}}, ["device_id"]),
         _fn("place_furniture", "Möbel oder Gartenobjekt setzen.",
-            {"level_id": {"type": "string"}, "type": {"type": "string", "enum": list(cat["furniture"])}, "pos": _PT, "rot": {"type": "number"}, "width": {"type": "number"}, "depth": {"type": "number"}, "height": {"type": "number"}, "color": {"type": "string"}}, ["level_id", "type", "pos"]),
-        _fn("move_item", "Gerät oder Möbel verschieben/drehen.", {"item_id": {"type": "string"}, "pos": _PT, "rot": {"type": "number"}}, ["item_id"]),
+            {"level_id": {"type": "string"}, "type": {"type": "string", "enum": list(cat["furniture"])}, "pos": _PT, "elevation": {"type": "number", "description": "Object bottom above this floor in metres (independent of object dimensions)."}, "autoElevation": {"type": "boolean", "description": "Automatically settle onto supporting furniture or floor when moved; false keeps the explicit elevation."}, "rot": {"type": "number"}, "width": {"type": "number"}, "depth": {"type": "number"}, "height": {"type": "number"}, "color": {"type": "string"}}, ["level_id", "type", "pos"]),
+        _fn("move_item", "Gerät oder Möbel verschieben/drehen.", {"item_id": {"type": "string"}, "pos": _PT, "elevation": {"type": "number", "description": "Object bottom above this floor in metres (independent of object dimensions)."}, "autoElevation": {"type": "boolean", "description": "Automatically settle onto supporting furniture or floor when moved; false keeps the explicit elevation."}, "rot": {"type": "number"}}, ["item_id"]),
         _fn("delete_item", "Raum, Öffnung, Gerät oder Möbel löschen.", {"item_id": {"type": "string"}}, ["item_id"]),
         _fn("check_plan", "Prüft die Geometrie (inklusive deiner bisherigen Vorschläge): Überlappungen, Lücken zwischen Räumen, sehr kleine Räume. Gibt pro Etage Probleme und eine Raumliste mit Flächen zurück.",
             {"level_id": {"type": "string"}}, []),
@@ -228,6 +229,7 @@ class _Work:
 
     def __init__(self, hass: HomeAssistant, cat: dict[str, Any], plan: dict[str, Any]) -> None:
         self.hass, self.cat, self.ops = hass, cat, []
+        self.language = language_from_hass(hass)
         self.levels = {lvl["id"] for lvl in plan.get("levels", [])}
         self.items: dict[str, str] = {}
         self.rooms: dict[str, dict[str, Any]] = {}
@@ -249,22 +251,21 @@ class _Work:
         if eid in (None, ""):
             return
         if not isinstance(eid, str) or self.hass.states.get(eid) is None:
-            raise ValueError(f"Entität {eid} existiert nicht")
+            raise ValueError(message(self.language, "entity_missing", entity=eid))
         if domains and eid.split(".")[0] not in domains:
-            raise ValueError(f"{eid} passt nicht (erwartet {', '.join(domains)})")
+            raise ValueError(message(self.language, "entity_domain", entity=eid, domains=", ".join(domains)))
 
     def _level(self, a: dict[str, Any]) -> None:
         if a.get("level_id") not in self.levels:
-            raise ValueError(f"Unbekannte level_id {a.get('level_id')}")
+            raise ValueError(message(self.language, "unknown_level", level=a.get("level_id")))
 
     def _item(self, iid: Any, *types: str) -> None:
         if self.items.get(iid) not in types:
-            raise ValueError(f"Unbekannte ID {iid}")
+            raise ValueError(message(self.language, "unknown_id", id=iid))
 
-    @staticmethod
-    def _pt(p: Any, name: str) -> None:
+    def _pt(self, p: Any, name: str) -> None:
         if not (isinstance(p, list) and len(p) == 2 and all(isinstance(v, (int, float)) for v in p)):
-            raise ValueError(f"{name} muss [x, z] sein")
+            raise ValueError(message(self.language, "point_shape", name=name))
 
     def _shape(self, a: dict[str, Any], level: str, kind: str, name: str, skip: str | None = None) -> tuple[list[list[float]], list[str]]:
         """Points from rect/points, snapped to the neighbours; raises on overlaps."""
@@ -275,23 +276,23 @@ class _Work:
                 self._pt(p, "points[]")
             pts = [[float(p[0]), float(p[1])] for p in a["points"]]
         if len(pts) < 3 or geo.area(pts) < 0.2:
-            raise ValueError("Raum ist zu klein oder hat weniger als 3 Ecken")
+            raise ValueError(message(self.language, "room_too_small_shape"))
         others = [r for rid, r in self.rooms.items() if r["level"] == level and rid != skip]
-        pts, notes = geo.snap(pts, [r["points"] for r in others])
+        pts, notes = geo.snap(pts, [r["points"] for r in others], self.language)
         if kind in ("room", "garage"):
             clashes = [(r, geo.overlap_area(pts, r["points"])) for r in others if r["kind"] in ("room", "garage")]
             clashes = [(r, ov) for r, ov in clashes if ov > geo.OVERLAP_TOL]
             if clashes:
-                raise ValueError("Überlappung – nicht angelegt. " + "; ".join(
-                    f"„{name}“ überlappt „{r['name']}“ um {ov:.2f} m² (deren Ecken: {r['points']})" for r, ov in clashes)
-                    + ". Lege die gemeinsame Wand exakt auf die Kante des Nachbarraums.")
+                raise ValueError(message(self.language, "overlap_intro") + "; ".join(
+                    message(self.language, "overlap_item", name=name, other=r["name"], area=ov, points=r["points"]) for r, ov in clashes)
+                    + message(self.language, "overlap_hint"))
         return pts, notes
 
     def check(self, level_id: str | None) -> dict[str, Any]:
         out = {}
         for lid in ([level_id] if level_id in self.levels else sorted(self.levels)):
             rooms = [r for r in self.rooms.values() if r["level"] == lid]
-            out[lid] = {"problems": geo.check_level(rooms) or ["keine"],
+            out[lid] = {"problems": geo.check_level(rooms, self.language) or [message(self.language, "none")],
                         "rooms": [{"name": r["name"], "kind": r["kind"], "area_m2": round(geo.area(r["points"]), 2), "bbox": [round(v, 2) for v in geo.bbox(r["points"])]} for r in rooms]}
         return out
 
@@ -306,13 +307,13 @@ class _Work:
         if name == "add_room":
             self._level(a)
             if not (isinstance(a.get("rect"), list) and len(a["rect"]) == 4) and not (isinstance(a.get("points"), list) and len(a["points"]) >= 3):
-                raise ValueError("rect oder points angeben")
+                raise ValueError(message(self.language, "room_geometry"))
             for p in a.get("points") or []:
                 self._pt(p, "points[]")
             if a.get("kind") and a["kind"] not in cat["room_kinds"]:
-                raise ValueError("unbekannte Raumart")
+                raise ValueError(message(self.language, "unknown_room_kind"))
             kind = a.get("kind") or "room"
-            pts, notes = self._shape(a, a["level_id"], kind, a.get("name") or "Raum")
+            pts, notes = self._shape(a, a["level_id"], kind, a.get("name") or message(self.language, "room"))
             rid = self._id("r"); self.items[rid] = "room"
             self.rooms[rid] = {"level": a["level_id"], "name": a.get("name"), "kind": kind, "points": pts}
             op = {k: v for k, v in a.items() if k != "rect"}
@@ -324,7 +325,7 @@ class _Work:
             res: dict[str, Any] = {"ok": True}
             op = {k: v for k, v in a.items() if k != "rect"}
             if a.get("rect") or a.get("points"):
-                pts, notes = self._shape(a, cur.get("level"), a.get("kind") or cur.get("kind", "room"), a.get("name") or cur.get("name") or "Raum", skip=a["room_id"])
+                pts, notes = self._shape(a, cur.get("level"), a.get("kind") or cur.get("kind", "room"), a.get("name") or cur.get("name") or message(self.language, "room"), skip=a["room_id"])
                 op["points"] = pts; res.update({"points": pts, **({"adjusted": notes} if notes else {})})
                 if cur:
                     cur["points"] = pts
@@ -336,7 +337,7 @@ class _Work:
         if name == "add_opening":
             self._level(a); self._pt(a.get("from"), "from"); self._pt(a.get("to"), "to")
             if a.get("type") not in cat["opening_types"]:
-                raise ValueError("unbekannter Öffnungstyp")
+                raise ValueError(message(self.language, "unknown_opening_kind"))
             self._entity(a.get("cover"), ("cover",)); self._entity(a.get("contact"), ("binary_sensor",))
             oid = self._id("o"); self.items[oid] = "opening"
             self.ops.append({"op": "add_opening", "id": oid, **a}); return {"ok": True, "id": oid}
@@ -347,7 +348,7 @@ class _Work:
             self._level(a); self._pt(a.get("pos"), "pos")
             kind = cat["device_kinds"].get(a.get("kind"))
             if not kind:
-                raise ValueError("unbekannte Geräteart")
+                raise ValueError(message(self.language, "unknown_device_kind"))
             self._entity(a.get("entity_id"), tuple(kind["domains"]))
             did = self._id("d"); self.items[did] = "device"
             self.ops.append({"op": "place_device", "id": did, **a}); return {"ok": True, "id": did}
@@ -359,7 +360,7 @@ class _Work:
         if name == "place_furniture":
             self._level(a); self._pt(a.get("pos"), "pos")
             if a.get("type") not in cat["furniture"]:
-                raise ValueError("unbekannter Möbeltyp")
+                raise ValueError(message(self.language, "unknown_furniture_kind"))
             fid = self._id("f"); self.items[fid] = "furniture"
             self.ops.append({"op": "place_furniture", "id": fid, **a}); return {"ok": True, "id": fid}
         if name == "move_item":
@@ -370,7 +371,7 @@ class _Work:
         if name == "delete_item":
             self._item(a.get("item_id"), "room", "opening", "device", "furniture")
             self.items.pop(a["item_id"], None); self.rooms.pop(a["item_id"], None); self.ops.append({"op": "delete_item", **a}); return {"ok": True}
-        raise ValueError(f"unbekanntes Werkzeug {name}")
+        raise ValueError(message(self.language, "unknown_tool", tool=name))
 
 
 # ---------------------------------------------------------------- loop
@@ -391,12 +392,12 @@ async def _post(hass: HomeAssistant, cfg: AgentConfig, payload: dict[str, Any]) 
         async with session.post(f"{cfg.base_url}/chat/completions", json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=240)) as resp:
             body = await resp.text()
             if resp.status != 200:
-                raise HomeAssistantError(f"Endpunkt antwortete {resp.status}: {body[:400]}")
+                raise HomeAssistantError(hass_message(hass, "endpoint_status", status=resp.status, body=body[:400]))
             return json.loads(body)
     except (aiohttp.ClientError, TimeoutError) as err:
-        raise HomeAssistantError(f"Endpunkt nicht erreichbar: {err}") from err
+        raise HomeAssistantError(hass_message(hass, "endpoint_unreachable", error=err)) from err
     except json.JSONDecodeError as err:
-        raise HomeAssistantError("Antwort des Endpunkts ist kein JSON") from err
+        raise HomeAssistantError(hass_message(hass, "endpoint_not_json")) from err
 
 
 async def _post_stream(hass: HomeAssistant, cfg: AgentConfig, payload: dict[str, Any], on_text: Any = None) -> str:
@@ -410,7 +411,7 @@ async def _post_stream(hass: HomeAssistant, cfg: AgentConfig, payload: dict[str,
         async with session.post(f"{cfg.base_url}/chat/completions", json={**payload, "stream": True}, headers=headers,
                                 timeout=aiohttp.ClientTimeout(total=300, sock_read=90)) as resp:
             if resp.status != 200:
-                raise HomeAssistantError(f"Endpunkt antwortete {resp.status}: {(await resp.text())[:400]}")
+                raise HomeAssistantError(hass_message(hass, "endpoint_status", status=resp.status, body=(await resp.text())[:400]))
             if "text/event-stream" not in resp.headers.get("Content-Type", ""):
                 data = json.loads(await resp.text())
                 return _text(data["choices"][0]["message"].get("content"))
@@ -430,7 +431,7 @@ async def _post_stream(hass: HomeAssistant, cfg: AgentConfig, payload: dict[str,
                     except json.JSONDecodeError:
                         continue
                     if ev.get("error"):
-                        raise HomeAssistantError(f"Modellfehler: {str(ev['error'])[:300]}")
+                        raise HomeAssistantError(hass_message(hass, "model_error", error=str(ev["error"])[:300]))
                     choice = (ev.get("choices") or [{}])[0]
                     delta = (choice.get("delta") or {}).get("content")
                     if delta:
@@ -443,9 +444,9 @@ async def _post_stream(hass: HomeAssistant, cfg: AgentConfig, payload: dict[str,
                         return text  # do not wait for the server to close the stream
             return text
     except (aiohttp.ClientError, TimeoutError) as err:
-        raise HomeAssistantError(f"Zeitüberschreitung oder Verbindungsfehler beim Modell: {err or type(err).__name__}") from err
+        raise HomeAssistantError(hass_message(hass, "model_connection", error=err or type(err).__name__)) from err
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as err:
-        raise HomeAssistantError("Antwort des Endpunkts nicht lesbar") from err
+        raise HomeAssistantError(hass_message(hass, "endpoint_unreadable")) from err
 
 
 async def run_agent(hass: HomeAssistant, cfg: AgentConfig, history: list[dict[str, Any]], plan: dict[str, Any], level_id: str | None, include_underlay: bool) -> dict[str, Any]:
@@ -485,7 +486,7 @@ async def run_agent(hass: HomeAssistant, cfg: AgentConfig, history: list[dict[st
         try:
             msg = data["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as err:
-            raise HomeAssistantError(f"Unerwartete Antwort: {str(data)[:300]}") from err
+            raise HomeAssistantError(hass_message(hass, "unexpected_response", response=str(data)[:300])) from err
         calls = msg.get("tool_calls") or []
         messages.append({"role": "assistant", "content": _text(msg.get("content")) or None, **({"tool_calls": calls} if calls else {})})
         if not calls:
@@ -562,14 +563,14 @@ Return: {{"dimensions": [{{"from": [px, py], "to": [px, py], "meters": 4.25, "la
 "from"/"to" are the two ends of the dimension line that the number refers to. Convert cm or mm to metres. If you find none, return {{"dimensions": []}}."""
 
 
-def _json_from(text: str) -> dict[str, Any]:
+def _json_from(text: str, language: str = "en") -> dict[str, Any]:
     text = (text or "").strip()
     if text.startswith("```"):
         text = text.strip("`")
         text = text[text.find("{"):]
     a, b = text.find("{"), text.rfind("}")
     if a < 0 or b <= a:
-        raise HomeAssistantError("Das Modell hat kein JSON geliefert. Ein Modell mit Bildverständnis verwenden.")
+        raise HomeAssistantError(message(language, "model_no_json"))
     try:
         return json.loads(text[a:b + 1])
     except json.JSONDecodeError as err:
@@ -577,7 +578,7 @@ def _json_from(text: str) -> dict[str, Any]:
         if fixed is not None:
             _LOGGER.warning("HomeTwin: repaired an incomplete JSON answer (%s)", err)
             return fixed
-        raise HomeAssistantError(f"Antwort des Modells ist kein gültiges JSON ({err}). Bitte erneut versuchen.") from err
+        raise HomeAssistantError(message(language, "model_invalid_json", error=err)) from err
 
 
 def _repair_json(text: str) -> dict[str, Any] | None:
@@ -643,7 +644,7 @@ def _regularise(rooms: list[dict[str, Any]]) -> None:
         r["points"] = [p for i, p in enumerate(pts) if p != pts[i - 1]]
 
 
-def _fit_dimensions(rooms: list[dict[str, Any]], raw: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+def _fit_dimensions(rooms: list[dict[str, Any]], raw: list[dict[str, Any]], language: str = "en") -> tuple[list[str], list[str]]:
     """Moves the wall lines so that rectangular rooms get the clear dimensions printed in the plan.
 
     Every distinct x (and z) coordinate is one wall line. For a rectangle with printed clear width
@@ -679,7 +680,7 @@ def _fit_dimensions(rooms: list[dict[str, Any]], raw: list[dict[str, Any]]) -> t
                 half.append(geo.INT_HALF if shared else geo.EXT_HALF)
             target = float(want) + half[0] + half[1]
             if abs(target - (hi - lo)) > max(0.6, 0.25 * target):
-                problems.append(f"„{r['name']}“: Maß {want:.2f} m aus dem Plan passt nicht zur Zeichnung ({hi - lo - half[0] - half[1]:.2f} m) – bitte prüfen")
+                problems.append(message(language, "dimension_mismatch", room=r["name"], wanted=want, actual=hi - lo - half[0] - half[1]))
                 continue
             cons.append((idx[lo], idx[hi], target, r))
         if not cons:
@@ -700,7 +701,7 @@ def _fit_dimensions(rooms: list[dict[str, Any]], raw: list[dict[str, Any]]) -> t
                 x[i] -= 0.5 * grad[i] / deg[i]
         # safety net: never move a wall line by more than 0.8 m or produce invalid numbers
         if any(not math.isfinite(v) or abs(v - v0) > 0.8 for v, v0 in zip(x, x0)):
-            problems.append(f"Plan-Maße {'in der Breite' if axis == 0 else 'in der Tiefe'} widersprechen sich – Räume wurden nicht angepasst, bitte prüfen")
+            problems.append(message(language, "dimension_conflict", axis=message(language, "width" if axis == 0 else "depth")))
             continue
         moved = {lines[i]: round(x[i], 3) for i in range(len(x))}
         for r in rooms:
@@ -709,10 +710,10 @@ def _fit_dimensions(rooms: list[dict[str, Any]], raw: list[dict[str, Any]]) -> t
         worst = [(abs((x[j] - x[i]) - t), r) for i, j, t, r in cons]
         fixed = sum(1 for e, _r in worst if e <= 0.03)
         if fixed:
-            notes.append(f"{fixed} Raummaß(e) {'in der Breite' if axis == 0 else 'in der Tiefe'} aus dem Plan übernommen")
+            notes.append(message(language, "dimensions_applied", count=fixed, axis=message(language, "width" if axis == 0 else "depth")))
         for e, r in worst:
             if e > 0.08:
-                problems.append(f"„{r['name']}“: Plan-Maße widersprechen den Nachbarräumen (Abweichung {e:.2f} m) – bitte prüfen")
+                problems.append(message(language, "neighbour_dimension_conflict", room=r["name"], error=e))
     return notes, problems
 
 
@@ -722,10 +723,11 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
     Without "mpp" the scale is taken from the printed dimension chains in the same pass.
     """
     report = progress or (lambda *_a, **_k: None)
+    language = normalize_language(req.get("language") or language_from_hass(hass))
     w, h = int(req["width"]), int(req["height"])
     image = req["image"]
     if not image.startswith("data:image/"):
-        raise HomeAssistantError("Bild fehlt")
+        raise HomeAssistantError(message(language, "image_missing"))
     if req.get("mode") == "scale":
         text = SCALE_PROMPT.format(w=w, h=h)
     elif req.get("mode") == "refine":
@@ -770,8 +772,8 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
     report("parsing", chars=len(content))
     if req.get("mode") != "scale":
         # geometry work runs in a worker thread so Home Assistant stays responsive
-        return await hass.async_add_executor_job(_detect_post, content, req, report)
-    out = _json_from(content)
+        return await hass.async_add_executor_job(_detect_post, content, {**req, "_ui_language": language}, report)
+    out = _json_from(content, language)
 
     if req.get("mode") == "scale":
         dims = []
@@ -789,7 +791,8 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
 
 def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, Any]:
     """Turns the model's JSON into rooms in metres, fitted to the printed dimensions (worker thread)."""
-    out = _json_from(content)
+    language = normalize_language(req.get("_ui_language") or req.get("language"))
+    out = _json_from(content, language)
     mpp, x0, z0 = float(req.get("mpp") or 0), float(req.get("x0") or 0), float(req.get("z0") or 0)
     if not mpp:  # scale from the printed dimension chains
         cands = []
@@ -802,7 +805,7 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
             except (KeyError, TypeError, ValueError, IndexError):
                 continue
         if not cands:
-            raise HomeAssistantError("Im Plan wurden keine lesbaren Maßketten gefunden. Bitte im Schritt Maßstab eine Strecke messen.")
+            raise HomeAssistantError(message(language, "dimensions_missing"))
         cands.sort()
         mpp = cands[len(cands) // 2]
         req = {**req, "mpp": mpp, "_auto": True}
@@ -816,14 +819,14 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
         except (KeyError, TypeError, ValueError, IndexError):
             continue
         if len(pts) >= 3 and geo.area(pts) >= 0.5:
-            rooms.append({"name": str(r.get("name") or "Raum")[:60], "kind": r.get("kind") if r.get("kind") in kinds else "room",
+            rooms.append({"name": str(r.get("name") or message(language, "room"))[:60], "kind": r.get("kind") if r.get("kind") in kinds else "room",
                           "points": pts, "label_area": r.get("label_area_m2") if isinstance(r.get("label_area_m2"), (int, float)) else None})
     locked_m = [{"name": r.get("name"), "kind": "room", "points": r["points"], "locked": True} for r in (req.get("locked") or [])]
     if locked_m:  # pull new rooms onto the walls of the locked rooms, which keep their exact shape
         for r in rooms:
-            r["points"], _ = geo.snap(r["points"], [lr["points"] for lr in locked_m])
+            r["points"], _ = geo.snap(r["points"], [lr["points"] for lr in locked_m], language)
     _regularise(rooms)
-    fit_notes, fit_problems = _fit_dimensions(rooms, out.get("rooms") or [])
+    fit_notes, fit_problems = _fit_dimensions(rooms, out.get("rooms") or [], language)
     openings = []
     for o in out.get("openings") or []:
         try:
@@ -860,7 +863,7 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
     for r in rooms:
         r["area"] = round(geo.area(r["points"]), 2)
         r["net_area"] = round(geo.net_area(r, all_rooms), 2)
-    problems = geo.check_level(all_rooms) + fit_problems
+    problems = geo.check_level(all_rooms, language) + fit_problems
     # scale check against printed dimension chains
     scale = None
     ratios = []
@@ -911,13 +914,13 @@ def start_detect_job(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any])
             job["status"] = "done"
             _LOGGER.info("HomeTwin: recognition %s finished in %.0f s", jid, _time.time() - job["started"])
         except TimeoutError:
-            job["status"], job["error"] = "error", "Zeitüberschreitung: Das Modell hat nach 5 Minuten nicht fertig geantwortet. Bitte erneut versuchen oder ein schnelleres Modell / Reasoning „Aus“ wählen."
+            job["status"], job["error"] = "error", hass_message(hass, "detect_timeout")
         except HomeAssistantError as err:
             _LOGGER.warning("HomeTwin: recognition %s failed: %s", jid, err)
             job["status"], job["error"] = "error", str(err)
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception("HomeTwin floor plan recognition failed")
-            job["status"], job["error"] = "error", f"Unerwarteter Fehler: {err}"
+            job["status"], job["error"] = "error", hass_message(hass, "unexpected_error", error=err)
         job["finished"] = _time.time()
 
     hass.async_create_background_task(runner(), f"hometwin_detect_{jid}")

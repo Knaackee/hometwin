@@ -14,7 +14,9 @@ const ajv = new Ajv({ allErrors: true, strict: false });
 const vObject = ajv.compile(readJson(join(LIBRARY, 'schema/object.schema.json')));
 const vRecipe = ajv.compile(readJson(join(LIBRARY, 'schema/recipe.schema.json')));
 const ALLOWED = new Set(['object.json', 'recipe.json', 'model.glb', 'preview.webp', 'review.png', 'README.md']);
-const LIMITS = { recipeBytes: 64 * 1024, glbBytes: 2 * 1024 * 1024, previewBytes: 150 * 1024, triangles: 30000, trianglesWarn: 15000 };
+const LIMITS = { recipeBytes: 64 * 1024, glbBytes: 2 * 1024 * 1024, previewBytes: 150 * 1024, triangles: 20000, drawCalls: 12 };
+// Triangle budget by the largest outer dimension (after adaptive tessellation of the engine).
+export function triangleBudget(m) { return m < 0.3 ? 4000 : m < 1 ? 8000 : 15000; }
 
 function check(dir) {
   const errors = [], warnings = [], info = {};
@@ -56,8 +58,12 @@ function check(dir) {
     }
     try {
       const { object, stats } = buildRecipe(recipe); const b = boundsOf(object);
-      info.size = b.size.map((v) => +v.toFixed(3)); info.triangles = stats.triangles; info.parts = stats.parts;
-      if (stats.triangles > LIMITS.triangles) err(`${stats.triangles} triangles (limit ${LIMITS.triangles})`); else if (stats.triangles > LIMITS.trianglesWarn) warn(`${stats.triangles} triangles – consider fewer segments`);
+      info.size = b.size.map((v) => +v.toFixed(3)); info.triangles = stats.triangles; info.parts = stats.parts; info.drawCalls = stats.drawCalls;
+      // Detail follows size: a small object covers few pixels in a house, so it gets a small budget.
+      const big = Math.max(...b.size), budget = triangleBudget(big); info.budget = budget;
+      if (stats.triangles > LIMITS.triangles) err(`${stats.triangles} triangles (hard limit ${LIMITS.triangles})`);
+      else if (stats.triangles > budget) (STRICT ? err : warn)(`${stats.triangles} triangles for an object of ${big.toFixed(2)} m – budget ${budget}. Use fewer segments ("seg"), fewer tiny parts, flat details instead of tubes.`);
+      if (stats.drawCalls > LIMITS.drawCalls) (STRICT ? err : warn)(`${stats.drawCalls} materials/draw calls (budget ${LIMITS.drawCalls}) – reuse materials`);
       const D = obj.dimensions || {}; const [w, h, d] = b.size;
       for (const [k, real, want] of [['w (x)', w, D.w], ['h (y)', h, D.h], ['d (z)', d, D.d]]) {
         if (want === undefined) continue; const tol = Math.max(0.02, want * 0.03);
@@ -100,7 +106,7 @@ for (const r of results) {
 if (JSON_OUT) console.log(JSON.stringify(results.map(({ obj, ...r }) => r), null, 2));
 else for (const r of results) {
   const ok = !r.errors.length;
-  console.log(`${ok ? '✔' : '✘'} ${r.id}${r.info.size ? `  ${r.info.size.join(' × ')} m (w×h×d), ${r.info.parts} parts, ${r.info.triangles} tris` : ''}`);
+  console.log(`${ok ? '✔' : '✘'} ${r.id}${r.info.size ? `  ${r.info.size.join(' × ')} m (w×h×d), ${r.info.parts} parts → ${r.info.drawCalls} draw calls, ${r.info.triangles}/${r.info.budget} tris` : ''}`);
   for (const e of r.errors) console.log(`    error: ${e}`);
   for (const w of r.warnings) console.log(`    warn:  ${w}`);
 }

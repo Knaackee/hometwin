@@ -4,13 +4,15 @@ import { esc } from './panel.js';
 import { newId } from './plan.js';
 import { area as polyArea, bbox, pointInPolygon, distToSeg, projectOnSeg } from './geometry.js';
 import { newExtraRoof, rectOfPoints } from './roof.js';
+import { t, getLanguage } from './i18n.js';
 
-const STEPS = ['Quelle', 'Ausrichten', 'Maßstab', 'Erkennen', 'Prüfen'];
+const steps = () => ['source', 'align', 'scale', 'recognize', 'review'].map((key) => t(`assistant.wizard.step.${key}`));
 const COLORS = ['#79a6ff', '#ffb35c', '#7fd18b', '#e57fd1', '#5fd3d0', '#f2d35b', '#ff7f7f', '#a68bff', '#9ad26a', '#ff9fcb'];
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const OPEN_COL = { door: '#ffb35c', window: '#5fd3d0', garage: '#e57fd1', open: '#f2d35b' };
-const OPEN_LBL = { door: 'Tür', window: 'Fenster', garage: 'Tor', open: 'Durchgang' };
+const openingLabels = () => ({ door: t('assistant.wizard.opening.door'), window: t('assistant.wizard.opening.window'), garage: t('assistant.wizard.opening.garage'), open: t('assistant.wizard.opening.open') });
 const OPEN_W = { door: 0.885, window: 1.26, garage: 2.5, open: 1.0 };
+const localizedDecimal = (value) => getLanguage() === 'de' ? String(value).replace('.', ',') : String(value);
 // Rooms (not outdoor) without any door, passage or garage door on their outline.
 function roomsWithoutDoor(res) {
   return res.rooms.filter((r) => r.kind !== 'outdoor' && !res.openings.some((o) => o.type !== 'window' && r.points.some((p, i) => { const q = r.points[(i + 1) % r.points.length], m = [(o.from[0] + o.to[0]) / 2, (o.from[1] + o.to[1]) / 2]; return distToSeg(m, p, q) < 0.3; })));
@@ -171,7 +173,7 @@ export class PlanWizard {
       opts: { openings: true, stairs: true, names: true }, hints: '', result: null, sel: null, busy: false, mode: 'replace', keepUnderlay: true, mapAreas: true, overlayAlpha: 0.55, err: null };
     this.meas = null; this.rubber = null; this.gray = null; this._key2 = null; this.openTool = null;
     this.root = app.$('wizard'); this.root.hidden = false; this.root.innerHTML = '';
-    this._paste = (e) => { const it = [...(e.clipboardData?.items || [])].find((x) => x.type.startsWith('image/')); if (it && this.st.step === 0) { e.preventDefault(); this.loadFile(it.getAsFile(), 'Zwischenablage'); } };
+    this._paste = (e) => { const it = [...(e.clipboardData?.items || [])].find((x) => x.type.startsWith('image/')); if (it && this.st.step === 0) { e.preventDefault(); this.loadFile(it.getAsFile(), t('assistant.wizard.clipboard')); } };
     window.addEventListener('paste', this._paste);
     this._key = (e) => { if (this.st.step === 2) this._key2?.(e);
       if (this.st.step === 4 && !e.target.closest?.('input,textarea,select')) { if ((e.key === 'Delete' || e.key === 'Backspace') && this.st.selOpen != null) { this.st.result.openings.splice(this.st.selOpen, 1); this.st.selOpen = null; this.render(); return; } if (e.key === 'Escape' && (this.openTool || this.st.selOpen != null)) { this.openTool = null; this.st.selOpen = null; this.render(); return; } }
@@ -191,13 +193,13 @@ export class PlanWizard {
   _render() {
     const st = this.st;
     this.view?.destroy(); this.view = null;
-    this.root.innerHTML = `<div class="wz" role="dialog" aria-modal="true" aria-label="Bauplan-Assistent">
-      <header class="wz-head"><h2>${icon('image')}Bauplan-Assistent</h2>
-        <ol class="wz-steps">${STEPS.map((s, i) => `<li class="${i === st.step ? 'cur' : i < st.step ? 'done' : ''}"><span>${i < st.step ? '✓' : i + 1}</span>${s}</li>`).join('')}</ol>
-        <button class="ibtn" data-wz="close" title="Schließen" aria-label="Schließen">${icon('x')}</button></header>
+    this.root.innerHTML = `<div class="wz" role="dialog" aria-modal="true" aria-label="${t('assistant.wizard.title')}">
+      <header class="wz-head"><h2>${icon('image')}${t('assistant.wizard.title')}</h2>
+        <ol class="wz-steps">${steps().map((s, i) => `<li class="${i === st.step ? 'cur' : i < st.step ? 'done' : ''}"><span>${i < st.step ? '✓' : i + 1}</span>${s}</li>`).join('')}</ol>
+        <button class="ibtn" data-wz="close" title="${t('assistant.common.close')}" aria-label="${t('assistant.common.close')}">${icon('x')}</button></header>
       <div class="wz-body">${this[`step${st.step}`]()}</div>
       <footer class="wz-foot"><span class="wz-msg" id="wzMsg">${st.err ? `<span class="err">${esc(st.err)}</span>` : ''}</span>
-        ${st.step > 0 && st.step !== 3 ? `<button class="btn" data-wz="back">Zurück</button>` : ''}
+        ${st.step > 0 && st.step !== 3 ? `<button class="btn" data-wz="back">${t('assistant.common.back')}</button>` : ''}
         ${this.nextButton()}</footer></div>`;
     this.root.querySelector('[data-wz="close"]').onclick = () => this.close();
     this.root.querySelector('[data-wz="back"]')?.addEventListener('click', () => this.go(st.step - 1));
@@ -208,18 +210,18 @@ export class PlanWizard {
   }
   nextButton() {
     const s = this.st;
-    if (s.step === 0) return `<button class="btn primary" data-wz="next" ${s.src ? '' : 'disabled'}>Weiter</button>`;
-    if (s.step === 1) return `<button class="btn primary" data-wz="next">Weiter zum Maßstab</button>`;
-    if (s.step === 2) return `<button class="btn primary" data-wz="next" ${s.mpp || (this.ai?.configured && !s.busy) ? '' : 'disabled'}>${this.ai?.configured ? (s.mpp ? 'Räume erkennen' : 'Räume + Maßstab per KI erkennen') : 'Weiter'}</button>`;
+    if (s.step === 0) return `<button class="btn primary" data-wz="next" ${s.src ? '' : 'disabled'}>${t('assistant.common.next')}</button>`;
+    if (s.step === 1) return `<button class="btn primary" data-wz="next">${t('assistant.wizard.nextToScale')}</button>`;
+    if (s.step === 2) return `<button class="btn primary" data-wz="next" ${s.mpp || (this.ai?.configured && !s.busy) ? '' : 'disabled'}>${this.ai?.configured ? t(s.mpp ? 'assistant.wizard.recognizeRooms' : 'assistant.wizard.recognizeRoomsAndScale') : t('assistant.common.next')}</button>`;
     if (s.step === 3) return '';
-    return `<button class="btn primary" data-wz="next" ${s.result?.rooms.length ? '' : 'disabled'}>Übernehmen</button>`;
+    return `<button class="btn primary" data-wz="next" ${s.result?.rooms.length ? '' : 'disabled'}>${t('assistant.common.apply')}</button>`;
   }
   go(step) { this.st.err = null; this.st.step = step; this.render(); }
   msg(t, err = false) { const m = this.root.querySelector('#wzMsg'); if (m) m.innerHTML = t ? `<span class="${err ? 'err' : ''}">${esc(t)}</span>` : ''; }
   async next() {
     const s = this.st;
     if (s.step === 0) { await this.prepareAlign(); return this.go(1); }
-    if (s.step === 1) { this.msg('Bild wird aufbereitet …'); await new Promise((r) => setTimeout(r, 20)); this.process(); return this.go(2); }
+    if (s.step === 1) { this.msg(t('assistant.wizard.preparingImage')); await new Promise((r) => setTimeout(r, 20)); this.process(); return this.go(2); }
     if (s.step === 2) { this.go(3); if (this.ai?.configured) this.detect(); return; }
     if (s.step === 4) return this.apply();
   }
@@ -229,20 +231,20 @@ export class PlanWizard {
     const s = this.st, levels = this.app.plan.levels;
     return `<div class="wz-two">
       <div class="wz-drop" id="wzDrop" tabindex="0">
-        ${s.src ? `<img alt="Vorschau" src="${limit(s.src, 900).toDataURL('image/jpeg', 0.8)}">` : `${icon('upload')}<strong>Bauplan hierher ziehen</strong><span>oder</span>`}
+        ${s.src ? `<img alt="${t('assistant.wizard.preview')}" src="${limit(s.src, 900).toDataURL('image/jpeg', 0.8)}">` : `${icon('upload')}<strong>${t('assistant.wizard.dropPlan')}</strong><span>${t('assistant.common.or')}</span>`}
         <div class="actions">
-          <label class="btn small">${icon('image')}Datei wählen<input type="file" id="wzFile" accept="image/*,application/pdf,.pdf" hidden></label>
-          <button class="btn small" data-act="paste">Aus Zwischenablage</button>
-          <label class="btn small mobile-only">Foto aufnehmen<input type="file" id="wzCam" accept="image/*" capture="environment" hidden></label>
+          <label class="btn small">${icon('image')}${t('assistant.wizard.chooseFile')}<input type="file" id="wzFile" accept="image/*,application/pdf,.pdf" hidden></label>
+          <button class="btn small" data-act="paste">${t('assistant.wizard.fromClipboard')}</button>
+          <label class="btn small mobile-only">${t('assistant.wizard.takePhoto')}<input type="file" id="wzCam" accept="image/*" capture="environment" hidden></label>
         </div>
-        <small>PNG, JPG, PDF · Strg+V fügt ein Bild direkt ein${s.src ? ` · ${esc(s.srcName)} (${s.src.width}×${s.src.height} px)` : ''}</small>
+        <small>${t('assistant.wizard.fileFormats')}${s.src ? ` · ${esc(s.srcName)} (${s.src.width}×${s.src.height} px)` : ''}</small>
       </div>
       <div class="wz-side">
-        ${this.pending ? `<div class="wz-resume"><strong>${this.pending.status === 'running' ? 'Eine Erkennung läuft noch' : `Letzte Erkennung fertig${this.pending.result?.rooms ? ` · ${this.pending.result.rooms.length} Räume` : ''}`}</strong><span>vor ${Math.max(1, Math.round((Date.now() / 1000 - this.pending.started) / 60))} min gestartet</span><div class="actions"><button class="btn primary small" data-act="resume">${this.pending.status === 'running' ? 'Fortschritt anzeigen' : 'Ergebnis öffnen'}</button><button class="btn small" data-act="dismissJob">Verwerfen</button></div></div>` : ''}
-        ${s.pdf ? `<div class="field"><span class="lbl">PDF-Seite</span><div class="wz-pages" id="wzPages">${Array.from({ length: s.pdf.pages }, (_, i) => `<button data-page="${i}" aria-pressed="${i === s.page}"><span>Seite ${i + 1}</span></button>`).join('')}</div></div>` : ''}
-        <div class="field"><label for="wzLevel">Für welche Etage?</label><select id="wzLevel">${levels.map((l) => `<option value="${l.id}" ${l.id === s.levelId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="__new" ${s.levelId === '__new' ? 'selected' : ''}>+ Neue Etage …</option></select></div>
-        ${s.levelId === '__new' ? `<div class="field"><label for="wzNewLevel">Name der neuen Etage</label><input id="wzNewLevel" value="${esc(s.newLevel || '')}" placeholder="wird aus dem Plan gelesen, z. B. Obergeschoss"></div>` : `<p class="hint">Die Räume dieser Etage werden beim Übernehmen ersetzt (oder ergänzt).</p>`}
-        <p class="hint">Ein Grundriss pro Etage. Fotos vom Papierplan gehen auch, im nächsten Schritt kannst du sie gerade ziehen.</p>
+        ${this.pending ? `<div class="wz-resume"><strong>${this.pending.status === 'running' ? t('assistant.wizard.detectionStillRunning') : t('assistant.wizard.lastDetectionFinished', { rooms: this.pending.result?.rooms ? t('assistant.wizard.roomCountSuffix', { count: this.pending.result.rooms.length }) : '' })}</strong><span>${t('assistant.wizard.startedMinutesAgo', { minutes: Math.max(1, Math.round((Date.now() / 1000 - this.pending.started) / 60)) })}</span><div class="actions"><button class="btn primary small" data-act="resume">${t(this.pending.status === 'running' ? 'assistant.wizard.showProgress' : 'assistant.wizard.openResult')}</button><button class="btn small" data-act="dismissJob">${t('assistant.common.discard')}</button></div></div>` : ''}
+        ${s.pdf ? `<div class="field"><span class="lbl">${t('assistant.wizard.pdfPage')}</span><div class="wz-pages" id="wzPages">${Array.from({ length: s.pdf.pages }, (_, i) => `<button data-page="${i}" aria-pressed="${i === s.page}"><span>${t('assistant.wizard.pageNumber', { number: i + 1 })}</span></button>`).join('')}</div></div>` : ''}
+        <div class="field"><label for="wzLevel">${t('assistant.wizard.chooseLevel')}</label><select id="wzLevel">${levels.map((l) => `<option value="${l.id}" ${l.id === s.levelId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="__new" ${s.levelId === '__new' ? 'selected' : ''}>${t('assistant.wizard.newLevelOption')}</option></select></div>
+        ${s.levelId === '__new' ? `<div class="field"><label for="wzNewLevel">${t('assistant.wizard.newLevelName')}</label><input id="wzNewLevel" value="${esc(s.newLevel || '')}" placeholder="${t('assistant.wizard.newLevelPlaceholder')}"></div>` : `<p class="hint">${t('assistant.wizard.existingLevelHint')}</p>`}
+        <p class="hint">${t('assistant.wizard.onePlanPerLevel')}</p>
       </div></div>`;
   }
   wire0() {
@@ -253,27 +255,27 @@ export class PlanWizard {
     drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); const f = e.dataTransfer.files?.[0]; if (f) this.loadFile(f); });
     for (const id of ['wzFile', 'wzCam']) R.querySelector(`#${id}`)?.addEventListener('change', (e) => e.target.files?.[0] && this.loadFile(e.target.files[0]));
     R.querySelector('[data-act="paste"]').onclick = async () => {
-      try { const items = await navigator.clipboard.read(); for (const it of items) { const t = it.types.find((x) => x.startsWith('image/')); if (t) return this.loadFile(await it.getType(t), 'Zwischenablage'); } this.msg('In der Zwischenablage ist kein Bild.', true); }
-      catch { this.msg('Der Browser erlaubt das Lesen hier nicht. Drück Strg+V (Mac: ⌘+V) in diesem Fenster.', true); }
+      try { const items = await navigator.clipboard.read(); for (const it of items) { const type = it.types.find((x) => x.startsWith('image/')); if (type) return this.loadFile(await it.getType(type), t('assistant.wizard.clipboard')); } this.msg(t('assistant.wizard.clipboardNoImage'), true); }
+      catch { this.msg(t('assistant.wizard.clipboardDenied'), true); }
     };
     R.querySelector('[data-act="resume"]')?.addEventListener('click', () => this.resumeJob());
     R.querySelector('[data-act="dismissJob"]')?.addEventListener('click', () => { const j = this.pending; this.pending = null; this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: j.id }).catch(() => {}); this.render(); });
     R.querySelector('#wzLevel').onchange = (e) => { s.levelId = e.target.value; this.render(); };
     R.querySelector('#wzNewLevel')?.addEventListener('input', (e) => { s.newLevel = e.target.value; s.newLevelTouched = true; });
-    R.querySelector('#wzPages')?.addEventListener('click', async (e) => { const b = e.target.closest('[data-page]'); if (!b) return; s.page = +b.dataset.page; this.msg('Seite wird geladen …'); s.src = await s.pdf.render(s.page); this.render(); });
+    R.querySelector('#wzPages')?.addEventListener('click', async (e) => { const b = e.target.closest('[data-page]'); if (!b) return; s.page = +b.dataset.page; this.msg(t('assistant.wizard.loadingPage')); s.src = await s.pdf.render(s.page); this.render(); });
     if (s.pdf) this.pdfThumbs();
   }
   async pdfThumbs() { const s = this.st; for (let i = 0; i < Math.min(s.pdf.pages, 12); i++) { const c = await s.pdf.thumb(i); const b = this.root.querySelector(`[data-page="${i}"]`); if (b && !b.querySelector('img')) b.insertAdjacentHTML('afterbegin', `<img alt="" src="${c.toDataURL('image/jpeg', 0.7)}">`); } }
   async loadFile(file, name) {
-    const s = this.st; this.msg('Lade …');
+    const s = this.st; this.msg(t('assistant.common.loading'));
     try {
       if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
-        this.msg('PDF wird geöffnet …'); const { openPdf } = await import('./pdfload.js');
+        this.msg(t('assistant.wizard.openingPdf')); const { openPdf } = await import('./pdfload.js');
         s.pdf = await openPdf(file); s.page = 0; s.src = await s.pdf.render(0);
       } else { s.pdf = null; const bmp = await createImageBitmap(file); s.src = limit(bmp, 4000); }
-      s.srcName = name || file.name || 'Bild'; s.quad = null; s.rot90 = 0; s.fine = 0; s.mpp = null; s.measure = { a: null, b: null, m: '' }; s.check = { a: null, b: null, m: '' }; s.result = null;
+      s.srcName = name || file.name || t('assistant.wizard.image'); s.quad = null; s.rot90 = 0; s.fine = 0; s.mpp = null; s.measure = { a: null, b: null, m: '' }; s.check = { a: null, b: null, m: '' }; s.result = null;
       this.render();
-    } catch (e) { console.error(e); this.msg(`Konnte die Datei nicht öffnen: ${e.message || e}`, true); }
+    } catch (e) { console.error(e); this.msg(t('assistant.wizard.fileOpenFailed', { error: e.message || e }), true); }
   }
 
   /* ---------- step 2: align ---------- */
@@ -281,14 +283,14 @@ export class PlanWizard {
   fullQuad() { const w = this.rotated.width, h = this.rotated.height; return [[0, 0], [w, 0], [w, h], [0, h]]; }
   step1() {
     const s = this.st;
-    return `<div class="wz-two"><div class="wz-canvas" id="wzWrap"><canvas id="wzCv"></canvas><div class="wz-zoom"><button class="ibtn" data-z="in" title="Vergrößern">+</button><button class="ibtn" data-z="out" title="Verkleinern">−</button><button class="ibtn" data-z="fit" title="Einpassen">⤢</button></div></div>
+    return `<div class="wz-two"><div class="wz-canvas" id="wzWrap"><canvas id="wzCv"></canvas><div class="wz-zoom"><button class="ibtn" data-z="in" title="${t('assistant.common.zoomIn')}">+</button><button class="ibtn" data-z="out" title="${t('assistant.common.zoomOut')}">−</button><button class="ibtn" data-z="fit" title="${t('assistant.common.fit')}">⤢</button></div></div>
       <div class="wz-side">
-        <p class="hint"><strong>Ecken ziehen</strong>, um den Plan zuzuschneiden. Bei schräg fotografierten Plänen jede Ecke auf die Ecke des Papiers ziehen, dann wird das Bild entzerrt.</p>
-        <div class="field"><span class="lbl">Drehen</span><div class="actions"><button class="btn small" data-rot="-1">⟲ 90°</button><button class="btn small" data-rot="1">⟳ 90°</button></div></div>
-        <div class="field"><label for="wzFine">Feinausrichtung <output>${s.fine.toFixed(1)}°</output></label><input type="range" id="wzFine" min="-10" max="10" step="0.1" value="${s.fine}"></div>
-        <label class="chk"><input type="checkbox" id="wzBw" ${s.bw ? 'checked' : ''}> Schwarzweiß</label>
-        <div class="field"><label for="wzCon">Kontrast verstärken <output>${s.contrast}</output></label><input type="range" id="wzCon" min="0" max="100" step="5" value="${s.contrast}"></div>
-        <div class="actions"><button class="btn small" data-act="resetQuad">Zuschnitt zurücksetzen</button></div>
+        <p class="hint">${t('assistant.wizard.alignHint')}</p>
+        <div class="field"><span class="lbl">${t('assistant.wizard.rotate')}</span><div class="actions"><button class="btn small" data-rot="-1">⟲ 90°</button><button class="btn small" data-rot="1">⟳ 90°</button></div></div>
+        <div class="field"><label for="wzFine">${t('assistant.wizard.fineAlignment')} <output>${s.fine.toFixed(1)}°</output></label><input type="range" id="wzFine" min="-10" max="10" step="0.1" value="${s.fine}"></div>
+        <label class="chk"><input type="checkbox" id="wzBw" ${s.bw ? 'checked' : ''}> ${t('assistant.wizard.blackAndWhite')}</label>
+        <div class="field"><label for="wzCon">${t('assistant.wizard.increaseContrast')} <output>${s.contrast}</output></label><input type="range" id="wzCon" min="0" max="100" step="5" value="${s.contrast}"></div>
+        <div class="actions"><button class="btn small" data-act="resetQuad">${t('assistant.wizard.resetCrop')}</button></div>
       </div></div>`;
   }
   wire1() {
@@ -319,19 +321,19 @@ export class PlanWizard {
     const px = (l) => (l.a && l.b ? dist(l.a, l.b) : 0);
     const dev = s.mpp && c.a && c.b && +c.m > 0 ? ((px(c) * s.mpp) / +c.m - 1) * 100 : null;
     return `<div class="wz-two"><div class="wz-canvas" id="wzWrap"><canvas id="wzCv"></canvas><canvas class="wz-loupe" id="wzLoupe" width="150" height="150" hidden></canvas><div class="wz-stephint" id="wzStepHint"></div>
-        <div class="wz-zoom"><button class="ibtn" data-z="in" title="Vergrößern">+</button><button class="ibtn" data-z="out" title="Verkleinern">−</button><button class="ibtn" data-z="fit" title="Einpassen">⤢</button></div></div>
+        <div class="wz-zoom"><button class="ibtn" data-z="in" title="${t('assistant.common.zoomIn')}">+</button><button class="ibtn" data-z="out" title="${t('assistant.common.zoomOut')}">−</button><button class="ibtn" data-z="fit" title="${t('assistant.common.fit')}">⤢</button></div></div>
       <div class="wz-side">
-        ${this.ai?.configured ? `<p class="wz-tip"><strong>Du musst nichts messen.</strong> Die KI liest die Maßketten beim Erkennen selbst. Einfach unten auf „Räume + Maßstab per KI erkennen“. Messen nur, wenn der Plan keine Maße hat oder du den Maßstab vorgeben willst.</p>` : ''}${s.scaleSearching ? this.progressHtml('KI sucht Maßangaben …') : ''}<p class="hint"><strong>Selbst messen:</strong> eine bekannte Strecke, am besten eine lange Maßkette oder bemaßte Außenwand: Anfang anklicken, Ende anklicken, Länge eintragen. Punkte rasten auf Linien ein (Alt gedrückt = ohne Einrasten) und lassen sich danach noch ziehen. Mausrad oder zwei Finger zoomen; verschieben mit rechter Maustaste oder Ziehen, sobald die Strecke steht.</p>
-        <div class="field"><label for="wzLen">Länge der blauen Strecke (m)</label><input type="text" inputmode="decimal" id="wzLen" placeholder="z. B. 11,49" value="${esc(m.m)}" ${m.a && m.b ? '' : 'disabled'}></div>
-        ${s.mpp ? `<p class="ok">Maßstab: ${(1 / s.mpp).toFixed(1)} Pixel pro Meter · Bild ${(s.img.width * s.mpp).toFixed(2)} × ${(s.img.height * s.mpp).toFixed(2)} m</p>` : ''}
-        ${s.mpp ? `<details ${c.a ? 'open' : ''}><summary>Kontrollstrecke (optional)</summary>
-          <p class="hint">Eine zweite bemaßte Strecke messen (orange) und Länge eintragen.</p>
-          <div class="actions"><button class="btn small" data-act="check">${c.a ? 'Neu messen' : 'Kontrollstrecke messen'}</button></div>
-          ${c.a && c.b ? `<div class="field"><label for="wzCheck">Länge laut Plan (m)</label><input type="text" inputmode="decimal" id="wzCheck" value="${esc(c.m)}" placeholder="${(px(c) * s.mpp).toFixed(2)}"></div>` : ''}
-          ${dev != null ? `<p class="${Math.abs(dev) < 2 ? 'ok' : 'warn'}">Abweichung: ${dev > 0 ? '+' : ''}${dev.toFixed(1)} %${Math.abs(dev) < 2 ? ' – passt' : ' – bitte genauer messen'}</p>` : ''}
+        ${this.ai?.configured ? `<p class="wz-tip">${t('assistant.wizard.aiScaleTip')}</p>` : ''}${s.scaleSearching ? this.progressHtml(t('assistant.wizard.aiSearchingDimensions')) : ''}<p class="hint">${t('assistant.wizard.manualMeasureHint')}</p>
+        <div class="field"><label for="wzLen">${t('assistant.wizard.blueLineLength')}</label><input type="text" inputmode="decimal" id="wzLen" placeholder="${t('assistant.wizard.lengthExample')}" value="${esc(m.m)}" ${m.a && m.b ? '' : 'disabled'}></div>
+        ${s.mpp ? `<p class="ok">${t('assistant.wizard.scaleSummary', { pixels: (1 / s.mpp).toFixed(1), width: (s.img.width * s.mpp).toFixed(2), height: (s.img.height * s.mpp).toFixed(2) })}</p>` : ''}
+        ${s.mpp ? `<details ${c.a ? 'open' : ''}><summary>${t('assistant.wizard.checkDistance')}</summary>
+          <p class="hint">${t('assistant.wizard.checkDistanceHint')}</p>
+          <div class="actions"><button class="btn small" data-act="check">${t(c.a ? 'assistant.wizard.measureAgain' : 'assistant.wizard.measureCheckDistance')}</button></div>
+          ${c.a && c.b ? `<div class="field"><label for="wzCheck">${t('assistant.wizard.planLength')}</label><input type="text" inputmode="decimal" id="wzCheck" value="${esc(c.m)}" placeholder="${(px(c) * s.mpp).toFixed(2)}"></div>` : ''}
+          ${dev != null ? `<p class="${Math.abs(dev) < 2 ? 'ok' : 'warn'}">${t(Math.abs(dev) < 2 ? 'assistant.wizard.deviationFits' : 'assistant.wizard.deviationRemeasure', { deviation: `${dev > 0 ? '+' : ''}${dev.toFixed(1)}` })}</p>` : ''}
         </details>` : ''}
-        ${this.ai?.configured ? `<div class="field"><span class="lbl">KI-Hilfe</span><button class="btn small" data-act="aiScale" ${s.busy ? 'disabled' : ''}>${icon('sparkle')}Maße im Plan suchen</button>${s.dims ? (s.dims.length ? `<div class="wz-dims">${s.dims.map((d, i) => `<button class="btn small" data-dim="${i}">${esc(d.label || d.meters)} → ${d.meters} m</button>`).join('')}</div><p class="hint">Antippen übernimmt die Strecke.</p>` : '<p class="hint">Keine Maße gefunden.</p>') : ''}</div>` : ''}
-        <div class="actions"><button class="btn small" data-act="remeasure">${icon('ruler')}Strecke neu messen</button></div>
+        ${this.ai?.configured ? `<div class="field"><span class="lbl">${t('assistant.wizard.aiHelp')}</span><button class="btn small" data-act="aiScale" ${s.busy ? 'disabled' : ''}>${icon('sparkle')}${t('assistant.wizard.findDimensions')}</button>${s.dims ? (s.dims.length ? `<div class="wz-dims">${s.dims.map((d, i) => `<button class="btn small" data-dim="${i}">${esc(d.label || d.meters)} → ${d.meters} m</button>`).join('')}</div><p class="hint">${t('assistant.wizard.tapToUseDistance')}</p>` : `<p class="hint">${t('assistant.wizard.noDimensions')}</p>`) : ''}</div>` : ''}
+        <div class="actions"><button class="btn small" data-act="remeasure">${icon('ruler')}${t('assistant.wizard.remeasureDistance')}</button></div>
       </div></div>`;
   }
   wire2() {
@@ -377,8 +379,8 @@ export class PlanWizard {
     };
     const hint = R.querySelector('#wzStepHint');
     const setHint = () => {
-      const col = M.which === 'check' ? 'Kontrollstrecke' : 'Strecke';
-      hint.innerHTML = M.phase === 'p1' ? `<b>1.</b> Anfang der ${col} anklicken` : M.phase === 'p2' ? `<b>2.</b> Ende der ${col} anklicken (Esc bricht ab)` : s.mpp ? 'Fertig. Punkte lassen sich noch ziehen.' : '<b>3.</b> Länge rechts eintragen';
+      const distance = t(M.which === 'check' ? 'assistant.wizard.checkDistanceNoun' : 'assistant.wizard.distanceNoun');
+      hint.innerHTML = M.phase === 'p1' ? t('assistant.wizard.measureStepStart', { distance }) : M.phase === 'p2' ? t('assistant.wizard.measureStepEnd', { distance }) : s.mpp ? t('assistant.wizard.measureDone') : t('assistant.wizard.measureStepLength');
       hint.classList.toggle('active', !!M.phase);
     };
     const finish = () => { M.phase = null; this.rubber = null; loupe.hidden = true; this.recalc(); this.render(); setTimeout(() => this.root.querySelector(M.which === 'check' ? '#wzCheck' : '#wzLen')?.focus(), 30); };
@@ -399,7 +401,7 @@ export class PlanWizard {
       const pr = press; press = null; if (!pr) return;
       if (pr.handle) { loupe.hidden = true; this.render(); return; }
       if (pr.first && !pr.dragging) return; // simple click: wait for the second point
-      const L = line(); if (!this.rubber || dist(v.toScr(L.a), v.toScr(this.rubber)) < 12) { this.msg('Die Strecke ist zu kurz – Ende weiter entfernt anklicken.', true); return; }
+      const L = line(); if (!this.rubber || dist(v.toScr(L.a), v.toScr(this.rubber)) < 12) { this.msg(t('assistant.wizard.distanceTooShort'), true); return; }
       L.b = this.rubber; finish();
     };
     v.onHover = (p, e) => {
@@ -419,9 +421,9 @@ export class PlanWizard {
     R.querySelector('[data-act="check"]')?.addEventListener('click', () => { s.check = { a: null, b: null, m: '' }; M.which = 'check'; M.phase = 'p1'; setHint(); v.draw(); });
     R.querySelector('[data-act="remeasure"]').onclick = () => { s.measure = { a: null, b: null, m: s.measure.m }; s.mpp = null; M.which = 'main'; M.phase = 'p1'; this.render(); };
     R.querySelector('[data-act="aiScale"]')?.addEventListener('click', () => this.aiScale());
-    R.querySelector('.wz-dims')?.addEventListener('click', (e) => { const b = e.target.closest('[data-dim]'); if (!b) return; const d = s.dims[+b.dataset.dim]; s.measure = { a: d.from, b: d.to, m: String(d.meters).replace('.', ',') }; M.which = 'main'; M.phase = null; this.recalc(); this.render(); });
+    R.querySelector('.wz-dims')?.addEventListener('click', (e) => { const b = e.target.closest('[data-dim]'); if (!b) return; const d = s.dims[+b.dataset.dim]; s.measure = { a: d.from, b: d.to, m: localizedDecimal(d.meters) }; M.which = 'main'; M.phase = null; this.recalc(); this.render(); });
     setHint();
-    if (s.scaleSearching) { hint.innerHTML = 'KI sucht Maßangaben im Plan …'; hint.classList.add('active'); }
+    if (s.scaleSearching) { hint.innerHTML = t('assistant.wizard.aiSearchingDimensionsInPlan'); hint.classList.add('active'); }
   }
   recalc() { const s = this.st, m = s.measure; const len = parseFloat(String(m.m).replace(',', '.')); s.mpp = m.a && m.b && len > 0 && dist(m.a, m.b) > 5 ? len / dist(m.a, m.b) : null; }
   // Model image with the current reading drawn on top (numbered polygons) for the self-check pass.
@@ -445,8 +447,8 @@ export class PlanWizard {
       if (this.detectRun !== run) throw Object.assign(new Error('cancelled'), { cancelled: true });
       let job;
       try { ({ job } = await app.hass.callWS({ type: 'hometwin/agent/job', job_id })); fails = 0; }
-      catch (e) { if (++fails > 25) throw new Error('Keine Verbindung zu Home Assistant'); continue; } // reconnecting
-      if (!job) throw new Error('Auftrag nicht mehr vorhanden (Home Assistant neu gestartet?)');
+      catch (e) { if (++fails > 25) throw new Error(t('assistant.wizard.noHomeAssistantConnection')); continue; } // reconnecting
+      if (!job) throw new Error(t('assistant.wizard.jobMissing'));
       this.job = job; this.updateProgress();
       if (job.status === 'done') { app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id }).catch(() => {}); return job.result; }
       if (job.status === 'error') throw new Error(job.error);
@@ -461,10 +463,10 @@ export class PlanWizard {
     const order = ['upload', 'queued', 'sent', 'reading', 'parsing', 'fitting'];
     const at = Math.max(0, order.indexOf(j.stage === 'chars' ? 'reading' : j.stage));
     const lines = [
-      ['upload', 'Bild wird an Home Assistant übertragen'],
-      ['sent', `Bild an das Modell gesendet${j.kb ? ` (${j.kb} KB)` : ''}`],
-      ['reading', j.chars ? `Modell antwortet … ${j.chars.toLocaleString('de-DE')} Zeichen${j.rooms ? ` · ${j.rooms} ${this.scaleOnly ? 'Maße' : 'Räume'} gelesen` : ''}` : 'Modell liest den Plan (erste Antwort kann 10–40 s dauern)'],
-      ...(this.scaleOnly ? [] : [['parsing', 'Antwort wird ausgewertet'], ['fitting', 'Räume an Plan-Maße anpassen, prüfen']]),
+      ['upload', t('assistant.wizard.progressUpload')],
+      ['sent', t('assistant.wizard.progressSent', { size: j.kb ? ` (${j.kb} KB)` : '' })],
+      ['reading', j.chars ? t('assistant.wizard.progressReading', { chars: j.chars.toLocaleString(getLanguage() === 'de' ? 'de-DE' : 'en-US'), result: j.rooms ? t('assistant.wizard.progressReadResult', { count: j.rooms, item: t(this.scaleOnly ? 'assistant.wizard.dimensions' : 'assistant.wizard.rooms') }) : '' }) : t('assistant.wizard.progressModelReading')],
+      ...(this.scaleOnly ? [] : [['parsing', t('assistant.wizard.progressParsing')], ['fitting', t('assistant.wizard.progressFitting')]]),
     ];
     const html = lines.map(([k, l]) => { const i = order.indexOf(k); return i > at ? '' : `<li class="${i === at || (k === 'reading' && at === order.indexOf('reading')) ? 'cur' : 'done'}">${l}</li>`; }).join('');
     for (const el of R.querySelectorAll('[data-prog]')) el.innerHTML = html;
@@ -473,40 +475,40 @@ export class PlanWizard {
   }
   progressHtml(title) {
     return `<div class="wz-live"><h3>${title} <span class="wz-time" data-time>0 s</span></h3><ol class="wz-progress" data-prog></ol>
-      <p class="hint" data-slow hidden>Das dauert länger als üblich. Schneller: <code>google/gemini-3.8-flash</code> mit Reasoning „Aus“ oder „Low“. Nach 4 Minuten bricht der Server ab. Der Auftrag läuft auch weiter, wenn du den Assistenten schließt.</p>
-      <div class="actions"><button class="btn small" data-act="cancelDetect">Abbrechen</button></div></div>`;
+      <p class="hint" data-slow hidden>${t('assistant.wizard.slowDetectionHint')}</p>
+      <div class="actions"><button class="btn small" data-act="cancelDetect">${t('assistant.common.cancel')}</button></div></div>`;
   }
-  cancelJob() { this.detectRun = null; this.stopTicker(); this.st.busy = false; this.st.scaleSearching = false; this.st.err = 'Abgebrochen.'; this.render(); }
+  cancelJob() { this.detectRun = null; this.stopTicker(); this.st.busy = false; this.st.scaleSearching = false; this.st.err = t('assistant.common.cancelled'); this.render(); }
   async aiScale() {
     const s = this.st; if (s.busy) return; s.busy = true; s.scaleSearching = true; this.scaleOnly = true; s.err = null; this.render();
     try {
       const im = this.modelImage();
       const res = await this.runJob({ mode: 'scale', image: im.url, width: im.w, height: im.h });
       s.dims = (res.dimensions || []).map((d) => ({ ...d, from: [d.from[0] * im.k, d.from[1] * im.k], to: [d.to[0] * im.k, d.to[1] * im.k] }));
-      if (s.dims.length && !s.measure.b) { const d = [...s.dims].sort((a, b) => b.meters - a.meters)[0]; s.measure = { a: d.from, b: d.to, m: String(d.meters).replace('.', ',') }; this.meas = null; this.recalc(); }
-      if (!s.dims.length) s.err = 'Keine lesbaren Maßketten gefunden – bitte eine Strecke selbst messen.';
-    } catch (e) { if (e.cancelled) return; s.err = `KI-Hilfe fehlgeschlagen: ${e.message || e.code || e}`; }
+      if (s.dims.length && !s.measure.b) { const d = [...s.dims].sort((a, b) => b.meters - a.meters)[0]; s.measure = { a: d.from, b: d.to, m: localizedDecimal(d.meters) }; this.meas = null; this.recalc(); }
+      if (!s.dims.length) s.err = t('assistant.wizard.noReadableDimensions');
+    } catch (e) { if (e.cancelled) return; s.err = t('assistant.wizard.aiHelpFailed', { error: e.message || e.code || e }); }
     this.stopTicker(); s.busy = false; s.scaleSearching = false; this.scaleOnly = false; if (s.step === 2) this.render();
-    if (s.mpp) this.msg(`Maßstab aus der Maßkette „${s.measure.m} m“ übernommen – bitte kurz prüfen.`);
+    if (s.mpp) this.msg(t('assistant.wizard.scaleAppliedFromDimension', { length: s.measure.m }));
   }
 
   /* ---------- step 4: recognise ---------- */
   step3() {
     const s = this.st;
-    if (!this.ai?.configured) return `<div class="wz-center"><h3>Kein KI-Assistent eingerichtet</h3>
-      <p>Ohne KI zeichnest du die Räume selbst auf dem Plan nach. Der Plan wird dafür mit dem Maßstab als Vorlage in die Etage gelegt.</p>
-      <p class="hint">KI einrichten: Einstellungen → Geräte &amp; Dienste → HomeTwin → Konfigurieren (Endpunkt, Modell mit Bildverständnis, API-Key).</p>
-      <div class="actions"><button class="btn" data-wz="back2">Zurück</button><button class="btn primary" data-act="manual">Plan als Vorlage nutzen und selbst zeichnen</button></div></div>`;
+    if (!this.ai?.configured) return `<div class="wz-center"><h3>${t('assistant.wizard.aiNotConfigured')}</h3>
+      <p>${t('assistant.wizard.manualWithoutAi')}</p>
+      <p class="hint">${t('assistant.wizard.aiSetupHint')}</p>
+      <div class="actions"><button class="btn" data-wz="back2">${t('assistant.common.back')}</button><button class="btn primary" data-act="manual">${t('assistant.wizard.useAsTemplate')}</button></div></div>`;
     return `<div class="wz-two"><div class="wz-canvas scanning" id="wzWrap"><canvas id="wzCv"></canvas>${s.busy ? '<div class="wz-scan"></div>' : ''}</div>
       <div class="wz-side">
-        ${s.busy ? this.progressHtml(this.passTitle || (s.opts.refine !== false ? 'Durchgang 1 von 2: Erkenne Räume …' : 'Erkenne Räume …')) : `<h3>Erkennung</h3>${s.err ? `<p class="warn">${esc(s.err)}</p>` : ''}<p class="hint">Modell: <code>${esc(this.ai?.model || '–')}</code>. Empfohlen: <code>google/gemini-3.8-flash</code>, Reasoning „Aus“ oder „Low“ – etwa 30–120 s.${s.mpp ? '' : ' Der Maßstab wird dabei aus den Maßketten im Plan gelesen.'}</p>`}
-        <fieldset ${s.busy ? 'disabled' : ''}><legend class="lbl">Was erkennen?</legend>
-          <label class="chk"><input type="checkbox" checked disabled> Räume und Außenflächen</label>
-          <label class="chk"><input type="checkbox" id="wzOpen" ${s.opts.openings ? 'checked' : ''}> Türen und Fenster</label>
-          <label class="chk"><input type="checkbox" id="wzStairs" ${s.opts.stairs ? 'checked' : ''}> Treppen</label>
-          <label class="chk"><input type="checkbox" id="wzRefine" ${s.opts.refine !== false ? 'checked' : ''}> Zweiter Durchgang: KI prüft ihr Ergebnis (genauer, ca. doppelte Zeit)</label></fieldset>
-        <div class="field"><label for="wzHints">Hinweise für die KI (optional)</label><textarea id="wzHints" rows="3" placeholder="z. B. Die Garage links ist unbeheizt. Der Flur geht über die ganze Hausbreite." ${s.busy ? 'disabled' : ''}>${esc(s.hints)}</textarea></div>
-        <div class="actions"><button class="btn small" data-wz="back2" ${s.busy ? 'disabled' : ''}>Zurück zum Maßstab</button><button class="btn primary small" data-act="detect" ${s.busy ? 'disabled' : ''}>${icon('sparkle')}${s.err ? 'Erneut versuchen' : 'Erkennen'}</button></div>
+        ${s.busy ? this.progressHtml(this.passTitle || t(s.opts.refine !== false ? 'assistant.wizard.firstPassRecognizing' : 'assistant.wizard.recognizingRooms')) : `<h3>${t('assistant.wizard.recognition')}</h3>${s.err ? `<p class="warn">${esc(s.err)}</p>` : ''}<p class="hint">${t('assistant.wizard.modelRecommendation', { model: esc(this.ai?.model || '–'), scale: s.mpp ? '' : t('assistant.wizard.scaleReadDuringRecognition') })}</p>`}
+        <fieldset ${s.busy ? 'disabled' : ''}><legend class="lbl">${t('assistant.wizard.whatToRecognize')}</legend>
+          <label class="chk"><input type="checkbox" checked disabled> ${t('assistant.wizard.roomsAndOutdoor')}</label>
+          <label class="chk"><input type="checkbox" id="wzOpen" ${s.opts.openings ? 'checked' : ''}> ${t('assistant.wizard.doorsAndWindows')}</label>
+          <label class="chk"><input type="checkbox" id="wzStairs" ${s.opts.stairs ? 'checked' : ''}> ${t('assistant.wizard.stairs')}</label>
+          <label class="chk"><input type="checkbox" id="wzRefine" ${s.opts.refine !== false ? 'checked' : ''}> ${t('assistant.wizard.secondPassOption')}</label></fieldset>
+        <div class="field"><label for="wzHints">${t('assistant.wizard.aiHints')}</label><textarea id="wzHints" rows="3" placeholder="${t('assistant.wizard.aiHintsPlaceholder')}" ${s.busy ? 'disabled' : ''}>${esc(s.hints)}</textarea></div>
+        <div class="actions"><button class="btn small" data-wz="back2" ${s.busy ? 'disabled' : ''}>${t('assistant.wizard.backToScale')}</button><button class="btn primary small" data-act="detect" ${s.busy ? 'disabled' : ''}>${icon('sparkle')}${t(s.err ? 'assistant.common.tryAgain' : 'assistant.common.recognize')}</button></div>
       </div></div>`;
   }
   wire3() {
@@ -529,26 +531,26 @@ export class PlanWizard {
     try {
       const im = this.modelImage();
       const res = await this.runJob({ mode: 'rooms', image: im.url, width: im.w, height: im.h, mpp: s.mpp ? s.mpp * im.k : null, x0: 0, z0: 0,
-        options: s.opts, hints: s.hints || undefined, language: (this.app.hass.language || navigator.language || 'de').slice(0, 2), locked: locked.map((r) => ({ name: r.name, points: r.points })) });
+        options: s.opts, hints: s.hints || undefined, language: getLanguage(), locked: locked.map((r) => ({ name: r.name, points: r.points })) });
       const t0 = this.detectStart; let out = res;
       if (s.opts.refine !== false && res.rooms?.length) { // pass 2: the model checks its own reading on an overlay
-        this.passTitle = 'Durchgang 2 von 2: KI prüft ihr Ergebnis …'; this.render();
+        this.passTitle = t('assistant.wizard.secondPassChecking'); this.render();
         try {
           const mppM = res.mpp || s.mpp * im.k, px = (p) => [Math.round(p[0] / mppM), Math.round(p[1] / mppM)];
           const current = { rooms: res.rooms.map((r, i) => ({ nr: i + 1, name: r.name, kind: r.kind, points: r.points.map(px), label_area_m2: r.label_area ?? undefined })), openings: (res.openings || []).map((o) => ({ type: o.type, from: px(o.from), to: px(o.to) })), stairs: (res.stairs || []).map((t) => ({ points: t.points.map(px), up_from: t.up_from && px(t.up_from), up_to: t.up_to && px(t.up_to) })) };
-          const ref = await this.runJob({ mode: 'refine', image: im.url, overlay: this.overlayImage(im, current.rooms), current, width: im.w, height: im.h, mpp: mppM, x0: 0, z0: 0, options: s.opts, hints: s.hints || undefined, language: (this.app.hass.language || navigator.language || 'de').slice(0, 2) });
+          const ref = await this.runJob({ mode: 'refine', image: im.url, overlay: this.overlayImage(im, current.rooms), current, width: im.w, height: im.h, mpp: mppM, x0: 0, z0: 0, options: s.opts, hints: s.hints || undefined, language: getLanguage() });
           // accept pass 2 only if it is not worse: same overall size, area errors vs. the printed m² not larger
           const err = (x) => { const v = (x.rooms || []).filter((r) => r.label_area > 0.5 && r.net_area > 0).map((r) => Math.min(1, Math.abs(r.net_area / r.label_area - 1))); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0; };
           const size = (x) => { const b = bbox((x.rooms || []).flatMap((r) => r.points)); return Math.sqrt(b.w * b.d); };
           const ratio = ref?.rooms?.length ? size(ref) / size(res) : 0, e1 = err(res), e2 = ref?.rooms ? err(ref) : 1;
-          if (ref?.rooms?.length && (ratio < 0.92 || ratio > 1.08 || e2 > e1 + 0.02)) out = { ...res, adjusted: [...(res.adjusted || []), `Zweiter Durchgang verworfen (Abweichung ${Math.round(e2 * 100)} % statt ${Math.round(e1 * 100)} %, Größe ×${ratio.toFixed(2)}) – erster Durchgang übernommen`] };
-          else if (ref?.rooms?.length >= Math.max(1, res.rooms.length * 0.6)) out = { ...ref, mpp: res.mpp, scale_source: res.scale_source, level: ref.level || res.level, roof: ref.roof || res.roof, adjusted: ['Zweiter Durchgang: KI hat ihr Ergebnis geprüft', ...(ref.adjusted || [])] };
-          else out = { ...res, adjusted: [...(res.adjusted || []), 'Zweiter Durchgang lieferte kein brauchbares Ergebnis – erster Durchgang übernommen'] };
-        } catch (e) { if (e.cancelled) { this.passTitle = null; return; } out = { ...res, adjusted: [...(res.adjusted || []), `Zweiter Durchgang fehlgeschlagen (${e.message || e}) – erster Durchgang übernommen`] }; }
+          if (ref?.rooms?.length && (ratio < 0.92 || ratio > 1.08 || e2 > e1 + 0.02)) out = { ...res, adjusted: [...(res.adjusted || []), t('assistant.wizard.secondPassRejected', { secondError: Math.round(e2 * 100), firstError: Math.round(e1 * 100), ratio: ratio.toFixed(2) })] };
+          else if (ref?.rooms?.length >= Math.max(1, res.rooms.length * 0.6)) out = { ...ref, mpp: res.mpp, scale_source: res.scale_source, level: ref.level || res.level, roof: ref.roof || res.roof, adjusted: [t('assistant.wizard.secondPassAccepted'), ...(ref.adjusted || [])] };
+          else out = { ...res, adjusted: [...(res.adjusted || []), t('assistant.wizard.secondPassUnusable')] };
+        } catch (e) { if (e.cancelled) { this.passTitle = null; return; } out = { ...res, adjusted: [...(res.adjusted || []), t('assistant.wizard.secondPassFailed', { error: e.message || e })] }; }
       }
       this.passTitle = null; this.detectStart = t0;
       this.stopTicker(); this.useResult(out, im.k, locked, Math.round((Date.now() - t0) / 1000));
-    } catch (e) { this.passTitle = null; if (e.cancelled) return; this.stopTicker(); s.busy = false; s.err = `Erkennung fehlgeschlagen: ${e.message || e.code || e}`; if (keepLocked) this.go(4); else this.go(3); }
+    } catch (e) { this.passTitle = null; if (e.cancelled) return; this.stopTicker(); s.busy = false; s.err = t('assistant.wizard.recognitionFailed', { error: e.message || e.code || e }); if (keepLocked) this.go(4); else this.go(3); }
   }
   // Takes a recognition result (metres; model image scale k) into the review step.
   useResult(res, k = 1, locked = [], seconds = null) {
@@ -556,7 +558,7 @@ export class PlanWizard {
     if (!s.mpp && res.mpp) { s.mpp = res.mpp / k; s.measure = { a: null, b: null, m: '' }; s.scaleFromDims = true; }
     const rooms = res.rooms.map((r, i) => ({ ...r, id: newId('wr'), color: COLORS[(locked.length + i) % COLORS.length] }));
     const sc = res.scale_check && Math.abs(res.scale_check.factor - 1) > 0.025 ? res.scale_check : null;
-    s.result = { level: res.level || s.result?.level || null, roof: res.roof || s.result?.roof || null, rooms: [...locked, ...rooms], openings: s.opts.openings ? res.openings || [] : [], stairs: s.opts.stairs ? res.stairs || [] : [], notes: res.notes || '', adjusted: [...(res.scale_source === 'dimensions' ? ['Maßstab aus den Maßketten im Plan gelesen'] : []), ...(res.adjusted || [])], serverProblems: res.problems || [], scale: sc, seconds };
+    s.result = { level: res.level || s.result?.level || null, roof: res.roof || s.result?.roof || null, rooms: [...locked, ...rooms], openings: s.opts.openings ? res.openings || [] : [], stairs: s.opts.stairs ? res.stairs || [] : [], notes: res.notes || '', adjusted: [...(res.scale_source === 'dimensions' ? [t('assistant.wizard.scaleReadFromDimensions')] : []), ...(res.adjusted || [])], serverProblems: res.problems || [], scale: sc, seconds };
     s.busy = false; s.sel = null; this.go(4);
   }
   // Offers the result of a recognition that finished (or still runs) while the dialog was closed.
@@ -569,56 +571,56 @@ export class PlanWizard {
     const s = this.st, job = this.pending; this.pending = null; if (!job) return;
     try {
       const { job: full } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: job.id, with_image: true });
-      const img = new Image(); img.src = full.image; await img.decode(); s.img = canvasOf(img); s.src = s.img; s.srcName = 'Letzte Erkennung'; this.rotated = s.img; s.quad = [[0, 0], [s.img.width, 0], [s.img.width, s.img.height], [0, s.img.height]];
+      const img = new Image(); img.src = full.image; await img.decode(); s.img = canvasOf(img); s.src = s.img; s.srcName = t('assistant.wizard.lastDetection'); this.rotated = s.img; s.quad = [[0, 0], [s.img.width, 0], [s.img.width, s.img.height], [0, s.img.height]];
       if (full.level_id && this.app.plan.levels.some((l) => l.id === full.level_id)) s.levelId = full.level_id;
       if (full.status === 'running') { s.step = 3; s.busy = true; this.render(); const run = (this.detectRun = { id: full.id }); this.detectStart = Date.now() - full.elapsed * 1000; this.job = full; this.startTicker();
         for (;;) { await new Promise((r) => setTimeout(r, 1200)); if (this.detectRun !== run) return; const { job: j } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: full.id }); this.job = j; if (j.status === 'done') { this.stopTicker(); this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {}); return this.useResult(j.result, 1, [], Math.round(j.elapsed)); } if (j.status === 'error') { this.stopTicker(); s.busy = false; s.err = j.error; return this.go(3); } } }
       this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {});
       this.useResult(full.result, 1, [], Math.round(full.elapsed));
-    } catch (e) { this.msg(`Konnte das Ergebnis nicht laden: ${e.message || e}`, true); }
+    } catch (e) { this.msg(t('assistant.wizard.resultLoadFailed', { error: e.message || e }), true); }
   }
-  async manual() { const id = await this.targetLevel(); await this.saveUnderlay(id); this.app.markDirty(); this.close(); const ed = this.app.editor; this.app.setMode('edit'); this.app.setLevel(id); ed.setView2d(true); ed.setTool('rect'); this.app.toast('Plan liegt als Vorlage in der Etage. Räume mit dem Rechteck- oder Polygon-Werkzeug nachzeichnen.'); }
+  async manual() { const id = await this.targetLevel(); await this.saveUnderlay(id); this.app.markDirty(); this.close(); const ed = this.app.editor; this.app.setMode('edit'); this.app.setLevel(id); ed.setView2d(true); ed.setTool('rect'); this.app.toast(t('assistant.wizard.manualTemplateToast')); }
 
   /* ---------- step 5: review ---------- */
   problems() {
     const R = this.st.result?.rooms || []; const out = [];
     const walled = R.filter((r) => r.kind !== 'outdoor');
-    for (let i = 0; i < walled.length; i++) for (let k = i + 1; k < walled.length; k++) { const ov = overlap(walled[i].points, walled[k].points); if (ov > 0.05) out.push({ ids: [walled[i].id, walled[k].id], text: `„${walled[i].name}“ und „${walled[k].name}“ überlappen (${ov.toFixed(2)} m²)` }); }
-    for (const o of R.filter((r) => r.kind === 'outdoor')) { const hit = walled.map((w) => [w, overlap(o.points, w.points)]).filter(([, ov]) => ov > 0.3); if (hit.length) out.push({ ids: [o.id, ...hit.map(([w]) => w.id)], trim: o.id, text: `Außenfläche „${o.name}“ liegt unter ${hit.map(([w]) => `„${w.name}“`).join(', ')} (${hit.reduce((t, [, ov]) => t + ov, 0).toFixed(1)} m²)` }); }
-    for (const r of R) { const n = netArea(r, R); if (r.label_area && Math.abs(n / r.label_area - 1) > 0.08 && Math.abs(n - r.label_area) > 0.4) out.push({ ids: [r.id], text: `„${r.name}“: ${n.toFixed(1)} m² lichte Fläche, laut Plan ${r.label_area} m²` }); }
-    for (const t of this.st.result?.serverProblems || []) if (/Plan-Maß|Maß /.test(t)) { const r = R.find((x) => t.includes(`„${x.name}“`)); out.push({ ids: [r?.id || ''], text: t }); }
+    for (let i = 0; i < walled.length; i++) for (let k = i + 1; k < walled.length; k++) { const ov = overlap(walled[i].points, walled[k].points); if (ov > 0.05) out.push({ ids: [walled[i].id, walled[k].id], text: t('assistant.wizard.roomsOverlap', { first: walled[i].name, second: walled[k].name, area: ov.toFixed(2) }) }); }
+    for (const o of R.filter((r) => r.kind === 'outdoor')) { const hit = walled.map((w) => [w, overlap(o.points, w.points)]).filter(([, ov]) => ov > 0.3); if (hit.length) out.push({ ids: [o.id, ...hit.map(([w]) => w.id)], trim: o.id, text: t('assistant.wizard.outdoorOverlap', { name: o.name, rooms: hit.map(([w]) => `“${w.name}”`).join(', '), area: hit.reduce((sum, [, ov]) => sum + ov, 0).toFixed(1) }) }); }
+    for (const r of R) { const n = netArea(r, R); if (r.label_area && Math.abs(n / r.label_area - 1) > 0.08 && Math.abs(n - r.label_area) > 0.4) out.push({ ids: [r.id], text: t('assistant.wizard.areaMismatch', { name: r.name, actual: n.toFixed(1), planned: r.label_area }) }); }
+    for (const problem of this.st.result?.serverProblems || []) if (/Plan-Maß|Maß |plan dimension|dimension/i.test(problem)) { const r = R.find((x) => problem.includes(`„${x.name}“`) || problem.includes(`“${x.name}”`)); out.push({ ids: [r?.id || ''], text: problem }); }
     return out;
   }
   step4() {
     const s = this.st, R = s.result; const probs = this.problems();
-    const levelName = s.levelId === '__new' ? s.newLevel || 'Neue Etage' : this.app.plan.levels.find((l) => l.id === s.levelId)?.name;
+    const levelName = s.levelId === '__new' ? s.newLevel || t('assistant.wizard.defaultNewLevel') : this.app.plan.levels.find((l) => l.id === s.levelId)?.name;
     const hasRooms = s.levelId !== '__new' && this.app.plan.levels.find((l) => l.id === s.levelId)?.rooms.length;
     return `<div class="wz-two"><div class="wz-canvas" id="wzWrap"><canvas id="wzCv"></canvas>
-        <div class="wz-zoom"><button class="ibtn" data-z="in" title="Vergrößern">+</button><button class="ibtn" data-z="out" title="Verkleinern">−</button><button class="ibtn" data-z="fit" title="Einpassen">⤢</button></div>
-        <div class="wz-blend"><span>Plan</span><input type="range" id="wzAlpha" min="0" max="1" step="0.05" value="${s.overlayAlpha}" aria-label="Überblendung"><span>Räume</span></div></div>
+        <div class="wz-zoom"><button class="ibtn" data-z="in" title="${t('assistant.common.zoomIn')}">+</button><button class="ibtn" data-z="out" title="${t('assistant.common.zoomOut')}">−</button><button class="ibtn" data-z="fit" title="${t('assistant.common.fit')}">⤢</button></div>
+        <div class="wz-blend"><span>${t('assistant.wizard.plan')}</span><input type="range" id="wzAlpha" min="0" max="1" step="0.05" value="${s.overlayAlpha}" aria-label="${t('assistant.wizard.blend')}"><span>${t('assistant.wizard.rooms')}</span></div></div>
       <div class="wz-side wz-review">
-        <div class="wz-sum"><strong>${R.rooms.length} Räume</strong> · ${R.openings.length} Öffnungen${R.stairs.length ? ` · ${R.stairs.length} Treppe(n)` : ''} · ${R.rooms.reduce((a, r) => a + (r.kind === 'outdoor' ? 0 : netArea(r, R.rooms)), 0).toFixed(1)} m² Wohnfläche (lichte Maße)${R.seconds ? ` · erkannt in ${R.seconds} s` : ''}</div>
+        <div class="wz-sum">${t('assistant.wizard.reviewSummary', { rooms: R.rooms.length, openings: R.openings.length, stairs: R.stairs.length ? t('assistant.wizard.stairCountSuffix', { count: R.stairs.length }) : '', area: R.rooms.reduce((a, r) => a + (r.kind === 'outdoor' ? 0 : netArea(r, R.rooms)), 0).toFixed(1), duration: R.seconds ? t('assistant.wizard.recognitionDurationSuffix', { seconds: R.seconds }) : '' })}</div>
         ${(R.adjusted || []).length ? `<p class="ok">✓ ${R.adjusted.map(esc).join(' · ')}</p>` : ''}
-        ${R.scale ? `<div class="wz-probs"><button class="warn" data-act="fixScale">⚠ Die Maßketten im Plan ergeben einen um ${((R.scale.factor - 1) * 100).toFixed(1)} % anderen Maßstab. Antippen, um ihn zu übernehmen.</button></div>` : ''}
-        ${probs.length ? `<div class="wz-probs">${probs.map((p) => `<div class="wz-prob"><button class="warn" data-psel="${p.ids[0]}">⚠ ${esc(p.text)}</button>${p.trim && trimRect(R.rooms.find((r) => r.id === p.trim), R.rooms) ? `<button class="btn small" data-trim="${p.trim}">Zuschneiden</button>` : ''}</div>`).join('')}${probs.filter((p) => p.trim).length > 1 ? '<button class="btn small" data-trim="*">Alle Außenflächen zuschneiden</button>' : ''}</div>` : '<p class="ok">Keine Überlappungen gefunden.</p>'}
-        ${R.notes ? `<p class="hint">KI-Hinweis: ${esc(R.notes)}</p>` : ''}
+        ${R.scale ? `<div class="wz-probs"><button class="warn" data-act="fixScale">${t('assistant.wizard.scaleMismatch', { percent: ((R.scale.factor - 1) * 100).toFixed(1) })}</button></div>` : ''}
+        ${probs.length ? `<div class="wz-probs">${probs.map((p) => `<div class="wz-prob"><button class="warn" data-psel="${p.ids[0]}">⚠ ${esc(p.text)}</button>${p.trim && trimRect(R.rooms.find((r) => r.id === p.trim), R.rooms) ? `<button class="btn small" data-trim="${p.trim}">${t('assistant.wizard.trim')}</button>` : ''}</div>`).join('')}${probs.filter((p) => p.trim).length > 1 ? `<button class="btn small" data-trim="*">${t('assistant.wizard.trimAllOutdoor')}</button>` : ''}</div>` : `<p class="ok">${t('assistant.wizard.noOverlaps')}</p>`}
+        ${R.notes ? `<p class="hint">${t('assistant.wizard.aiNote', { note: esc(R.notes) })}</p>` : ''}
         <ul class="wz-rooms">${R.rooms.map((r) => `<li data-rid="${r.id}" class="${s.sel === r.id ? 'sel' : ''}"><i style="background:${r.color}"></i>
-          <input value="${esc(r.name)}" data-name="${r.id}" aria-label="Name">
-          <select data-kind="${r.id}" aria-label="Art"><option value="room" ${r.kind === 'room' ? 'selected' : ''}>Raum</option><option value="garage" ${r.kind === 'garage' ? 'selected' : ''}>Garage</option><option value="outdoor" ${r.kind === 'outdoor' ? 'selected' : ''}>Außen</option></select>
-          <small title="lichte Fläche${r.label_area ? ` · laut Plan ${r.label_area} m²` : ''}">${netArea(r, R.rooms).toFixed(1)} m²${r.label_area ? `<br><span class="${Math.abs(netArea(r, R.rooms) / r.label_area - 1) <= 0.08 ? 'ok' : 'warn'}">Plan ${r.label_area}</span>` : ''}</small>
-          <button class="ibtn" data-lock="${r.id}" title="${r.locked ? 'Gesperrt: bleibt beim Neu-Erkennen' : 'Sperren: bleibt beim Neu-Erkennen'}" aria-pressed="${!!r.locked}">${icon(r.locked ? 'lock' : 'unlock')}</button>
-          <button class="ibtn" data-del="${r.id}" title="Raum entfernen">${icon('x')}</button></li>`).join('')}</ul>
-        <div class="actions"><button class="btn small" data-act="addRect">${icon('square')}Raum ergänzen</button></div>
+          <input value="${esc(r.name)}" data-name="${r.id}" aria-label="${t('assistant.common.name')}">
+          <select data-kind="${r.id}" aria-label="${t('assistant.common.type')}"><option value="room" ${r.kind === 'room' ? 'selected' : ''}>${t('assistant.wizard.room')}</option><option value="garage" ${r.kind === 'garage' ? 'selected' : ''}>${t('assistant.wizard.garage')}</option><option value="outdoor" ${r.kind === 'outdoor' ? 'selected' : ''}>${t('assistant.wizard.outdoor')}</option></select>
+          <small title="${t('assistant.wizard.clearAreaTitle', { planned: r.label_area ? t('assistant.wizard.plannedAreaSuffix', { area: r.label_area }) : '' })}">${netArea(r, R.rooms).toFixed(1)} m²${r.label_area ? `<br><span class="${Math.abs(netArea(r, R.rooms) / r.label_area - 1) <= 0.08 ? 'ok' : 'warn'}">${t('assistant.wizard.planArea', { area: r.label_area })}</span>` : ''}</small>
+          <button class="ibtn" data-lock="${r.id}" title="${t(r.locked ? 'assistant.wizard.unlockRecognition' : 'assistant.wizard.lockRecognition')}" aria-pressed="${!!r.locked}">${icon(r.locked ? 'lock' : 'unlock')}</button>
+          <button class="ibtn" data-del="${r.id}" title="${t('assistant.wizard.removeRoom')}">${icon('x')}</button></li>`).join('')}</ul>
+        <div class="actions"><button class="btn small" data-act="addRect">${icon('square')}${t('assistant.wizard.addRoom')}</button></div>
         ${this.openingsHtml()}
-        <details><summary>Neu erkennen</summary>
-          <p class="hint">Gesperrte Räume bleiben, der Rest wird mit deinem Hinweis neu erkannt.</p>
-          <textarea id="wzHints2" rows="2" placeholder="z. B. Bad und WC sind zwei Räume">${esc(s.hints)}</textarea>
-          <div class="actions"><button class="btn small" data-act="redetect" ${s.busy ? 'disabled' : ''}>${icon('sparkle')}${s.busy ? 'Erkenne …' : 'Ungesperrte neu erkennen'}</button></div></details>
-        <fieldset class="wz-apply"><legend class="lbl">Übernehmen in „${esc(levelName)}“</legend>
-          ${hasRooms ? `<label class="chk"><input type="radio" name="wzMode" value="replace" ${s.mode === 'replace' ? 'checked' : ''}> Vorhandene Räume und Öffnungen ersetzen</label><label class="chk"><input type="radio" name="wzMode" value="add" ${s.mode === 'add' ? 'checked' : ''}> Ergänzen</label>` : ''}
-          <label class="chk"><input type="checkbox" id="wzKeep" ${s.keepUnderlay ? 'checked' : ''}> Plan als Vorlage behalten</label>
-          <label class="chk"><input type="checkbox" id="wzMap" ${s.mapAreas ? 'checked' : ''}> Home-Assistant-Bereiche nach Namen zuordnen</label></fieldset>
-        <p class="hint">Ecken im Bild ziehen, Raum anklicken zum Auswählen. Raster 5 cm, Ecken rasten an Nachbarräumen ein.</p>
+        <details><summary>${t('assistant.wizard.recognizeAgain')}</summary>
+          <p class="hint">${t('assistant.wizard.recognizeAgainHint')}</p>
+          <textarea id="wzHints2" rows="2" placeholder="${t('assistant.wizard.recognizeAgainPlaceholder')}">${esc(s.hints)}</textarea>
+          <div class="actions"><button class="btn small" data-act="redetect" ${s.busy ? 'disabled' : ''}>${icon('sparkle')}${t(s.busy ? 'assistant.wizard.recognizing' : 'assistant.wizard.recognizeUnlocked')}</button></div></details>
+        <fieldset class="wz-apply"><legend class="lbl">${t('assistant.wizard.applyToLevel', { name: esc(levelName) })}</legend>
+          ${hasRooms ? `<label class="chk"><input type="radio" name="wzMode" value="replace" ${s.mode === 'replace' ? 'checked' : ''}> ${t('assistant.wizard.replaceRooms')}</label><label class="chk"><input type="radio" name="wzMode" value="add" ${s.mode === 'add' ? 'checked' : ''}> ${t('assistant.common.add')}</label>` : ''}
+          <label class="chk"><input type="checkbox" id="wzKeep" ${s.keepUnderlay ? 'checked' : ''}> ${t('assistant.wizard.keepTemplate')}</label>
+          <label class="chk"><input type="checkbox" id="wzMap" ${s.mapAreas ? 'checked' : ''}> ${t('assistant.wizard.mapAreas')}</label></fieldset>
+        <p class="hint">${t('assistant.wizard.reviewEditHint')}</p>
       </div></div>`;
   }
   wire4() {
@@ -669,7 +671,7 @@ export class PlanWizard {
       const so = res.openings[s.selOpen];
       if (so) { for (const k of ['from', 'to']) if (dist(v.toScr(toPx(so[k])), v.toScr(p)) < 11) { this.dragO = { o: so, k }; return true; } }
       if (this.openTool) { const m = toM(p), e = edgeAt(m); const tol = Math.max(0.4, 14 / v.s * s.mpp);
-        if (!e || e.d > tol) { this.msg('Bitte näher an eine Raumkante klicken.', true); return true; }
+        if (!e || e.d > tol) { this.msg(t('assistant.wizard.clickNearRoomEdge'), true); return true; }
         const pr = projectOnSeg(m, e.a, e.b), L = pr.len, ww = Math.min(OPEN_W[this.openTool], L - 0.1), t0 = Math.max(ww / 2, Math.min(L - ww / 2, pr.t * L)), ux = (e.b[0] - e.a[0]) / L, uz = (e.b[1] - e.a[1]) / L;
         res.openings.push({ type: this.openTool, from: [r3(e.a[0] + ux * (t0 - ww / 2)), r3(e.a[1] + uz * (t0 - ww / 2))], to: [r3(e.a[0] + ux * (t0 + ww / 2)), r3(e.a[1] + uz * (t0 + ww / 2))] });
         s.selOpen = res.openings.length - 1; this.render(); return true; }
@@ -690,7 +692,7 @@ export class PlanWizard {
     };
     v.onUp = () => {
       if (this.newRect) { const { a, b } = this.newRect; this.newRect = null; this.adding = false; v.c.style.cursor = 'default';
-        if (Math.abs(b[0] - a[0]) > 0.4 && Math.abs(b[1] - a[1]) > 0.4) { const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), z0 = Math.min(a[1], b[1]), z1 = Math.max(a[1], b[1]); const r = { id: newId('wr'), name: 'Neuer Raum', kind: 'room', points: [[x0, z0], [x1, z0], [x1, z1], [x0, z1]], color: COLORS[res.rooms.length % COLORS.length] }; res.rooms.push(r); s.sel = r.id; }
+        if (Math.abs(b[0] - a[0]) > 0.4 && Math.abs(b[1] - a[1]) > 0.4) { const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), z0 = Math.min(a[1], b[1]), z1 = Math.max(a[1], b[1]); const r = { id: newId('wr'), name: t('assistant.wizard.defaultNewRoom'), kind: 'room', points: [[x0, z0], [x1, z0], [x1, z1], [x0, z1]], color: COLORS[res.rooms.length % COLORS.length] }; res.rooms.push(r); s.sel = r.id; }
         this.render(); return; }
       if (this.dragV) { this.dragV = null; this.render(); return; }
       if (this.dragO) { this.dragO = null; this.render(); return; }
@@ -698,7 +700,7 @@ export class PlanWizard {
     };
     v.onHover = (p) => { if (!p) return; const sel = res.rooms.find((r) => r.id === s.sel); v.c.style.cursor = this.adding || this.openTool ? 'crosshair' : sel && sel.points.some((q) => dist(v.toScr(toPx(q)), v.toScr(p)) < 14) ? 'grab' : 'default'; };
     R.querySelector('#wzAlpha').oninput = (e) => { s.overlayAlpha = +e.target.value; v.draw(); };
-    R.querySelector('[data-act="fixScale"]')?.addEventListener('click', () => { const f = res.scale.factor; s.mpp *= f; const sc = (p) => [r3(p[0] * f), r3(p[1] * f)]; for (const r of res.rooms) r.points = r.points.map(sc); for (const o of res.openings) { o.from = sc(o.from); o.to = sc(o.to); } for (const t of res.stairs) t.points = t.points.map(sc); res.scale = null; this.render(); this.msg('Maßstab aus den Maßketten übernommen.'); });
+    R.querySelector('[data-act="fixScale"]')?.addEventListener('click', () => { const f = res.scale.factor; s.mpp *= f; const sc = (p) => [r3(p[0] * f), r3(p[1] * f)]; for (const r of res.rooms) r.points = r.points.map(sc); for (const stair of res.stairs) stair.points = stair.points.map(sc); for (const o of res.openings) { o.from = sc(o.from); o.to = sc(o.to); } res.scale = null; this.render(); this.msg(t('assistant.wizard.scaleApplied')); });
     const list = R.querySelector('.wz-rooms');
     list.addEventListener('click', (e) => {
       const del = e.target.closest('[data-del]'); if (del) { res.rooms = res.rooms.filter((r) => r.id !== del.dataset.del); if (s.sel === del.dataset.del) s.sel = null; return this.render(); }
@@ -710,18 +712,18 @@ export class PlanWizard {
     list.addEventListener('focusin', (e) => { const li = e.target.closest('[data-rid]'); if (li) { s.sel = li.dataset.rid; this.syncList(); v.draw(); } });
     R.querySelector('.wz-probs')?.addEventListener('click', (e) => {
       const tb = e.target.closest('[data-trim]');
-      if (tb) { const ids = tb.dataset.trim === '*' ? res.rooms.filter((r) => r.kind === 'outdoor').map((r) => r.id) : [tb.dataset.trim]; let n = 0; for (const id of ids) { const r = res.rooms.find((x) => x.id === id); const t = r && trimRect(r, res.rooms); if (t) { r.points = t; n++; } } this.render(); this.msg(n ? `${n} Außenfläche(n) bis an die Wände zugeschnitten.` : 'Nichts zuzuschneiden (nur rechteckige Außenflächen gehen automatisch).'); return; }
+      if (tb) { const ids = tb.dataset.trim === '*' ? res.rooms.filter((r) => r.kind === 'outdoor').map((r) => r.id) : [tb.dataset.trim]; let n = 0; for (const id of ids) { const r = res.rooms.find((x) => x.id === id); const trimmed = r && trimRect(r, res.rooms); if (trimmed) { r.points = trimmed; n++; } } this.render(); this.msg(t(n ? 'assistant.wizard.outdoorTrimmed' : 'assistant.wizard.nothingToTrim', { count: n })); return; }
       const b = e.target.closest('[data-psel]'); if (b) { s.sel = b.dataset.psel; this.syncList(); v.draw(); } });
     const op = R.querySelector('.wz-open');
     op.addEventListener('click', (e) => {
-      const t = e.target.closest('[data-otool]'); if (t) { this.openTool = this.openTool === t.dataset.otool ? null : t.dataset.otool; s.selOpen = null; this.render(); if (this.openTool) this.msg(`${OPEN_LBL[this.openTool]}: auf eine Raumkante klicken. Nochmal auf den Knopf zum Beenden.`); return; }
+      const tool = e.target.closest('[data-otool]'); if (tool) { this.openTool = this.openTool === tool.dataset.otool ? null : tool.dataset.otool; s.selOpen = null; this.render(); if (this.openTool) this.msg(t('assistant.wizard.openingToolHint', { type: openingLabels()[this.openTool] })); return; }
       if (e.target.closest('[data-odel]')) { res.openings.splice(s.selOpen, 1); s.selOpen = null; return this.render(); }
       const b = e.target.closest('[data-psel]'); if (b) { s.sel = b.dataset.psel; this.syncList(); v.draw(); }
     });
     op.querySelector('[data-otype]')?.addEventListener('change', (e) => { res.openings[s.selOpen].type = e.target.value; this.render(); });
     op.querySelector('[data-owidth]')?.addEventListener('change', (e) => { const o = res.openings[s.selOpen], w = Math.max(0.3, +e.target.value), c = [(o.from[0] + o.to[0]) / 2, (o.from[1] + o.to[1]) / 2], dx = o.to[0] - o.from[0], dz = o.to[1] - o.from[1], L0 = Math.hypot(dx, dz) || 1;
       o.from = [r3(c[0] - dx / L0 * w / 2), r3(c[1] - dz / L0 * w / 2)]; o.to = [r3(c[0] + dx / L0 * w / 2), r3(c[1] + dz / L0 * w / 2)]; this.render(); });
-    R.querySelector('[data-act="addRect"]').onclick = () => { this.adding = true; v.c.style.cursor = 'crosshair'; this.msg('Rechteck im Plan aufziehen.'); };
+    R.querySelector('[data-act="addRect"]').onclick = () => { this.adding = true; v.c.style.cursor = 'crosshair'; this.msg(t('assistant.wizard.drawRectangle')); };
     R.querySelector('#wzHints2').oninput = (e) => (s.hints = e.target.value);
     R.querySelector('[data-act="redetect"]').onclick = () => this.detect({ keepLocked: true });
     R.querySelectorAll('[name="wzMode"]').forEach((x) => (x.onchange = () => (s.mode = x.value)));
@@ -732,11 +734,12 @@ export class PlanWizard {
   openingsHtml() {
     const s = this.st, R = s.result; const cnt = (t) => R.openings.filter((o) => o.type === t).length; const noDoor = roomsWithoutDoor(R);
     const o = R.openings[s.selOpen]; const w = o ? Math.hypot(o.to[0] - o.from[0], o.to[1] - o.from[1]) : 0;
-    return `<div class="wz-open"><div class="lbl">Türen &amp; Fenster</div>
-      <p class="hint">${cnt('door')} Türen · ${cnt('window')} Fenster${cnt('garage') ? ` · ${cnt('garage')} Tore` : ''}${cnt('open') ? ` · ${cnt('open')} Durchgänge` : ''}. Werkzeug wählen und auf eine Raumkante klicken; Öffnung anklicken zum Ändern, Enden ziehen für die Breite.</p>
-      <div class="actions">${['door', 'window', 'garage', 'open'].map((t) => `<button class="btn small" data-otool="${t}" aria-pressed="${this.openTool === t}"><i class="sw" style="background:${OPEN_COL[t]}"></i>${OPEN_LBL[t]}</button>`).join('')}</div>
-      ${noDoor.length ? `<div class="wz-probs">${noDoor.map((r) => `<button class="warn" data-psel="${r.id}">⚠ „${esc(r.name)}“ hat keine Tür</button>`).join('')}</div>` : ''}
-      ${o ? `<div class="wz-osel"><select data-otype aria-label="Art">${Object.entries(OPEN_LBL).map(([k, v]) => `<option value="${k}" ${o.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select><input type="number" data-owidth step="0.05" min="0.3" value="${w.toFixed(2)}" aria-label="Breite (m)"><span>m</span><button class="ibtn" data-odel title="Öffnung löschen (Entf)">${icon('x')}</button></div>` : ''}</div>`;
+    const labels = openingLabels();
+    return `<div class="wz-open"><div class="lbl">${t('assistant.wizard.doorsAndWindows')}</div>
+      <p class="hint">${t('assistant.wizard.openingsSummary', { doors: cnt('door'), windows: cnt('window'), garages: cnt('garage') ? t('assistant.wizard.garageCountSuffix', { count: cnt('garage') }) : '', passages: cnt('open') ? t('assistant.wizard.passageCountSuffix', { count: cnt('open') }) : '' })}</p>
+      <div class="actions">${['door', 'window', 'garage', 'open'].map((type) => `<button class="btn small" data-otool="${type}" aria-pressed="${this.openTool === type}"><i class="sw" style="background:${OPEN_COL[type]}"></i>${labels[type]}</button>`).join('')}</div>
+      ${noDoor.length ? `<div class="wz-probs">${noDoor.map((r) => `<button class="warn" data-psel="${r.id}">${t('assistant.wizard.roomHasNoDoor', { name: esc(r.name) })}</button>`).join('')}</div>` : ''}
+      ${o ? `<div class="wz-osel"><select data-otype aria-label="${t('assistant.common.type')}">${Object.entries(labels).map(([key, value]) => `<option value="${key}" ${o.type === key ? 'selected' : ''}>${value}</option>`).join('')}</select><input type="number" data-owidth step="0.05" min="0.3" value="${w.toFixed(2)}" aria-label="${t('assistant.wizard.widthMeters')}"><span>m</span><button class="ibtn" data-odel title="${t('assistant.wizard.deleteOpening')}">${icon('x')}</button></div>` : ''}</div>`;
   }
   syncList() { this.root.querySelectorAll('.wz-rooms li').forEach((li) => li.classList.toggle('sel', li.dataset.rid === this.st.sel)); this.root.querySelector(`.wz-rooms li[data-rid="${this.st.sel}"]`)?.scrollIntoView({ block: 'nearest' }); }
 
@@ -745,7 +748,7 @@ export class PlanWizard {
     const s = this.st, app = this.app;
     if (s.levelId !== '__new') return s.levelId;
     const top = app.plan.levels[app.plan.levels.length - 1]; const id = newId('l'); const li = s.result?.level || {};
-    let name = (s.newLevelTouched && s.newLevel) || li.name || s.newLevel || 'Neue Etage';
+    let name = (s.newLevelTouched && s.newLevel) || li.name || s.newLevel || t('assistant.wizard.defaultNewLevel');
     if (app.plan.levels.some((l) => l.name === name)) { let n = 2; while (app.plan.levels.some((l) => l.name === `${name} ${n}`)) n++; name = `${name} ${n}`; }
     const op = { op: 'add_level', id, name, elevation: Number.isFinite(li.floor_elevation_m) && app.plan.levels.every((l) => Math.abs(l.elevation - li.floor_elevation_m) > 0.5) ? li.floor_elevation_m : top ? top.elevation + top.height + 0.25 : 0 };
     if (Number.isFinite(li.room_height_m) && li.room_height_m > 2.1 && li.room_height_m < 3.6) op.height = li.room_height_m;
@@ -756,12 +759,12 @@ export class PlanWizard {
     const img = limit(s.img, 3000); const k = s.img.width / img.width;
     const blob = await new Promise((r) => img.toBlob(r, 'image/jpeg', 0.88));
     const resp = await app.hass.fetchWithAuth(`/api/hometwin/underlay/${levelId}`, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/jpeg' } });
-    if (!resp.ok) throw new Error(`Bild speichern: HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(t('assistant.wizard.imageSaveFailed', { status: resp.status }));
     L.underlay = { x0: r3(offset[0]), z0: r3(offset[1]), mpp: s.mpp * k, wpx: img.width, hpx: img.height, opacity: 0.5, v: Date.now() };
     const bmp = await createImageBitmap(img); app.editor.images.set(levelId, bmp); app.stage.setUnderlay(levelId, bmp);
   }
   async apply() {
-    const s = this.st, app = this.app, res = s.result; this.msg('Übernehme …');
+    const s = this.st, app = this.app, res = s.result; this.msg(t('assistant.common.applying'));
     try {
       app.pushUndo();
       const levelId = await this.targetLevel(); const L = app.plan.levels.find((l) => l.id === levelId);
@@ -782,7 +785,7 @@ export class PlanWizard {
       const areas = app.areas(); const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
       const areaFor = (name) => { if (!s.mapAreas) return null; const n = norm(name); const a = areas.find((x) => norm(x.name) === n) || areas.find((x) => n && (norm(x.name).includes(n) || n.includes(norm(x.name)))); return a?.area_id || null; };
       const surface = (r) => (r.kind === 'outdoor' ? (/terras|balkon|terrace|balcony/i.test(r.name) ? 'terrace' : 'lawn') : r.kind === 'garage' ? 'concrete' : /bad|wc|dusche|bath|toilet|küche|kueche|kitchen|hwr|technik|keller|abstell/i.test(r.name) ? 'tile' : 'oak');
-      for (const r of res.rooms) ops.push({ op: 'add_room', level_id: levelId, name: r.name || 'Raum', kind: r.kind, surface: surface(r), area_id: areaFor(r.name), points: r.points.map(mv) });
+      for (const r of res.rooms) ops.push({ op: 'add_room', level_id: levelId, name: r.name || t('assistant.wizard.room'), kind: r.kind, surface: surface(r), area_id: areaFor(r.name), points: r.points.map(mv) });
       // openings: put both ends onto the nearest room edge
       const edges = res.rooms.filter((r) => r.kind !== 'outdoor').flatMap((r) => r.points.map((p, i) => [mv(p), mv(r.points[(i + 1) % r.points.length])]));
       const onEdge = (p) => { let best = null, bd = 0.45; for (const [a, b] of edges) { const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz || 1; const t = clamp(((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / L2, 0, 1); const q = [a[0] + dx * t, a[1] + dz * t]; const d = dist(p, q); if (d < bd) { bd = d; best = { q, a, b }; } } return best; };
@@ -801,19 +804,19 @@ export class PlanWizard {
       if (s.keepUnderlay) await this.saveUnderlay(levelId, off); else delete L.underlay;
       app.markDirty(); app.setLevel(levelId); app.editor?.renderLeft?.(); this.pendingRise = levelId;
       const nRooms = res.rooms.length;
-      this.root.querySelector('.wz-body').innerHTML = `<div class="wz-center"><h3>${icon('sparkle')} ${nRooms} Räume übernommen</h3>
-        ${bad.length ? `<p class="warn">${bad.length} Elemente konnten nicht angelegt werden.</p>` : ''}
-        <p>Wände, Türen und Fenster sind erzeugt. Rückgängig macht den ganzen Import rückgängig.</p>
-        <div class="wz-tip">${icon('eye')}<div><strong>Bitte kurz prüfen:</strong> Fenster, Türen und Treppe. Die KI übersieht dort am ehesten etwas. Treppe anklicken → Form (gerade, L, U), Laufrichtung und Höhe einstellen.<div class="actions" style="margin-top:6px"><button class="btn small" data-act="review">Jetzt in der Draufsicht prüfen</button></div></div></div>
-        <p><strong>Wie geht es weiter?</strong></p>
-        <div class="actions"><button class="btn primary" data-act="nextLevel">${icon('plus')}Weitere Etage hinzufügen</button><button class="btn" data-act="roof">${icon('roof')}Dach einrichten</button>${this.ai?.configured ? '<button class="btn" data-act="devices">Geräte zuordnen lassen</button>' : ''}<button class="btn" data-act="done">Fertig</button></div></div>`;
+      this.root.querySelector('.wz-body').innerHTML = `<div class="wz-center"><h3>${icon('sparkle')} ${t('assistant.wizard.roomsApplied', { count: nRooms })}</h3>
+        ${bad.length ? `<p class="warn">${t('assistant.wizard.elementsFailed', { count: bad.length })}</p>` : ''}
+        <p>${t('assistant.wizard.importCreated')}</p>
+        <div class="wz-tip">${icon('eye')}<div>${t('assistant.wizard.reviewImportTip')}<div class="actions" style="margin-top:6px"><button class="btn small" data-act="review">${t('assistant.wizard.reviewTopView')}</button></div></div></div>
+        <p><strong>${t('assistant.wizard.nextSteps')}</strong></p>
+        <div class="actions"><button class="btn primary" data-act="nextLevel">${icon('plus')}${t('assistant.wizard.addAnotherLevel')}</button><button class="btn" data-act="roof">${icon('roof')}${t('assistant.wizard.configureRoof')}</button>${this.ai?.configured ? `<button class="btn" data-act="devices">${t('assistant.wizard.assignDevices')}</button>` : ''}<button class="btn" data-act="done">${t('assistant.common.done')}</button></div></div>`;
       this.root.querySelector('.wz-foot').innerHTML = '';
       this.root.querySelector('[data-act="done"]').onclick = () => { this.close(); app.stage.frame(levelId); };
-      this.root.querySelector('[data-act="review"]').onclick = () => { this.close(); app.setMode('edit'); app.setLevel(levelId); app.editor?.setView2d(true); const st = app.plan.levels.find((l) => l.id === levelId)?.furniture.find((f) => f.type === 'stairs'); if (st) app.editor?.select({ type: 'furniture', id: st.id, level: levelId }); app.toast('Türen/Fenster: Werkzeuge oben. Treppe ist ausgewählt – rechts Form und Laufrichtung.'); };
+      this.root.querySelector('[data-act="review"]').onclick = () => { this.close(); app.setMode('edit'); app.setLevel(levelId); app.editor?.setView2d(true); const st = app.plan.levels.find((l) => l.id === levelId)?.furniture.find((f) => f.type === 'stairs'); if (st) app.editor?.select({ type: 'furniture', id: st.id, level: levelId }); app.toast(t('assistant.wizard.reviewToolsToast')); };
       this.root.querySelector('[data-act="nextLevel"]').onclick = () => { const i = app.plan.levels.findIndex((l) => l.id === levelId); const nxt = app.plan.levels[i + 1]; this.open({ levelId: nxt ? nxt.id : '__new' }); };
       this.root.querySelector('[data-act="roof"]').onclick = () => this.roofStep(levelId);
-      this.root.querySelector('[data-act="devices"]')?.addEventListener('click', () => { this.close(); app.setMode('edit'); app.agent.open(`Ordne die Lichter, Rollläden, Sensoren und Thermostate der Etage „${L.name}“ den Räumen zu.`); });
-    } catch (e) { console.error(e); this.msg(`Übernehmen fehlgeschlagen: ${e.message || e}`, true); }
+      this.root.querySelector('[data-act="devices"]')?.addEventListener('click', () => { this.close(); app.setMode('edit'); app.agent.open(t('assistant.wizard.assignDevicesPrompt', { name: L.name })); });
+    } catch (e) { console.error(e); this.msg(t('assistant.wizard.applyFailed', { error: e.message || e }), true); }
   }
 
   /* ---------- roof ---------- */
@@ -823,17 +826,17 @@ export class PlanWizard {
     const r = { type: hint.type || (site.roof.type === 'none' ? 'gable' : site.roof.type), pitch: hint.pitch ?? site.roof.pitch ?? 35, overhang: site.roof.overhang ?? 0.5, ridge: hint.ridge || 'auto', mainOnly: true };
     const extras = app.plan.levels.flatMap((l) => l.rooms.filter((x) => x.kind === 'garage' || (x.kind === 'outdoor' && /carport|überdach|vordach/i.test(x.name || ''))).map((x) => ({ ...x, levelId: l.id })))
       .filter((x) => !(site.roofs || []).some((q) => q.rect && q.levelId === x.levelId && pointInPolygon([q.rect.cx, q.rect.cz], x.points)));
-    const types = { none: 'Kein Dach', flat: 'Flachdach', shed: 'Pultdach', gable: 'Satteldach', hip: 'Walmdach', pyramid: 'Zeltdach' };
+    const types = { none: t('assistant.wizard.roof.none'), flat: t('assistant.wizard.roof.flat'), shed: t('assistant.wizard.roof.shed'), gable: t('assistant.wizard.roof.gable'), hip: t('assistant.wizard.roof.hip'), pyramid: t('assistant.wizard.roof.pyramid') };
     const body = this.root.querySelector('.wz-body');
     const draw = () => {
-      body.innerHTML = `<div class="wz-center wz-roof"><h3>${icon('roof')} Dach über „${esc(top?.name || 'oberste Etage')}“</h3>
-        ${hint.type ? `<p class="ok">Aus dem Plan gelesen: ${esc(types[hint.type] || hint.type)}${hint.pitch ? `, ${hint.pitch}°` : ''}${hint.ridge ? `, First ${hint.ridge === 'x' ? 'waagerecht' : 'senkrecht'} im Plan` : ''}</p>` : '<p class="hint">Im Plan war keine Dachangabe. Bitte wählen – alles bleibt später im Editor änderbar.</p>'}
-        <div class="field"><label for="wzRType">Dachform</label><select id="wzRType">${Object.entries(types).map(([k, v]) => `<option value="${k}" ${r.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        ${!['none', 'flat'].includes(r.type) ? `<div class="row2"><div class="field"><label for="wzRPitch">Neigung (°)</label><input id="wzRPitch" type="number" min="3" max="60" value="${r.pitch}"></div><div class="field"><label for="wzROh">Überstand (m)</label><input id="wzROh" type="number" step="0.05" min="0" max="1.5" value="${r.overhang}"></div></div>
-        <div class="field"><label for="wzRRidge">Firstrichtung</label><select id="wzRRidge"><option value="auto" ${r.ridge === 'auto' ? 'selected' : ''}>automatisch (längere Seite)</option><option value="x" ${r.ridge === 'x' ? 'selected' : ''}>waagerecht im Plan</option><option value="z" ${r.ridge === 'z' ? 'selected' : ''}>senkrecht im Plan</option></select></div>` : ''}
-        <label class="chk"><input type="checkbox" id="wzRMain" ${r.mainOnly ? 'checked' : ''}> Nur über dem Wohnhaus${extras.length ? ` – ${esc(extras.map((x) => x.name).join(', '))} bekommen eigene Flachdächer${extras.some((x) => x.kind === 'outdoor') ? ' (Carport auf Pfosten)' : ''}` : ''}</label>
-        <p class="hint">Weitere Dächer (Gartenhaus, Anbau …) jederzeit im Editor: Raum auswählen → „Dach auf diesen Raum“.</p>
-        <div class="actions"><button class="btn" data-act="roofBack">Zurück</button><button class="btn primary" data-act="roofApply">Dach übernehmen</button></div></div>`;
+      body.innerHTML = `<div class="wz-center wz-roof"><h3>${icon('roof')} ${t('assistant.wizard.roofOverLevel', { name: esc(top?.name || t('assistant.wizard.topLevel')) })}</h3>
+        ${hint.type ? `<p class="ok">${t('assistant.wizard.roofReadFromPlan', { type: esc(types[hint.type] || hint.type), pitch: hint.pitch ? `, ${hint.pitch}°` : '', ridge: hint.ridge ? t('assistant.wizard.roofRidgeSuffix', { direction: t(hint.ridge === 'x' ? 'assistant.wizard.horizontal' : 'assistant.wizard.vertical') }) : '' })}</p>` : `<p class="hint">${t('assistant.wizard.noRoofInPlan')}</p>`}
+        <div class="field"><label for="wzRType">${t('assistant.wizard.roofShape')}</label><select id="wzRType">${Object.entries(types).map(([k, v]) => `<option value="${k}" ${r.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+        ${!['none', 'flat'].includes(r.type) ? `<div class="row2"><div class="field"><label for="wzRPitch">${t('assistant.wizard.roofPitch')}</label><input id="wzRPitch" type="number" min="3" max="60" value="${r.pitch}"></div><div class="field"><label for="wzROh">${t('assistant.wizard.roofOverhang')}</label><input id="wzROh" type="number" step="0.05" min="0" max="1.5" value="${r.overhang}"></div></div>
+        <div class="field"><label for="wzRRidge">${t('assistant.wizard.ridgeDirection')}</label><select id="wzRRidge"><option value="auto" ${r.ridge === 'auto' ? 'selected' : ''}>${t('assistant.wizard.ridgeAuto')}</option><option value="x" ${r.ridge === 'x' ? 'selected' : ''}>${t('assistant.wizard.ridgeHorizontal')}</option><option value="z" ${r.ridge === 'z' ? 'selected' : ''}>${t('assistant.wizard.ridgeVertical')}</option></select></div>` : ''}
+        <label class="chk"><input type="checkbox" id="wzRMain" ${r.mainOnly ? 'checked' : ''}> ${t('assistant.wizard.mainHouseOnly', { extras: extras.length ? t('assistant.wizard.extraFlatRoofs', { names: esc(extras.map((x) => x.name).join(', ')), carport: extras.some((x) => x.kind === 'outdoor') ? t('assistant.wizard.carportPosts') : '' }) : '' })}</label>
+        <p class="hint">${t('assistant.wizard.moreRoofsHint')}</p>
+        <div class="actions"><button class="btn" data-act="roofBack">${t('assistant.common.back')}</button><button class="btn primary" data-act="roofApply">${t('assistant.wizard.applyRoof')}</button></div></div>`;
       body.querySelector('#wzRType').onchange = (e) => { r.type = e.target.value; draw(); };
       body.querySelector('#wzRPitch')?.addEventListener('input', (e) => (r.pitch = +e.target.value));
       body.querySelector('#wzROh')?.addEventListener('input', (e) => (r.overhang = +e.target.value));
@@ -847,9 +850,9 @@ export class PlanWizard {
         const outline = rooms.flatMap((x) => x.points); // from the living rooms – the model's outline often includes garage/carport
         if (outline.length >= 3) { const b = bbox(outline); const alongX = r.ridge === 'auto' ? b.w >= b.d : r.ridge === 'x'; roof.rect = { cx: r3(b.cx), cz: r3(b.cz), length: r3(alongX ? b.w : b.d), width: r3(alongX ? b.d : b.w), rot: alongX ? 0 : 90 }; }
         roof.garageFlat = r.mainOnly;
-        if (r.mainOnly) for (const x of extras) { const L = app.plan.levels.find((l) => l.id === x.levelId); const carport = x.kind === 'outdoor'; const xr = newExtraRoof(app.plan, { levelId: x.levelId, rect: rectOfPoints(x.points), name: `Dach ${x.name}`, type: 'flat', posts: carport, height: carport ? 2.3 : L?.height });
+        if (r.mainOnly) for (const x of extras) { const L = app.plan.levels.find((l) => l.id === x.levelId); const carport = x.kind === 'outdoor'; const xr = newExtraRoof(app.plan, { levelId: x.levelId, rect: rectOfPoints(x.points), name: t('assistant.wizard.extraRoofName', { name: x.name }), type: 'flat', posts: carport, height: carport ? 2.3 : L?.height });
           if (!carport) { xr.rect.length = r3(xr.rect.length + 0.24); xr.rect.width = r3(xr.rect.width + 0.24); } (site.roofs ||= []).push(xr); }
-        app.stage.layout(); app.markDirty(); app.setLevel('all'); this.close(); app.toast('Dach übernommen – Feinheiten im Editor unter „Dach“.');
+        app.stage.layout(); app.markDirty(); app.setLevel('all'); this.close(); app.toast(t('assistant.wizard.roofAppliedToast'));
       };
     };
     draw(); this.root.querySelector('.wz-foot').innerHTML = '';

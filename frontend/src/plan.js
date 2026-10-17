@@ -1,14 +1,24 @@
 // Plan schema (version 2), migration, lookup helpers and the operation applier that both
 // the editor and the AI agent use. Every change an agent proposes is one of these ops.
 import { registerLibrary } from './furniture.js';
+import { markFurnitureCompositionCurrent, migrateFurnitureCompositions } from './furniture-composition.js';
+import { markStandaloneProjectorScreen, migrateLegacyProjectors } from './projector-migration.js';
 import { rectPoints, pointInPolygon, bbox, labelPoint, r3 } from './geometry.js';
+import { t } from './i18n.js';
 
 export const PLAN_VERSION = 2;
+export const DEFAULT_SLAB = 0.25;
 let counter = Date.now() % 1e6;
 export const newId = (p) => `${p}${(counter++).toString(36)}`;
 
+// The slab belongs to the level standing on it. Missing or invalid legacy values use the
+// default without being written back into the user's plan.
+export function slabThickness(level) {
+  return Number.isFinite(level?.slab) && level.slab >= 0 ? level.slab : DEFAULT_SLAB;
+}
+
 export function emptyPlan() {
-  return { version: PLAN_VERSION, name: 'Mein Zuhause', site: DEFAULT_SITE(), levels: [newLevel('Erdgeschoss', 0)] };
+  return { version: PLAN_VERSION, name: t('data.defaults.home'), site: DEFAULT_SITE(), levels: [newLevel(t('data.defaults.groundFloor'), 0)] };
 }
 export function newLevel(name, elevation, extra = {}) {
   return { id: newId('l'), name, floor_id: null, elevation, height: 2.6, cutHeight: 1.2, rooms: [], openings: [], furniture: [], devices: [], underlay: null, ...extra };
@@ -18,10 +28,10 @@ export function migrate(p) {
   if (!p || typeof p !== 'object') return null;
   if (p.version === PLAN_VERSION && Array.isArray(p.levels)) return normalize(p);
   if (Array.isArray(p.rooms)) { // version 1: one level, rectangle rooms
-    const lvl = newLevel(p.name || 'Erdgeschoss', 0, { height: p.wallHeight || 2.6, cutHeight: p.interiorWallHeight || 1.2 });
+    const lvl = newLevel(p.name || t('data.defaults.groundFloor'), 0, { height: p.wallHeight || 2.6, cutHeight: p.interiorWallHeight || 1.2 });
     lvl.rooms = p.rooms.map((r) => ({ id: r.id, name: r.name, area_id: r.area || null, kind: 'room', surface: r.floor || 'oak', points: rectPoints(...r.rect) }));
     lvl.openings = p.openings || []; lvl.furniture = p.furniture || []; lvl.devices = (p.devices || []).map((d) => ({ ...d, entity_id: d.entity }));
-    return normalize({ version: PLAN_VERSION, name: p.name || 'Mein Zuhause', site: { north: 0, roof: { type: 'none' } }, levels: [lvl] });
+    return normalize({ version: PLAN_VERSION, name: p.name || t('data.defaults.home'), site: { north: 0, roof: { type: 'none' } }, levels: [lvl] });
   }
   return null;
 }
@@ -38,7 +48,7 @@ export function computeElevations(p) {
   p.levels.sort((a, b) => a.elevation - b.elevation);
   for (let i = 1; i < p.levels.length; i++) {
     const l = p.levels[i], below = p.levels[i - 1];
-    if (l.autoElevation !== false) l.elevation = Math.round((below.elevation + below.height + (l.slab ?? 0.25)) * 1000) / 1000;
+    if (l.autoElevation !== false) l.elevation = Math.round((below.elevation + below.height + slabThickness(l)) * 1000) / 1000;
   }
   return p;
 }
@@ -48,15 +58,17 @@ function normalize(p) {
   p.site = { ...d, ...s, facade: { ...d.facade, ...(s.facade || {}) }, roof: { ...d.roof, ...(s.roof || {}) }, solar: s.solar || [], roofItems: s.roofItems || [], roofs: s.roofs || null, library: s.library || {} };
   for (const l of p.levels) {
     l.rooms ||= []; l.openings ||= []; l.furniture ||= []; l.devices ||= [];
+    migrateFurnitureCompositions(l);
     for (const r of l.rooms) { if (!r.points && r.rect) r.points = rectPoints(...r.rect); r.kind ||= 'room'; }
   }
+  migrateLegacyProjectors(p);
   if (!Array.isArray(p.site.roofs)) { // older plans: garages not covered by a storey above get their own flat roof
     p.site.roofs = [];
     if (p.site.roof?.garageFlat !== false && p.site.roof?.type && p.site.roof.type !== 'none') for (const l of p.levels) for (const r of l.rooms) {
       if (r.kind !== 'garage' || r.points.length < 3) continue; const c = labelPoint(r.points);
       if (p.levels.some((u) => u.elevation > l.elevation + 0.5 && u.rooms.some((x) => x.kind === 'room' && pointInPolygon(c, x.points)))) continue;
       const b = bbox(r.points), alongX = b.w >= b.d;
-      p.site.roofs.push({ id: 'xr' + r.id, name: `Dach ${r.name || 'Garage'}`, type: 'flat', pitch: 3, overhang: 0.15, cover: 'kies', levelId: l.id, height: r.height || l.height, rect: { cx: r3(b.cx), cz: r3(b.cz), length: r3(alongX ? b.w : b.d), width: r3(alongX ? b.d : b.w), rot: alongX ? 0 : 90 }, posts: false });
+      p.site.roofs.push({ id: 'xr' + r.id, name: t('data.defaults.roofOf', { name: r.name || t('data.demo.room.garage') }), type: 'flat', pitch: 3, overhang: 0.15, cover: 'kies', levelId: l.id, height: r.height || l.height, rect: { cx: r3(b.cx), cz: r3(b.cz), length: r3(alongX ? b.w : b.d), width: r3(alongX ? b.d : b.w), rot: alongX ? 0 : 90 }, posts: false });
     }
   }
   computeElevations(p); syncStairVoids(p); return p;
@@ -86,7 +98,7 @@ export function roomOfOpening(level, o) {
 export function usedEntities(plan) {
   const s = new Set();
   for (const it of plan.site?.roofItems || []) { if (it.cover) s.add(it.cover); if (it.contact) s.add(it.contact); }
-  for (const l of plan.levels) { for (const d of l.devices) if (d.entity_id) s.add(d.entity_id); for (const o of l.openings) { if (o.cover) s.add(o.cover); if (o.contact) s.add(o.contact); } }
+  for (const l of plan.levels) { for (const d of [...l.devices, ...l.furniture]) if (d.entity_id) s.add(d.entity_id); for (const o of l.openings) { if (o.cover) s.add(o.cover); if (o.contact) s.add(o.contact); } }
   return s;
 }
 export function roomCenter(r) { return labelPoint(r.points); }
@@ -106,7 +118,7 @@ export function syncStairVoids(plan) {
       const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [r3(s.pos[0] + a * w / 2 * X[0] + b * d / 2 * Z[0]), r3(s.pos[1] + a * w / 2 * X[1] + b * d / 2 * Z[1])]);
       const sig = `${s.pos}|${s.rot || 0}|${w}|${d}`; const id = `void_${s.id}`; keep.add(id);
       let v = above.rooms.find((r) => r.id === id);
-      if (!v) { above.rooms.push({ id, name: 'Treppenloch', kind: 'void', surface: 'oak', area_id: null, points: pts, stair: s.id, sig }); changed.add(above.id); }
+      if (!v) { above.rooms.push({ id, name: t('data.defaults.stairwell'), kind: 'void', surface: 'oak', area_id: null, points: pts, stair: s.id, sig }); changed.add(above.id); }
       else if (v.sig !== sig) { v.points = pts; v.sig = sig; changed.add(above.id); }
     }
     const before = above.rooms.length;
@@ -135,20 +147,20 @@ export function applyOps(plan, ops) {
   const lvl = (op) => levelById(plan, op.level_id) || plan.levels[0];
   for (const op of ops) {
     try {
-      const f = (id) => { const x = findItem(plan, id); if (!x) throw new Error(`unbekannte ID ${id}`); return x; };
+      const f = (id) => { const x = findItem(plan, id); if (!x) throw new Error(t('data.error.unknownId', { id })); return x; };
       switch (op.op) {
-        case 'add_level': { const l = newLevel(op.name || 'Neue Etage', num(op.elevation, 0), pick(op, ['floor_id'])); if (op.id) l.id = op.id; if (op.height) l.height = num(op.height, 2.6); plan.levels.push(l); computeElevations(plan); results.push({ ok: true, id: l.id }); break; }
+        case 'add_level': { const l = newLevel(op.name || t('data.defaults.newLevel'), num(op.elevation, 0), pick(op, ['floor_id'])); if (op.id) l.id = op.id; if (op.height) l.height = num(op.height, 2.6); plan.levels.push(l); computeElevations(plan); results.push({ ok: true, id: l.id }); break; }
         case 'update_level': { const { item } = f(op.level_id); Object.assign(item, pick(op, ['name', 'floor_id'])); for (const k of ['elevation', 'height', 'cutHeight']) if (op[k] !== undefined) item[k] = num(op[k], item[k]); if (op.elevation !== undefined) item.autoElevation = false; computeElevations(plan); results.push({ ok: true }); break; }
-        case 'add_room': { const points = pointsFrom(op); if (!points) throw new Error('Raum braucht points oder rect'); const r = { id: op.id || newId('r'), name: op.name || 'Raum', kind: op.kind || 'room', surface: op.surface || (op.kind === 'outdoor' ? 'lawn' : 'oak'), area_id: op.area_id || null, points }; lvl(op).rooms.push(r); results.push({ ok: true, id: r.id }); break; }
+        case 'add_room': { const points = pointsFrom(op); if (!points) throw new Error(t('data.error.roomGeometry')); const r = { id: op.id || newId('r'), name: op.name || t('data.defaults.room'), kind: op.kind || 'room', surface: op.surface || (op.kind === 'outdoor' ? 'lawn' : 'oak'), area_id: op.area_id || null, points }; lvl(op).rooms.push(r); results.push({ ok: true, id: r.id }); break; }
         case 'update_room': { const { item } = f(op.room_id); Object.assign(item, pick(op, ['name', 'kind', 'surface', 'area_id'])); const p = pointsFrom(op); if (p) item.points = p; results.push({ ok: true }); break; }
-        case 'add_opening': { const from = pt(op.from), to = pt(op.to); if (!from || !to) throw new Error('Öffnung braucht from/to'); const o = { id: op.id || newId('o'), type: op.type || 'door', from, to, ...pick(op, ['sill', 'head', 'cover', 'contact', 'preset']) }; lvl(op).openings.push(o); results.push({ ok: true, id: o.id }); break; }
+        case 'add_opening': { const from = pt(op.from), to = pt(op.to); if (!from || !to) throw new Error(t('data.error.openingGeometry')); const o = { id: op.id || newId('o'), type: op.type || 'door', from, to, ...pick(op, ['sill', 'head', 'cover', 'contact', 'preset']) }; lvl(op).openings.push(o); results.push({ ok: true, id: o.id }); break; }
         case 'update_opening': { const { item } = f(op.opening_id); Object.assign(item, pick(op, ['type', 'sill', 'head', 'cover', 'contact'])); if (pt(op.from)) item.from = pt(op.from); if (pt(op.to)) item.to = pt(op.to); results.push({ ok: true }); break; }
-        case 'place_device': { const pos = pt(op.pos); if (!pos) throw new Error('Gerät braucht pos'); const d = { id: op.id || newId('d'), kind: op.kind, pos, ...pick(op, ['style', 'entity_id', 'y', 'rot', 'length']) }; lvl(op).devices.push(d); results.push({ ok: true, id: d.id }); break; }
-        case 'update_device': { const { item } = f(op.device_id); Object.assign(item, pick(op, ['style', 'entity_id', 'y', 'rot', 'length', 'kind'])); if (pt(op.pos)) item.pos = pt(op.pos); results.push({ ok: true }); break; }
-        case 'place_furniture': { const pos = pt(op.pos); if (!pos) throw new Error('Möbel braucht pos'); const it = { id: op.id || newId('f'), type: op.type, pos, ...pick(op, ['rot', 'width', 'depth', 'height', 'color']) }; lvl(op).furniture.push(it); results.push({ ok: true, id: it.id }); break; }
-        case 'move_item': { const { item } = f(op.item_id); if (pt(op.pos)) item.pos = pt(op.pos); if (op.rot !== undefined) item.rot = num(op.rot, 0); results.push({ ok: true }); break; }
+        case 'place_device': { const pos = pt(op.pos); if (!pos) throw new Error(t('data.error.devicePosition')); const d = markStandaloneProjectorScreen({ id: op.id || newId('d'), kind: op.kind, pos, ...pick(op, ['style', 'entity_id', 'y', 'elevation', 'autoElevation', 'rot', 'length', 'projector_id', 'projector_screen_only']) }); lvl(op).devices.push(d); results.push({ ok: true, id: d.id }); break; }
+        case 'update_device': { const { item } = f(op.device_id); Object.assign(item, pick(op, ['style', 'entity_id', 'y', 'elevation', 'autoElevation', 'rot', 'length', 'kind', 'projector_id', 'projector_screen_only'])); if (op.elevation !== undefined && op.autoElevation === undefined) item.autoElevation = false; markStandaloneProjectorScreen(item); if (pt(op.pos)) item.pos = pt(op.pos); results.push({ ok: true }); break; }
+        case 'place_furniture': { const pos = pt(op.pos); if (!pos) throw new Error(t('data.error.furniturePosition')); const it = markFurnitureCompositionCurrent({ id: op.id || newId('f'), type: op.type, pos, elevation: 0, autoElevation: op.elevation === undefined, ...pick(op, ['rot', 'width', 'depth', 'height', 'lift', 'color', 'elevation', 'autoElevation']) }); lvl(op).furniture.push(it); results.push({ ok: true, id: it.id }); break; }
+        case 'move_item': { const { item } = f(op.item_id); if (pt(op.pos)) item.pos = pt(op.pos); if (op.rot !== undefined) item.rot = num(op.rot, 0); if (op.elevation !== undefined) { item.elevation = num(op.elevation, 0); item.autoElevation = false; } if (typeof op.autoElevation === 'boolean') item.autoElevation = op.autoElevation; results.push({ ok: true }); break; }
         case 'delete_item': { const x = f(op.item_id); x.list.splice(x.list.indexOf(x.item), 1); results.push({ ok: true }); break; }
-        default: throw new Error(`unbekannte Operation ${op.op}`);
+        default: throw new Error(t('data.error.unknownOperation', { operation: op.op }));
       }
     } catch (e) { results.push({ ok: false, error: e.message }); }
   }
@@ -159,23 +171,23 @@ export function applyOps(plan, ops) {
 const R = (id, name, area_id, rect, surface = 'oak', kind = 'room') => ({ id, name, area_id, kind, surface, points: rectPoints(...rect) });
 export function demoPlan() {
   return normalize({
-    version: PLAN_VERSION, name: 'Haus am Feldrand',
+    version: PLAN_VERSION, name: t('data.demo.planName'),
     site: { lat: 49.326, lon: 12.11, north: 12, facade: { material: 'plaster', color: '#ece7de', plinth: '#5f636b', frame: '#2c3142' }, roof: { type: 'gable', pitch: 38, overhang: 0.5, ridge: 'x', cover: 'pfanne', color: '#6e3428' }, solar: [{ id: 'pv1', plane: 'auto', rows: 2, cols: 6, portrait: true, offset: [0, 0], entity_id: 'sensor.pv_leistung', peak_kw: 5.4 }], roofItems: [{ id: 'dfw1', kind: 'window', plane: 0, u: -4.4, v: 2.2, w: 0.78, h: 1.18, cover: 'cover.dachfenster', contact: 'binary_sensor.dachfenster' }] },
     levels: [
       {
-        id: 'eg', name: 'Erdgeschoss', floor_id: 'erdgeschoss', elevation: 0, height: 2.6, cutHeight: 1.2,
+        id: 'eg', name: t('data.defaults.groundFloor'), floor_id: 'erdgeschoss', elevation: 0, height: 2.6, cutHeight: 1.2,
         rooms: [
-          { id: 'wohnen', name: 'Wohnen & Essen', area_id: 'wohnzimmer', kind: 'room', surface: 'oak', points: [[0, 0], [6.2, 0], [6.2, 4.8], [4.4, 4.8], [4.4, 8.4], [0, 8.4]] },
-          R('kueche', 'Küche', 'kueche', [6.2, 0, 4.2, 3.2], 'stone'),
-          R('flur', 'Flur', 'flur', [6.2, 3.2, 4.2, 1.6], 'tile'),
-          R('diele', 'Diele', 'flur', [4.4, 4.8, 2.4, 3.6], 'tile'),
-          R('buero', 'Büro', 'buero', [6.8, 4.8, 3.6, 3.6], 'ash'),
-          R('garage', 'Garage', 'garage', [10.4, 0, 3.4, 6.2], 'concrete', 'garage'),
-          R('garten_s', 'Garten', 'garten', [-6, 8.4, 22, 8], 'lawn', 'outdoor'),
-          R('garten_w', 'Garten West', 'garten', [-6, -3, 6, 11.4], 'lawn', 'outdoor'),
-          { ...R('terrasse', 'Terrasse', 'garten', [-3.6, 1.2, 3.6, 5.6], 'terrace', 'outdoor'), raise: 0.06 },
-          { ...R('einfahrt', 'Einfahrt', 'garten', [10.4, -6, 3.4, 6], 'paving', 'outdoor'), raise: 0.02 },
-          { ...R('weg', 'Weg', 'garten', [4.5, 8.4, 1.2, 4.2], 'gravel', 'outdoor'), raise: 0.02 },
+          { id: 'wohnen', name: t('data.demo.room.livingDining'), area_id: 'wohnzimmer', kind: 'room', surface: 'oak', points: [[0, 0], [6.2, 0], [6.2, 4.8], [4.4, 4.8], [4.4, 8.4], [0, 8.4]] },
+          R('kueche', t('data.demo.room.kueche'), 'kueche', [6.2, 0, 4.2, 3.2], 'stone'),
+          R('flur', t('data.demo.room.flur'), 'flur', [6.2, 3.2, 4.2, 1.6], 'tile'),
+          R('diele', t('data.demo.room.diele'), 'flur', [4.4, 4.8, 2.4, 3.6], 'tile'),
+          R('buero', t('data.demo.room.buero'), 'buero', [6.8, 4.8, 3.6, 3.6], 'ash'),
+          R('garage', t('data.demo.room.garage'), 'garage', [10.4, 0, 3.4, 6.2], 'concrete', 'garage'),
+          R('garten_s', t('data.demo.room.garten_s'), 'garten', [-6, 8.4, 22, 8], 'lawn', 'outdoor'),
+          R('garten_w', t('data.demo.room.garten_w'), 'garten', [-6, -3, 6, 11.4], 'lawn', 'outdoor'),
+          { ...R('terrasse', t('data.demo.room.terrasse'), 'garten', [-3.6, 1.2, 3.6, 5.6], 'terrace', 'outdoor'), raise: 0.06 },
+          { ...R('einfahrt', t('data.demo.room.einfahrt'), 'garten', [10.4, -6, 3.4, 6], 'paving', 'outdoor'), raise: 0.02 },
+          { ...R('weg', t('data.demo.room.weg'), 'garten', [4.5, 8.4, 1.2, 4.2], 'gravel', 'outdoor'), raise: 0.02 },
         ],
         openings: [
           { id: 'eg_o1', type: 'open', from: [6.2, 0.6], to: [6.2, 2.8] },
@@ -203,7 +215,6 @@ export function demoPlan() {
           { id: 'f6', type: 'bigPlant', pos: [0.5, 0.5] },
           { id: 'f7', type: 'diningTable', pos: [2.2, 6.6], width: 2.0, chairs: 6 },
           { id: 'f8', type: 'bookshelf', pos: [0.18, 7.2], rot: 90, width: 1.6 },
-          { id: 'f9', type: 'fireplace', pos: [0.24, 4.6], rot: 90 },
           { id: 'f10', type: 'kitchen', pos: [8.1, 0.32], width: 2.8 },
           { id: 'f11', type: 'fridge', pos: [9.95, 0.36] },
           { id: 'f12', type: 'kitchenTall', pos: [10.08, 1.3], rot: -90 },
@@ -211,7 +222,7 @@ export function demoPlan() {
           { id: 'f14', type: 'stairs', pos: [6.25, 6.6], width: 1.0, depth: 3.4, height: 2.85 },
           { id: 'f15', type: 'coatRack', pos: [4.6, 7.5], rot: 90 },
           { id: 'f16', type: 'shoeCabinet', pos: [9.6, 3.36] },
-          { id: 'f17', type: 'desk', pos: [8.6, 8.05], rot: 180, width: 1.6 },
+          { id: 'f17', type: 'desk', pos: [8.6, 8.05], rot: 180, width: 1.6, compositionVersion: 1 },
           { id: 'f18', type: 'officeChair', pos: [8.6, 7.35] },
           { id: 'f19', type: 'shelf', pos: [6.98, 6.6], rot: 90, width: 1.4 },
           { id: 'f20', type: 'car', pos: [12.1, 3.1], color: '#355c8c' },
@@ -240,6 +251,13 @@ export function demoPlan() {
           { id: 'd9', kind: 'light', style: 'track', entity_id: 'light.kueche_spots', pos: [8.1, 2.0], length: 1.8 },
           { id: 'd10', kind: 'light', style: 'strip', entity_id: 'light.kueche_led', pos: [8.1, 0.36], y: 1.1, length: 2.6 },
           { id: 'd11', kind: 'speaker', entity_id: 'media_player.kueche', pos: [9.2, 0.4], y: 0.9 },
+          { id: 'd40', kind: 'speaker', entity_id: 'media_player.esszimmer', pos: [0.35, 5.9], y: 0 },
+          { id: 'd41', kind: 'fireplace', entity_id: 'switch.kamin', pos: [0.12, 4.6], rot: 90, length: 1.0 },
+          { id: 'd42', kind: 'frame', pos: [0.12, 4.6], rot: 90, y: 1.65, fw: 0.9, fh: 0.6, frame: 'black', src: 'art' },
+          { id: 'd43', kind: 'frame', pos: [4.345, 6.6], rot: -90, y: 1.5, fw: 0.7, fh: 0.5, frame: 'oak', passe: true, src: 'folder', folder: 'media-source://media_source/local/Urlaub', interval: 30 },
+          { id: 'd44', kind: 'frame', pos: [6.255, 5.2], rot: 90, y: 1.5, fw: 0.42, fh: 0.594, frame: 'none', src: 'art' },
+          { id: 'd45', kind: 'washer', entity_id: 'sensor.waschmaschine', pos: [13.45, 1.0], rot: -90 },
+          { id: 'd46', kind: 'tv', style: 'monitor', pos: [8.7, 8.25], rot: 180, y: 0.75, length: 0.62 },
           { id: 'd12', kind: 'smoke', entity_id: 'binary_sensor.rauchmelder_flur', pos: [7.5, 4.0] },
           { id: 'd13', kind: 'light', style: 'ceiling', entity_id: 'light.flur_decke', pos: [8.6, 4.0] },
           { id: 'd14', kind: 'motion', entity_id: 'binary_sensor.bewegung_flur', pos: [10.3, 3.3], rot: -45 },
@@ -255,15 +273,15 @@ export function demoPlan() {
         ],
       },
       {
-        id: 'og', name: 'Obergeschoss', floor_id: 'obergeschoss', elevation: 2.85, height: 2.5, cutHeight: 1.2,
+        id: 'og', name: t('data.defaults.upperFloor'), floor_id: 'obergeschoss', elevation: 2.85, height: 2.5, cutHeight: 1.2,
         rooms: [
-          R('schlafen', 'Schlafzimmer', 'schlafzimmer', [0, 0, 4.4, 4.8], 'walnut'),
-          R('ankleide', 'Ankleide', 'schlafzimmer', [0, 4.8, 4.4, 3.6], 'carpet'),
-          R('bad', 'Bad', 'bad', [4.4, 0, 2.8, 3.2], 'tileDark'),
-          R('flur_og', 'Flur OG', 'flur', [4.4, 3.2, 6.0, 1.6], 'oak'),
-          R('galerie', 'Galerie', 'flur', [4.4, 4.8, 2.4, 3.6], 'oak'),
-          R('kind1', 'Kinderzimmer Mia', 'kinderzimmer', [7.2, 0, 3.2, 3.2], 'ash'),
-          R('kind2', 'Kinderzimmer Ben', 'kinderzimmer_2', [6.8, 4.8, 3.6, 3.6], 'ash'),
+          R('schlafen', t('data.demo.room.schlafen'), 'schlafzimmer', [0, 0, 4.4, 4.8], 'walnut'),
+          R('ankleide', t('data.demo.room.ankleide'), 'schlafzimmer', [0, 4.8, 4.4, 3.6], 'carpet'),
+          R('bad', t('data.demo.room.bad'), 'bad', [4.4, 0, 2.8, 3.2], 'tileDark'),
+          R('flur_og', t('data.demo.room.flur_og'), 'flur', [4.4, 3.2, 6.0, 1.6], 'oak'),
+          R('galerie', t('data.demo.room.galerie'), 'flur', [4.4, 4.8, 2.4, 3.6], 'oak'),
+          R('kind1', t('data.demo.room.kind1'), 'kinderzimmer', [7.2, 0, 3.2, 3.2], 'ash'),
+          R('kind2', t('data.demo.room.kind2'), 'kinderzimmer_2', [6.8, 4.8, 3.6, 3.6], 'ash'),
         ],
         openings: [
           { id: 'og_d1', type: 'door', from: [4.4, 3.5], to: [4.4, 4.4] },
@@ -293,7 +311,7 @@ export function demoPlan() {
           { id: 'g9', type: 'vanity', pos: [4.7, 1.0], rot: 90, width: 1.2 },
           { id: 'g10', type: 'shower', pos: [6.7, 2.7] },
           { id: 'g11', type: 'singleBed', pos: [9.85, 1.6], color: '#d98b8b' },
-          { id: 'g12', type: 'desk', pos: [8.0, 0.4], width: 1.2, monitor: false },
+          { id: 'g12', type: 'desk', pos: [8.0, 0.4], width: 1.2, compositionVersion: 1 },
           { id: 'g13', type: 'singleBed', pos: [9.9, 6.6], color: '#86a37f' },
           { id: 'g14', type: 'shelf', pos: [7.0, 6.6], rot: 90 },
           { id: 'g15', type: 'roundRug', pos: [8.6, 6.6], color: '#4f6e8c' },
@@ -313,6 +331,7 @@ export function demoPlan() {
           { id: 'e11', kind: 'ac', entity_id: 'climate.schlafzimmer_klima', pos: [3.85, 0.02] },
           { id: 'e12', kind: 'smoke', entity_id: 'binary_sensor.rauchmelder_og', pos: [9.6, 4.0] },
           { id: 'e13', kind: 'light', style: 'downlights', entity_id: 'light.flur_og', pos: [7.4, 4.0] },
+          { id: 'e14', kind: 'tv', style: 'monitor', pos: [7.9, 0.2], rot: 0, y: 0.75, length: 0.62 },
         ],
       },
     ],

@@ -24,6 +24,7 @@
           "demo_when_empty": "Start with the sample house while no plan exists",
           "base_url": "Endpoint base URL",
           "model": "Model",
+          "ui_language": "Interface language",
           "api_key": "API key",
           "reasoning_effort": "Reasoning effort",
           "max_steps": "Max tool steps per request",
@@ -38,7 +39,8 @@
       }
     },
     "error": {
-      "invalid_url": "The address must start with http:// or https://."
+      "invalid_url": "The address must start with http:// or https://.",
+      "invalid_language": "Choose a supported interface language."
     }
   },
   "selector": {
@@ -48,6 +50,12 @@
         "low": "Low",
         "medium": "Medium",
         "high": "High"
+      }
+    },
+    "ui_language": {
+      "options": {
+        "en": "English",
+        "de": "German"
       }
     }
   }

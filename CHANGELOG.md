@@ -1,4 +1,15 @@
 # Changelog
+
+## 0.6.0b1 (2026-10-17)
+
+- Default to English with complete German support, local welcome-language flags and independent Home Assistant UI-language options.
+- Document native-speaker review requirements for AI-assisted translation contributions.
+- Link media screens to Home Assistant entities and fix screen selection and long-press controls.
+- Confine media effects to room boundaries and make demo solar output follow the displayed sun.
+- Split independently placeable accessories from furniture while migrating saved arrangements.
+- Automatically place movable objects on supporting surfaces or the floor, with persistent manual height overrides and an on/off switch.
+- Keep selection boxes aligned with moved objects and improve slab, terrain and shadow geometry.
+
 ## 0.5.1 (2026-10-16)
 
 - Include the Xbox Wireless Controller in the generated offline catalogue, website gallery and editor.

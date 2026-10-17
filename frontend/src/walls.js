@@ -58,11 +58,13 @@ export function resolveFurniture(level, item, segs = wallSegments(level)) {
   return [Math.round(f.c[0] * 1000) / 1000, Math.round(f.c[1] * 1000) / 1000];
 }
 
-const WALL_KINDS = new Set(['temp', 'thermostat', 'plug', 'camera', 'ac']);
+const WALL_KINDS = new Set(['temp', 'thermostat', 'plug', 'camera', 'ac', 'frame']);
 export function isWallMounted(dev) {
   if (WALL_KINDS.has(dev.kind)) return true;
   if (dev.kind === 'light') return ['wall', 'outdoorWall'].includes(dev.style);
   if (dev.kind === 'radiator') return (dev.style || 'panel') !== 'convector';
+  if (dev.kind === 'tv') return ['wall', 'projector'].includes(dev.style);
+  if (dev.kind === 'fireplace') return true;
   return false;
 }
 // Snaps a wall-mounted device to the nearest wall face (within reach) on the pointer's side.

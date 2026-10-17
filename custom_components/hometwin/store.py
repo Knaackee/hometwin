@@ -15,6 +15,7 @@ import shutil
 from pathlib import Path
 
 from .const import LEGACY_STORAGE_KEY, LEGACY_UNDERLAY_DIR, MAX_PLAN_BYTES, SIGNAL_PLAN_UPDATED, STORAGE_KEY, STORAGE_VERSION, UNDERLAY_DIR
+from .i18n import language_from_hass, message
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,24 +40,24 @@ class PlanStore:
                 _LOGGER.info("HomeTwin: plan taken over from Raumwerk")
 
     async def async_save(self, plan: dict[str, Any], client_id: str | None = None) -> None:
-        validate_plan(plan)
+        validate_plan(plan, language_from_hass(self.hass))
         self.plan = plan
         await self._store.async_save({"plan": plan})
         async_dispatcher_send(self.hass, SIGNAL_PLAN_UPDATED, plan, client_id)
 
 
-def validate_plan(plan: Any) -> None:
+def validate_plan(plan: Any, language: str = "en") -> None:
     """Light structural check; the frontend owns the detailed schema."""
     if not isinstance(plan, dict) or not isinstance(plan.get("levels"), list):
-        raise HomeAssistantError("Plan muss ein Objekt mit 'levels' sein")
+        raise HomeAssistantError(message(language, "plan_shape"))
     if len(json.dumps(plan)) > MAX_PLAN_BYTES:
-        raise HomeAssistantError("Plan ist zu groß")
+        raise HomeAssistantError(message(language, "plan_too_large"))
     for level in plan["levels"]:
         if not isinstance(level, dict) or not isinstance(level.get("id"), str):
-            raise HomeAssistantError("Ungültige Etage im Plan")
+            raise HomeAssistantError(message(language, "invalid_level"))
         for key in ("rooms", "openings", "furniture", "devices"):
             if not isinstance(level.get(key, []), list):
-                raise HomeAssistantError(f"Ungültiges Feld {key}")
+                raise HomeAssistantError(message(language, "invalid_field", field=key))
 
 
 def _copy_underlays(src: str, dst: str) -> None:

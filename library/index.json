@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "generated": "2026-10-16T16:17:41.903Z",
- "count": 7,
+ "generated": "2026-10-16T19:37:04.851Z",
+ "count": 8,
  "categories": [
   "climate/radiator",
   "climate/thermostat",
@@ -9,6 +9,7 @@
   "furniture/storage",
   "lighting/floor",
   "media",
+  "media/tv",
   "music/instruments"
  ],
  "items": [
@@ -162,6 +163,38 @@
    "author": "hometwin",
    "format": "recipe",
    "preview": "generic/lighting/floor/arc-lamp/preview.webp"
+  },
+  {
+   "id": "generic/media/tv/curved-tv-55",
+   "name": {
+    "en": "Curved TV 55\" on stand",
+    "de": "Curved-Fernseher 55\" mit Standfuß"
+   },
+   "category": "media/tv",
+   "manufacturer": null,
+   "model": null,
+   "variant": "55 inch, radius 4200R",
+   "dimensions": {
+    "w": 1.23,
+    "d": 0.24,
+    "h": 0.8
+   },
+   "mount": "floor",
+   "ha": {
+    "domains": [
+     "media_player"
+    ]
+   },
+   "tags": [
+    "tv",
+    "curved",
+    "screen",
+    "display"
+   ],
+   "license": "CC0-1.0",
+   "author": "hometwin",
+   "format": "recipe",
+   "preview": "generic/media/tv/curved-tv-55/preview.webp"
   },
   {
    "id": "manufacturers/martin/music/instruments/ed-sheeran-divide-signature",

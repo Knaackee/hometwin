@@ -1,14 +1,14 @@
 {
  "device_kinds": {
   "light": {
-   "label": "Leuchte",
+   "label": "Light",
    "domains": [
     "light"
    ],
    "device_classes": null
   },
   "radiator": {
-   "label": "Heizkörper",
+   "label": "Radiator",
    "domains": [
     "climate"
    ],
@@ -22,7 +22,7 @@
    "device_classes": null
   },
   "ac": {
-   "label": "Klimagerät",
+   "label": "Air conditioner",
    "domains": [
     "climate",
     "fan"
@@ -30,7 +30,7 @@
    "device_classes": null
   },
   "fan": {
-   "label": "Deckenventilator",
+   "label": "Ceiling fan",
    "domains": [
     "fan",
     "switch"
@@ -38,7 +38,7 @@
    "device_classes": null
   },
   "temp": {
-   "label": "Temperatursensor",
+   "label": "Temperature sensor",
    "domains": [
     "sensor"
    ],
@@ -48,7 +48,7 @@
    ]
   },
   "motion": {
-   "label": "Bewegungsmelder",
+   "label": "Motion sensor",
    "domains": [
     "binary_sensor"
    ],
@@ -59,7 +59,7 @@
    ]
   },
   "smoke": {
-   "label": "Rauchmelder",
+   "label": "Smoke detector",
    "domains": [
     "binary_sensor"
    ],
@@ -72,7 +72,7 @@
    ]
   },
   "plug": {
-   "label": "Steckdose / Schalter",
+   "label": "Outlet / switch",
    "domains": [
     "switch",
     "input_boolean"
@@ -80,35 +80,75 @@
    "device_classes": null
   },
   "tv": {
-   "label": "Fernseher",
+   "label": "TV / screen",
    "domains": [
+    "media_player",
+    "camera",
+    "image"
+   ],
+   "device_classes": null
+  },
+  "projector": {
+   "label": "Projector",
+   "domains": [
+    "media_player",
+    "switch",
+    "input_boolean"
+   ],
+   "device_classes": null
+  },
+  "frame": {
+   "label": "Picture frame / poster",
+   "domains": [
+    "image",
+    "camera",
     "media_player"
    ],
    "device_classes": null
   },
   "speaker": {
-   "label": "Lautsprecher",
+   "label": "Speaker",
    "domains": [
     "media_player"
    ],
    "device_classes": null
   },
   "vacuum": {
-   "label": "Saugroboter",
+   "label": "Robot vacuum",
    "domains": [
     "vacuum"
    ],
    "device_classes": null
   },
+  "washer": {
+   "label": "Washer / dryer",
+   "domains": [
+    "sensor",
+    "switch",
+    "binary_sensor",
+    "input_boolean"
+   ],
+   "device_classes": null
+  },
+  "fireplace": {
+   "label": "Fireplace",
+   "domains": [
+    "switch",
+    "climate",
+    "light",
+    "input_boolean"
+   ],
+   "device_classes": null
+  },
   "mower": {
-   "label": "Mähroboter",
+   "label": "Robot mower",
    "domains": [
     "lawn_mower"
    ],
    "device_classes": null
   },
   "valve": {
-   "label": "Bewässerung",
+   "label": "Irrigation",
    "domains": [
     "valve",
     "switch"
@@ -116,7 +156,7 @@
    "device_classes": null
   },
   "camera": {
-   "label": "Kamera",
+   "label": "Camera",
    "domains": [
     "camera"
    ],
@@ -125,85 +165,101 @@
  },
  "styles": {
   "light": {
-   "ceiling": "Deckenleuchte",
-   "downlights": "Einbauspots",
-   "pendant": "Pendelleuchte",
-   "pendantTrio": "Pendelgruppe",
-   "arc": "Bogenlampe",
-   "floor": "Stehlampe",
-   "table": "Tischlampe",
-   "wall": "Wandleuchte",
-   "track": "Strahlerschiene",
-   "strip": "LED-Streifen",
-   "outdoorWall": "Außenwandleuchte",
-   "bollard": "Wegeleuchte"
+   "ceiling": "Ceiling light",
+   "downlights": "Recessed lights",
+   "pendant": "Pendant light",
+   "pendantTrio": "Pendant group",
+   "arc": "Arc lamp",
+   "floor": "Floor lamp",
+   "table": "Table lamp",
+   "wall": "Wall light",
+   "track": "Track lighting",
+   "strip": "LED strip",
+   "outdoorWall": "Outdoor wall light",
+   "bollard": "Path light"
   },
   "radiator": {
-   "panel": "Flachheizkörper",
-   "towel": "Handtuchheizkörper",
-   "convector": "Bodenkonvektor"
+   "panel": "Panel radiator",
+   "towel": "Towel radiator",
+   "convector": "Floor convector"
   }
  },
  "furniture": {
   "sofa": {
    "label": "Sofa",
-   "category": "Wohnen",
+   "category": "Living",
    "width": 2.2,
    "depth": 0.95,
    "height": null,
    "outdoor": false
   },
   "cornerSofa": {
-   "label": "Ecksofa",
-   "category": "Wohnen",
+   "label": "Corner sofa",
+   "category": "Living",
    "width": 2.8,
    "depth": 2,
    "height": null,
    "outdoor": false
   },
   "armchair": {
-   "label": "Sessel",
-   "category": "Wohnen",
+   "label": "Armchair",
+   "category": "Living",
    "width": 0.9,
    "depth": 0.88,
    "height": null,
    "outdoor": false
   },
   "loungeChair": {
-   "label": "Loungesessel",
-   "category": "Wohnen",
+   "label": "Lounge chair",
+   "category": "Living",
    "width": 0.85,
    "depth": 0.9,
    "height": null,
    "outdoor": false
   },
   "coffeeTable": {
-   "label": "Couchtisch",
-   "category": "Wohnen",
+   "label": "Coffee table",
+   "category": "Living",
    "width": 1.1,
    "depth": 0.58,
    "height": null,
    "outdoor": false
   },
+  "book": {
+   "label": "Book",
+   "category": "Living",
+   "width": 0.24,
+   "depth": 0.17,
+   "height": 0.035,
+   "outdoor": false
+  },
+  "cup": {
+   "label": "Cup",
+   "category": "Living",
+   "width": 0.1,
+   "depth": 0.1,
+   "height": 0.09,
+   "outdoor": false
+  },
   "sideTable": {
-   "label": "Beistelltisch",
-   "category": "Wohnen",
+   "label": "Side table",
+   "category": "Living",
    "width": 0.45,
    "depth": 0.45,
    "height": null,
    "outdoor": false
   },
   "rug": {
-   "label": "Teppich",
-   "category": "Wohnen",
+   "label": "Rug",
+   "category": "Living",
    "width": 2,
    "depth": 1.4,
    "height": null,
    "outdoor": false
   },
   "roundRug": {
-   "label": "Teppich rund",
-   "category": "Wohnen",
+   "label": "Round rug",
+   "category": "Living",
    "width": 1.6,
    "depth": 1.6,
    "height": null,
@@ -211,391 +267,479 @@
   },
   "sideboard": {
    "label": "Sideboard",
-   "category": "Wohnen",
+   "category": "Living",
    "width": 1.6,
    "depth": 0.42,
    "height": 0.6,
    "outdoor": false
   },
   "tvBoard": {
-   "label": "TV-Board",
-   "category": "Wohnen",
+   "label": "TV stand",
+   "category": "Living",
    "width": 1.8,
    "depth": 0.4,
    "height": null,
    "outdoor": false
   },
   "bookshelf": {
-   "label": "Bücherregal",
-   "category": "Wohnen",
+   "label": "Bookcase",
+   "category": "Living",
    "width": 1,
    "depth": 0.32,
    "height": 1.9,
    "outdoor": false
   },
+  "standingBook": {
+   "label": "Book",
+   "category": "Living",
+   "width": 0.05,
+   "depth": 0.22,
+   "height": 0.28,
+   "outdoor": false
+  },
   "fireplace": {
-   "label": "Kamin",
-   "category": "Wohnen",
+   "label": "Fireplace",
+   "category": "Living",
    "width": 1.2,
    "depth": 0.45,
    "height": 1.1,
    "outdoor": false
   },
   "piano": {
-   "label": "Klavier",
-   "category": "Wohnen",
+   "label": "Piano",
+   "category": "Living",
    "width": 1.5,
    "depth": 0.6,
    "height": null,
    "outdoor": false
   },
   "plant": {
-   "label": "Zimmerpflanze",
-   "category": "Wohnen",
+   "label": "Houseplant",
+   "category": "Living",
    "width": 0.45,
    "depth": 0.45,
    "height": 1.2,
    "outdoor": false
   },
   "bigPlant": {
-   "label": "Großpflanze",
-   "category": "Wohnen",
+   "label": "Large plant",
+   "category": "Living",
    "width": 0.7,
    "depth": 0.7,
    "height": 2,
    "outdoor": false
   },
   "diningTable": {
-   "label": "Esstisch",
-   "category": "Essen & Küche",
+   "label": "Dining table",
+   "category": "Dining & kitchen",
    "width": 1.8,
    "depth": 0.9,
    "height": null,
    "outdoor": false
   },
   "roundTable": {
-   "label": "Runder Tisch",
-   "category": "Essen & Küche",
+   "label": "Round table",
+   "category": "Dining & kitchen",
    "width": 1.1,
    "depth": 1.1,
    "height": null,
    "outdoor": false
   },
   "chair": {
-   "label": "Stuhl",
-   "category": "Essen & Küche",
+   "label": "Chair",
+   "category": "Dining & kitchen",
    "width": 0.44,
    "depth": 0.44,
    "height": null,
    "outdoor": false
   },
   "barStool": {
-   "label": "Barhocker",
-   "category": "Essen & Küche",
+   "label": "Bar stool",
+   "category": "Dining & kitchen",
    "width": 0.4,
    "depth": 0.4,
    "height": null,
    "outdoor": false
   },
   "bench": {
-   "label": "Sitzbank",
-   "category": "Essen & Küche",
+   "label": "Bench",
+   "category": "Dining & kitchen",
    "width": 1.4,
    "depth": 0.38,
    "height": null,
    "outdoor": false
   },
   "kitchen": {
-   "label": "Küchenzeile",
-   "category": "Essen & Küche",
+   "label": "Kitchen cabinets",
+   "category": "Dining & kitchen",
    "width": 3,
    "depth": 0.62,
    "height": null,
    "outdoor": false
   },
   "kitchenTall": {
-   "label": "Hochschrank mit Backofen",
-   "category": "Essen & Küche",
+   "label": "Tall kitchen cabinet",
+   "category": "Dining & kitchen",
    "width": 0.6,
    "depth": 0.62,
    "height": null,
    "outdoor": false
   },
   "island": {
-   "label": "Kochinsel",
-   "category": "Essen & Küche",
+   "label": "Kitchen island",
+   "category": "Dining & kitchen",
    "width": 2,
    "depth": 1,
    "height": null,
    "outdoor": false
   },
+  "hob": {
+   "label": "Cooktop",
+   "category": "Dining & kitchen",
+   "width": 0.58,
+   "depth": 0.5,
+   "height": 0.012,
+   "outdoor": false
+  },
+  "sink": {
+   "label": "Sink",
+   "category": "Dining & kitchen",
+   "width": 0.5,
+   "depth": 0.38,
+   "height": 0.012,
+   "outdoor": false
+  },
+  "tap": {
+   "label": "Faucet",
+   "category": "Dining & kitchen",
+   "width": 0.03,
+   "depth": 0.03,
+   "height": 0.24,
+   "outdoor": false
+  },
+  "upperCabinet": {
+   "label": "Upper kitchen cabinet",
+   "category": "Dining & kitchen",
+   "width": 0.6,
+   "depth": 0.35,
+   "height": 0.7,
+   "outdoor": false
+  },
+  "hood": {
+   "label": "Range hood",
+   "category": "Dining & kitchen",
+   "width": 0.7,
+   "depth": 0.42,
+   "height": 0.08,
+   "outdoor": false
+  },
+  "oven": {
+   "label": "Oven",
+   "category": "Dining & kitchen",
+   "width": 0.54,
+   "depth": 0.03,
+   "height": 0.55,
+   "outdoor": false
+  },
   "fridge": {
-   "label": "Kühlschrank",
-   "category": "Essen & Küche",
+   "label": "Refrigerator",
+   "category": "Dining & kitchen",
    "width": 0.7,
    "depth": 0.68,
    "height": null,
    "outdoor": false
   },
   "bed": {
-   "label": "Doppelbett",
-   "category": "Schlafen",
+   "label": "Double bed",
+   "category": "Bedroom",
    "width": 1.8,
    "depth": 2.1,
    "height": null,
    "outdoor": false
   },
   "singleBed": {
-   "label": "Einzelbett",
-   "category": "Schlafen",
+   "label": "Single bed",
+   "category": "Bedroom",
    "width": 0.95,
    "depth": 2.05,
    "height": null,
    "outdoor": false
   },
   "crib": {
-   "label": "Babybett",
-   "category": "Schlafen",
+   "label": "Crib",
+   "category": "Bedroom",
    "width": 0.66,
    "depth": 1.26,
    "height": null,
    "outdoor": false
   },
   "nightstand": {
-   "label": "Nachttisch",
-   "category": "Schlafen",
+   "label": "Nightstand",
+   "category": "Bedroom",
    "width": 0.46,
    "depth": 0.4,
    "height": null,
    "outdoor": false
   },
   "wardrobe": {
-   "label": "Kleiderschrank",
-   "category": "Schlafen",
+   "label": "Wardrobe",
+   "category": "Bedroom",
    "width": 1.6,
    "depth": 0.6,
    "height": 2.1,
    "outdoor": false
   },
   "dresser": {
-   "label": "Kommode",
-   "category": "Schlafen",
+   "label": "Dresser",
+   "category": "Bedroom",
    "width": 1.2,
    "depth": 0.45,
    "height": null,
    "outdoor": false
   },
   "bathtub": {
-   "label": "Badewanne",
-   "category": "Bad",
+   "label": "Bathtub",
+   "category": "Bathroom",
    "width": 1.7,
    "depth": 0.78,
    "height": null,
    "outdoor": false
   },
   "shower": {
-   "label": "Dusche",
-   "category": "Bad",
+   "label": "Shower",
+   "category": "Bathroom",
    "width": 0.9,
    "depth": 0.9,
    "height": null,
    "outdoor": false
   },
   "toilet": {
-   "label": "WC",
-   "category": "Bad",
+   "label": "Toilet",
+   "category": "Bathroom",
    "width": 0.4,
    "depth": 0.62,
    "height": null,
    "outdoor": false
   },
   "vanity": {
-   "label": "Waschtisch",
-   "category": "Bad",
+   "label": "Vanity",
+   "category": "Bathroom",
    "width": 0.9,
    "depth": 0.5,
    "height": null,
    "outdoor": false
   },
+  "vanityMirror": {
+   "label": "Vanity mirror",
+   "category": "Bathroom",
+   "width": 0.76,
+   "depth": 0.02,
+   "height": 0.7,
+   "outdoor": false
+  },
   "washer": {
-   "label": "Waschmaschine",
-   "category": "Bad",
+   "label": "Washing machine",
+   "category": "Bathroom",
    "width": 0.6,
    "depth": 0.6,
    "height": null,
    "outdoor": false
   },
   "towelRack": {
-   "label": "Handtuchregal",
-   "category": "Bad",
+   "label": "Towel shelf",
+   "category": "Bathroom",
    "width": 0.6,
    "depth": 0.3,
    "height": null,
    "outdoor": false
   },
+  "towel": {
+   "label": "Towel",
+   "category": "Bathroom",
+   "width": 0.5,
+   "depth": 0.24,
+   "height": 0.2,
+   "outdoor": false
+  },
   "desk": {
-   "label": "Schreibtisch",
-   "category": "Büro",
+   "label": "Desk",
+   "category": "Office",
    "width": 1.4,
    "depth": 0.7,
    "height": null,
    "outdoor": false
   },
   "officeChair": {
-   "label": "Bürostuhl",
-   "category": "Büro",
+   "label": "Office chair",
+   "category": "Office",
    "width": 0.6,
    "depth": 0.6,
    "height": null,
    "outdoor": false
   },
   "shelf": {
-   "label": "Regalsystem",
-   "category": "Büro",
+   "label": "Shelving unit",
+   "category": "Office",
    "width": 1.2,
    "depth": 0.35,
    "height": 1.8,
    "outdoor": false
   },
   "stairs": {
-   "label": "Treppe",
-   "category": "Flur & Treppe",
+   "label": "Stairs",
+   "category": "Hall & stairs",
    "width": 1,
    "depth": 3.2,
    "height": 2.8,
    "outdoor": false
   },
   "shoeCabinet": {
-   "label": "Schuhschrank",
-   "category": "Flur & Treppe",
+   "label": "Shoe cabinet",
+   "category": "Hall & stairs",
    "width": 1,
    "depth": 0.3,
    "height": null,
    "outdoor": false
   },
   "coatRack": {
-   "label": "Garderobe",
-   "category": "Flur & Treppe",
+   "label": "Coat rack",
+   "category": "Hall & stairs",
    "width": 0.9,
    "depth": 0.35,
    "height": null,
    "outdoor": false
   },
+  "coat": {
+   "label": "Coat",
+   "category": "Hall & stairs",
+   "width": 0.32,
+   "depth": 0.12,
+   "height": 0.8,
+   "outdoor": false
+  },
   "mirror": {
-   "label": "Wandspiegel",
-   "category": "Flur & Treppe",
+   "label": "Wall mirror",
+   "category": "Hall & stairs",
    "width": 0.6,
    "depth": 0.05,
    "height": null,
    "outdoor": false
   },
   "car": {
-   "label": "Auto",
-   "category": "Garage & Technik",
+   "label": "Car",
+   "category": "Garage & utility",
    "width": 1.85,
    "depth": 4.5,
    "height": null,
    "outdoor": false
   },
   "bike": {
-   "label": "Fahrrad",
-   "category": "Garage & Technik",
+   "label": "Bicycle",
+   "category": "Garage & utility",
    "width": 0.6,
    "depth": 1.75,
    "height": null,
    "outdoor": false
   },
   "workbench": {
-   "label": "Werkbank",
-   "category": "Garage & Technik",
+   "label": "Workbench",
+   "category": "Garage & utility",
    "width": 1.8,
    "depth": 0.7,
    "height": null,
    "outdoor": false
   },
   "rack": {
-   "label": "Schwerlastregal",
-   "category": "Garage & Technik",
+   "label": "Heavy-duty shelf",
+   "category": "Garage & utility",
    "width": 1.2,
    "depth": 0.5,
    "height": 2,
    "outdoor": false
   },
+  "storageBox": {
+   "label": "Storage box",
+   "category": "Garage & utility",
+   "width": 0.4,
+   "depth": 0.35,
+   "height": 0.3,
+   "outdoor": false
+  },
   "heatPump": {
-   "label": "Wärmepumpe (außen)",
-   "category": "Garage & Technik",
+   "label": "Heat pump (outdoor)",
+   "category": "Garage & utility",
    "width": 1.1,
    "depth": 0.45,
    "height": null,
    "outdoor": false
   },
   "box": {
-   "label": "Block (frei)",
-   "category": "Garage & Technik",
+   "label": "Freeform block",
+   "category": "Garage & utility",
    "width": 0.8,
    "depth": 0.6,
    "height": 0.8,
    "outdoor": false
   },
   "tree": {
-   "label": "Laubbaum",
-   "category": "Garten",
+   "label": "Deciduous tree",
+   "category": "Garden",
    "width": 3,
    "depth": 3,
    "height": 5.5,
    "outdoor": true
   },
   "conifer": {
-   "label": "Nadelbaum",
-   "category": "Garten",
+   "label": "Conifer",
+   "category": "Garden",
    "width": 1.8,
    "depth": 1.8,
    "height": 6,
    "outdoor": true
   },
   "bush": {
-   "label": "Strauch",
-   "category": "Garten",
+   "label": "Shrub",
+   "category": "Garden",
    "width": 1,
    "depth": 1,
    "height": 1,
    "outdoor": true
   },
   "hedge": {
-   "label": "Hecke",
-   "category": "Garten",
+   "label": "Hedge",
+   "category": "Garden",
    "width": 3,
    "depth": 0.6,
    "height": 1.6,
    "outdoor": true
   },
   "fence": {
-   "label": "Zaun",
-   "category": "Garten",
+   "label": "Fence",
+   "category": "Garden",
    "width": 3,
    "depth": 0.06,
    "height": 1.2,
    "outdoor": true
   },
   "gardenSet": {
-   "label": "Gartentisch-Set",
-   "category": "Garten",
+   "label": "Garden table",
+   "category": "Garden",
    "width": 1.6,
    "depth": 1.6,
    "height": null,
    "outdoor": true
   },
   "lounger": {
-   "label": "Liege",
-   "category": "Garten",
+   "label": "Lounger",
+   "category": "Garden",
    "width": 0.7,
    "depth": 1.95,
    "height": null,
    "outdoor": true
   },
   "umbrella": {
-   "label": "Sonnenschirm",
-   "category": "Garten",
+   "label": "Patio umbrella",
+   "category": "Garden",
    "width": 2.6,
    "depth": 2.6,
    "height": null,
@@ -603,23 +747,23 @@
   },
   "grill": {
    "label": "Grill",
-   "category": "Garten",
+   "category": "Garden",
    "width": 1.2,
    "depth": 0.6,
    "height": null,
    "outdoor": true
   },
   "raisedBed": {
-   "label": "Hochbeet",
-   "category": "Garten",
+   "label": "Raised bed",
+   "category": "Garden",
    "width": 2,
    "depth": 0.8,
    "height": null,
    "outdoor": true
   },
   "trampoline": {
-   "label": "Trampolin",
-   "category": "Garten",
+   "label": "Trampoline",
+   "category": "Garden",
    "width": 3,
    "depth": 3,
    "height": null,
@@ -627,7 +771,7 @@
   },
   "lib:generic/climate/radiator/panel-radiator-type-22": {
    "label": "Flachheizkörper Typ 22",
-   "category": "Bibliothek",
+   "category": "Library",
    "width": 1,
    "depth": 0.103,
    "height": 0.6,
@@ -635,7 +779,7 @@
   },
   "lib:generic/climate/thermostat/wall-thermostat": {
    "label": "Wandthermostat",
-   "category": "Bibliothek",
+   "category": "Library",
    "width": 0.086,
    "depth": 0.026,
    "height": 0.086,
@@ -643,7 +787,7 @@
   },
   "lib:generic/furniture/seating/sofa": {
    "label": "Sofa",
-   "category": "Bibliothek",
+   "category": "Library",
    "width": 2.2,
    "depth": 0.95,
    "height": 0.81,
@@ -651,7 +795,7 @@
   },
   "lib:generic/furniture/storage/cube-shelf": {
    "label": "Würfelregal",
-   "category": "Bibliothek",
+   "category": "Library",
    "width": 1.458,
    "depth": 0.39,
    "height": 1.458,
@@ -659,76 +803,92 @@
   },
   "lib:generic/lighting/floor/arc-lamp": {
    "label": "Bogenleuchte",
-   "category": "Bibliothek",
+   "category": "Library",
    "width": 1.9,
    "depth": 0.44,
    "height": 2,
    "outdoor": false
   },
+  "lib:generic/media/tv/curved-tv-55": {
+   "label": "Curved-Fernseher 55\" mit Standfuß",
+   "category": "Library",
+   "width": 1.23,
+   "depth": 0.24,
+   "height": 0.8,
+   "outdoor": false
+  },
   "lib:manufacturers/martin/music/instruments/ed-sheeran-divide-signature": {
    "label": "Martin Ed Sheeran ÷ (Divide) Signature Edition",
-   "category": "Bibliothek",
+   "category": "Library",
    "width": 0.305,
    "depth": 0.09,
    "height": 0.864,
+   "outdoor": false
+  },
+  "lib:manufacturers/microsoft/media/xbox-wireless-controller-robot-white": {
+   "label": "Xbox Wireless Controller — Robot White",
+   "category": "Library",
+   "width": 0.153,
+   "depth": 0.102,
+   "height": 0.061,
    "outdoor": false
   }
  },
  "surfaces": {
   "oak": {
-   "label": "Eiche",
+   "label": "Oak",
    "outdoor": false
   },
   "walnut": {
-   "label": "Nussbaum",
+   "label": "Walnut",
    "outdoor": false
   },
   "ash": {
-   "label": "Esche hell",
+   "label": "Light ash",
    "outdoor": false
   },
   "tile": {
-   "label": "Fliese hell",
+   "label": "Light tile",
    "outdoor": false
   },
   "tileDark": {
-   "label": "Fliese anthrazit",
+   "label": "Dark tile",
    "outdoor": false
   },
   "stone": {
-   "label": "Naturstein",
+   "label": "Natural stone",
    "outdoor": false
   },
   "concrete": {
-   "label": "Beton",
+   "label": "Concrete",
    "outdoor": false
   },
   "carpet": {
-   "label": "Teppichboden",
+   "label": "Carpet",
    "outdoor": false
   },
   "lawn": {
-   "label": "Rasen",
+   "label": "Lawn",
    "outdoor": true
   },
   "terrace": {
-   "label": "Terrasse (Holz)",
+   "label": "Terrace (wood)",
    "outdoor": true
   },
   "paving": {
-   "label": "Pflaster",
+   "label": "Paving",
    "outdoor": true
   },
   "gravel": {
-   "label": "Kies",
+   "label": "Gravel",
    "outdoor": true
   },
   "driveway": {
-   "label": "Einfahrt (Asphalt)",
+   "label": "Driveway (asphalt)",
    "outdoor": true
   },
   "pool": {
-   "label": "Pool (Wasser)",
+   "label": "Pool (water)",
    "outdoor": true
   }
  },

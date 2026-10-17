@@ -63,12 +63,13 @@ Open `docs/demo/index.html` in a browser (it loads three.js and pdf.js from jsDe
 ## Conventions
 
 - Plain ES modules, no framework. Keep files focused; prefer extending the existing module over new layers.
-- The UI text is German today. New strings: German now, keep them short; the English/i18n migration is the next milestone (collect strings in one place when you touch a module).
+- English is the default UI language; German is also supported. UI text lives in frontend/src/locales/<area>.<language>.json with stable semantic keys. Use i18n.js at render time; preserve placeholders and user-authored names. Keep both languages complete and run npm run test:i18n. Home Assistant options select ui_language independently of the HA profile language.
 - Units: metres, degrees. Plan axes: x right, z down (south), y up.
 - No external network calls from the panel except the optional library index (`knaackee.github.io/hometwin/library/library.json`).
 - Never commit photos, textures or logos of third parties. Library objects are recipes; preview images are rendered.
 - Accessibility: buttons have labels, keyboard works, `prefers-reduced-motion` is respected where it matters (not for the short rise animation).
 
+- Translation contributions follow [CONTRIBUTING.md](CONTRIBUTING.md#translation-contributions). AI drafting is allowed; a native speaker must manually review every string and the running UI before merge. Never self-certify human review or enable unreviewed generated languages. Record the reviewer, language, checked screens and AI model in the PR.
 ## Versioning and release
 
 1. Bump the version in `custom_components/hometwin/const.py` (`VERSION`), `custom_components/hometwin/manifest.json` and `CHANGELOG.md`.
