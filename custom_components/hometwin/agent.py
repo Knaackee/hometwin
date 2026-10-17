@@ -780,7 +780,7 @@ async def run_detect(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any],
         text = LAYOUT_PROMPT.format(w=w, h=h)
     elif req.get("mode") == "openings":
         text = OPENINGS_PROMPT.format(w=w, h=h, mpp=float(req.get("mpp") or 0.01), ppm=1 / float(req.get("mpp") or 0.01), notation=NOTATION_HELP, labels=_labels_block(req),
-                                      walls="\n".join(f"{i}: [{', '.join(str(round(v)) for v in wl[:4])}] {wl[4] if len(wl) > 4 else ''}" for i, wl in enumerate(req.get("walls") or [])[:200]),
+                                      walls="\n".join(f"{i}: [{', '.join(str(round(v)) for v in wl[:4])}] {wl[4] if len(wl) > 4 else ''}" for i, wl in enumerate((req.get("walls") or [])[:200])),
                                       rooms=json.dumps([{"name": r.get("name"), "points": [[round(p[0]), round(p[1])] for p in r.get("points") or []]} for r in (req.get("rooms") or [])[:60]], ensure_ascii=False))
     elif req.get("mode") == "refine":
         text = DETECT_PROMPT.format(

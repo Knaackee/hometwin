@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import asyncio
 import json
 import math
 import sys
@@ -137,4 +138,25 @@ tile = agent._openings_from({"openings": [{"wall": 2, "type": "door", "from": [1
 assert len(tile) == 1 and tile[0]["from"] == [5.1, 2.1] and tile[0]["wall"] == 2
 assert agent.image_max_px("anthropic/claude-opus-5.5") == 1568 and agent.image_max_px("google/gemini-4-argon") == 3072
 
-print("PASS: detection parsing (fenced JSON, point/number formats, normalised coordinates, nested answers, clear errors, non-finite coordinates rejected)")
+async def check_openings_request():
+    """Exercise real prompt construction and response parsing; only the model transport is stubbed."""
+    payloads = []
+    async def respond(hass, cfg, payload, on_text):
+        payloads.append(payload)
+        return json.dumps({"openings": [{"wall": 0, "type": "door", "from": [10, 10], "to": [10, 98]}]})
+
+    original = agent._post_stream
+    agent._post_stream = respond
+    try:
+        cfg = agent.AgentConfig("https://example.invalid", "", "test-model", "none", 1, "")
+        result = await agent.run_detect(None, cfg, {**REQ, "mode": "openings", "image": "data:image/png;base64,test",
+                                                   "walls": [[0, 0, 100, 0, "exterior"]] * 201, "rooms": []})
+        assert result["openings"][0]["from"] == [0.1, 0.1]
+        prompt = payloads[0]["messages"][1]["content"][0]["text"]
+        assert "199: [0, 0, 100, 0] exterior" in prompt
+        assert "200: [0, 0, 100, 0] exterior" not in prompt
+    finally:
+        agent._post_stream = original
+
+asyncio.run(check_openings_request())
+print("PASS: detection parsing and real openings request construction")
