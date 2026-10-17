@@ -24,6 +24,21 @@ try {
     assert.equal(await page.evaluate(() => document.querySelector('hometwin-panel').wizard.st.step), 3, 'stays on the recognition step');
     assert.match(await panel.locator('.wz-side .warn').first().innerText(), /without rooms/);
     assert.ok(await page.evaluate(() => { const im = document.querySelector('hometwin-panel').wizard.modelImage(); return Math.max(im.w, im.h) <= 1568; }), 'model image fits 1568 px');
+    // Refinement must retain the same image coordinates, including the far edge.
+    const aligned = await page.evaluate(async () => {
+      const wz = document.querySelector('hometwin-panel').wizard;
+      const source = document.createElement('canvas'); source.width = 2400; source.height = 1800;
+      const g = source.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 2400, 1800);
+      g.fillStyle = '#f00'; g.fillRect(2370, 0, 30, 1800);
+      const previous = wz.st.img; wz.st.img = source;
+      const im = wz.modelImage(), url = wz.overlayImage(im, []); wz.st.img = previous;
+      const image = new Image(); image.src = url; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = im.w; canvas.height = im.h;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(image, 0, 0);
+      const [r, g2, b] = ctx.getImageData(im.w - 5, Math.floor(im.h / 2), 1, 1).data;
+      return r > 200 && g2 < 50 && b < 50;
+    });
+    assert.ok(aligned, 'refinement overlay preserves the right edge at the model image scale');
     assert.equal(await panel.locator('[data-act="copyRaw"]').count(), 1);
     // The demo's simulated Home Assistant is replaced on every state push, so patch it right before the call.
     await page.evaluate(() => { const app = document.querySelector('hometwin-panel'); const ws = app.hass.callWS.bind(app.hass);

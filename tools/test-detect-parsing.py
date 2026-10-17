@@ -88,4 +88,13 @@ for bad, word in ((json.dumps({"rooms": [{"name": "X", "points": "none"}]}), "no
     else:
         raise AssertionError("expected an error")
 
-print("PASS: detection parsing (fenced JSON, point/number formats, normalised coordinates, nested answers, clear errors)")
+for coordinate in (float('nan'), float('inf'), float('-inf'), 1e309):
+    bad = json.dumps({'rooms': [{'name': 'Invalid', 'points': [[0, 0], [coordinate, 0], [200, 200], [0, 200]]}]})
+    try:
+        post(bad)
+    except HomeAssistantError as err:
+        assert 'none could be used' in str(err), err
+    else:
+        raise AssertionError('non-finite coordinates must not become rooms')
+
+print("PASS: detection parsing (fenced JSON, point/number formats, normalised coordinates, nested answers, clear errors, non-finite coordinates rejected)")

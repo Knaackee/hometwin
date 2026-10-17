@@ -429,7 +429,7 @@ export class PlanWizard {
   // Model image with the current reading drawn on top (numbered polygons) for the self-check pass.
   overlayImage(im, rooms) {
     const c = document.createElement('canvas'); c.width = im.w; c.height = im.h; const g = c.getContext('2d');
-    g.drawImage(limit(this.st.img, 1600), 0, 0); g.lineWidth = Math.max(2, im.w / 500); g.font = `bold ${Math.round(Math.max(14, im.w / 70))}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.drawImage(this.st.img, 0, 0, im.w, im.h); g.lineWidth = Math.max(2, im.w / 500); g.font = `bold ${Math.round(Math.max(14, im.w / 70))}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
     rooms.forEach((r, i) => { const col = COLORS[i % COLORS.length]; g.beginPath(); r.points.forEach(([x, y], j) => (j ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.globalAlpha = 0.18; g.fillStyle = col; g.fill(); g.globalAlpha = 1; g.strokeStyle = col; g.stroke();
       const cx = r.points.reduce((a, p) => a + p[0], 0) / r.points.length, cy = r.points.reduce((a, p) => a + p[1], 0) / r.points.length; g.fillStyle = '#fff'; g.beginPath(); g.arc(cx, cy, g.lineWidth * 6, 0, 7); g.fill(); g.fillStyle = '#000'; g.fillText(String(r.nr), cx, cy); });
     return c.toDataURL('image/jpeg', 0.8);

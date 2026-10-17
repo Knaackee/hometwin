@@ -810,11 +810,16 @@ def _num(v: Any) -> float:
     if isinstance(v, bool):
         raise ValueError("bool")
     if isinstance(v, (int, float)):
-        return float(v)
+        n = float(v)
+        if math.isfinite(n):
+            return n
+        raise ValueError("non-finite number")
     if isinstance(v, str):
         m = re.search(r"-?\d+(?:[.,]\d+)?", v)
         if m:
-            return float(m.group(0).replace(",", "."))
+            n = float(m.group(0).replace(",", "."))
+            if math.isfinite(n):
+                return n
     raise ValueError(f"not a number: {v!r}")
 
 
@@ -829,7 +834,7 @@ def _pt(p: Any) -> list[float]:
     if isinstance(p, str):
         parts = re.findall(r"-?\d+(?:\.\d+)?", p)
         if len(parts) >= 2:
-            return [float(parts[0]), float(parts[1])]
+            return [_num(parts[0]), _num(parts[1])]
     raise ValueError(f"not a point: {p!r}")
 
 
@@ -907,6 +912,8 @@ def _detect_post(content: str, req: dict[str, Any], report: Any) -> dict[str, An
             continue
         if len(pts) < 3:
             dropped["corners"] = dropped.get("corners", 0) + 1
+        elif not math.isfinite(geo.area(pts)):
+            dropped["points"] = dropped.get("points", 0) + 1
         elif geo.area(pts) < 0.5:
             dropped["tiny"] = dropped.get("tiny", 0) + 1
         else:
