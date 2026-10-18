@@ -147,7 +147,9 @@ input[type="range"] { width: 100%; accent-color: var(--lamp); }
 .tool { border: 1px solid var(--line-soft); background: var(--line-soft); border-radius: 10px; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; }
 .tool[aria-pressed="true"] { border-color: var(--edit); color: var(--edit); background: var(--edit-soft); }
 .toolhint { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 15; background: var(--panel-solid); border: 1px solid var(--edit); color: var(--fg); border-radius: 999px; padding: 7px 14px; font-size: 12.5px; max-width: calc(100% - 32px); text-align: center; }
-.edbar { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 15; display: flex; align-items: center; gap: 4px; padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(14px); max-width: calc(100% - 660px); flex-wrap: wrap; justify-content: center; }
+.edbar { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 15; display: flex; align-items: center; gap: 4px; padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(14px); max-width: calc(100% - 660px); flex-direction: column; justify-content: center; }
+.edbar-tools { display:flex; align-items:center; gap:4px; max-width:100%; overflow-x:auto; flex-wrap:nowrap; }
+.edbar-tools > * { flex-shrink:0; }
 .edbar .tb { width: 34px; height: 34px; border: 0; background: none; }
 .edbar .tb[aria-pressed="true"] { background: var(--edit-soft); color: var(--edit); }
 .edbar .tb:hover:not(:disabled) { background: var(--line-soft); }
@@ -337,4 +339,12 @@ details.sec > summary::-webkit-details-marker { display: none; }
 .tree .row.dragging { opacity: .4; } .tree .row.drop-before { box-shadow: inset 0 2px 0 var(--edit); } .tree .row.drop-after { box-shadow: inset 0 -2px 0 var(--edit); } .tree .row.drop-into { background: var(--edit-soft); outline: 1px dashed var(--edit); }
 .tree .row input.rename { flex: 1; min-width: 0; background: #0d121c; border: 1px solid var(--edit); border-radius: 6px; padding: 2px 6px; color: var(--fg); font: inherit; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.editor-start { position:absolute; z-index:5; top:175px; left:335px; right:335px; max-width:620px; margin:auto; padding:26px; border:1px solid var(--line); border-radius:16px; background:var(--panel-solid); box-shadow:0 20px 70px #0005; }
+.editor-start h2 { font-size:24px; line-height:1.25; margin:0 0 14px; }
+.editor-start p { line-height:1.65; }
+.editor-start .actions { display:flex; flex-wrap:wrap; gap:10px; margin:20px 0 12px; }
+.editor-start a { color:var(--edit); }
+#edBar .tb:has(span) { display:flex; align-items:center; width:auto; gap:6px; padding:0 10px; font-size:12px; }
+@media(max-width:820px) { .editor-start { left:12px; right:12px; top:120px; padding:20px; max-height:calc(100% - 180px); overflow:auto; } }
 `;
