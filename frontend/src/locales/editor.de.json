@@ -371,5 +371,14 @@
   "editor.windowPreset.wide": "Panoramafenster",
   "editor.position.automatic": "Automatisch auf Oberflächen platzieren",
   "editor.position.elevation": "Höhe über dem Boden (m)",
-  "editor.position.onSurface": "Auf Oberfläche stellen"
+  "editor.position.onSurface": "Auf Oberfläche stellen",
+  "editor.start.title": "Dein Zuhause beginnt mit deinem Grundriss.",
+  "editor.start.description": "Lade einen Grundriss hoch. Die KI hilft, Räume, Türen und Fenster zu erkennen — du prüfst das Ergebnis und passt es an.",
+  "editor.start.steps": "1. Bild oder PDF hochladen   →   2. Räume und Maße prüfen   →   3. Geräte zuordnen",
+  "editor.start.plan": "Mit Grundriss starten",
+  "editor.start.draw": "Selbst zeichnen",
+  "editor.start.dismiss": "Werkzeuge erkunden",
+  "editor.start.example": "Beispielhaus in neuem Tab öffnen ↗",
+  "editor.start.aiNote": "KI ist optional. Der Assistent hilft dir, deine Einrichtung zu prüfen; du kannst auch manuell zeichnen.",
+  "editor.position.keyboardHint": "Pfeiltasten: 5 cm · Umschalt: 50 cm · Strg/Cmd: 1 cm. Bewegung relativ zur Ansicht."
 }

@@ -371,5 +371,14 @@
   "editor.windowPreset.wide": "Panoramic window",
   "editor.position.automatic": "Automatically place on surfaces",
   "editor.position.elevation": "Height above floor (m)",
-  "editor.position.onSurface": "Place on surface"
+  "editor.position.onSurface": "Place on surface",
+  "editor.start.title": "Your home starts with your floor plan.",
+  "editor.start.description": "Upload a floor plan. AI helps identify rooms, doors and windows — you check the result and make it yours.",
+  "editor.start.steps": "1. Upload an image or PDF   →   2. Review rooms and dimensions   →   3. Connect your devices",
+  "editor.start.plan": "Start with a floor plan",
+  "editor.start.draw": "Draw it myself",
+  "editor.start.dismiss": "Explore the tools",
+  "editor.start.example": "Open the demo house in a new tab ↗",
+  "editor.start.aiNote": "AI is optional. The assistant helps you check your setup; you can also draw manually.",
+  "editor.position.keyboardHint": "Arrow keys: 5 cm · Shift: 50 cm · Ctrl/Cmd: 1 cm. Movement follows the view."
 }

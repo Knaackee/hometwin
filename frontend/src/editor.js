@@ -1,4 +1,6 @@
+import { nudgeSelection } from './editor-nudge.js';
 import { automaticPlacement } from './object-placement.js';
+import { installEditorStart } from './editor-start.js';
 // Editor: library, floor-plan drawing (with image underlay), structure, entity mapping, inspector.
 import { icon } from './icons.js';
 import { markStandaloneProjectorScreen } from './projector-migration.js';
@@ -36,6 +38,7 @@ export class Editor {
     this.expanded = new Set(['house']); this.closedSecs = new Set();
     this.catalog = assetCatalog(); this.images = new Map();
     const $ = app.$;
+    this.renderStart = installEditorStart(this);
     $('ltabs').addEventListener('click', (e) => { const b = e.target.closest('[data-ltab]'); if (b) { this.left = b.dataset.ltab; this.renderLeft(); } });
     $('lbody').addEventListener('click', (e) => this.onLeftClick(e));
     $('lbody').addEventListener('dblclick', (e) => this.onLeftDbl(e));
@@ -109,12 +112,14 @@ export class Editor {
   /* ---------------- toolbar & status ---------------- */
   renderBar() {
     const app = this.app;
-    app.$('edBar').innerHTML = TOOLS.map(([k, key, ic]) => { const label = t(key); return `<button class="ibtn tb" data-tool="${k}" aria-pressed="${this.tool === k}" title="${label}" aria-label="${label}" ${k === 'calibrate' && !this.level?.underlay ? 'disabled' : ''}>${icon(ic)}</button>`; }).join('')
-      + `<span class="sep"></span><button class="ibtn tb" id="tPlan" title="${t('editor.toolbar.floorPlanAssistantTitle')}" aria-label="${t('editor.toolbar.floorPlanAssistant')}">${icon('image')}</button>`
+    app.$('edBar').innerHTML = '<div class="edbar-tools">' + TOOLS.map(([k, key, ic]) => { const label = t(key); return `<button class="ibtn tb" data-tool="${k}" aria-pressed="${this.tool === k}" title="${label}" aria-label="${label}" ${k === 'calibrate' && !this.level?.underlay ? 'disabled' : ''}>${icon(ic)}</button>`; }).join('')
+
       + `<span class="sep"></span><div class="seg"><button data-view="3d" aria-pressed="${!this.view2d}">3D</button><button data-view="2d" aria-pressed="${this.view2d}">2D</button></div>`
-      + `<span class="sep"></span><button class="ibtn tb" id="tUndo" title="${t('editor.toolbar.undoTitle')}" aria-label="${t('editor.toolbar.undo')}" ${app.undoStack.length ? '' : 'disabled'}>${icon('undo')}</button><button class="ibtn tb" id="tRedo" title="${t('editor.toolbar.redoTitle')}" aria-label="${t('editor.toolbar.redo')}" ${app.redoStack.length ? '' : 'disabled'}>${icon('redo')}</button>`;
+      + `<span class="sep"></span><button class="ibtn tb" id="tUndo" title="${t('editor.toolbar.undoTitle')}" aria-label="${t('editor.toolbar.undo')}" ${app.undoStack.length ? '' : 'disabled'}>${icon('undo')}</button><button class="ibtn tb" id="tRedo" title="${t('editor.toolbar.redoTitle')}" aria-label="${t('editor.toolbar.redo')}" ${app.redoStack.length ? '' : 'disabled'}>${icon('redo')}</button></div>`
+      + `<button class="ibtn tb" id="tPlan" title="${t('editor.toolbar.floorPlanAssistantTitle')}" aria-label="${t('editor.toolbar.floorPlanAssistant')}">${icon('image')}<span>${t('editor.toolbar.floorPlanAssistant')}</span></button>`;
   }
   renderStatus() {
+    this.renderStart();
     const L = this.level; if (!L) return;
     const tool = TOOLS.find((x) => x[0] === this.tool)?.[1];
     this.app.$('edStatus').innerHTML = `<span><b>${esc(L.name)}</b> · +${formatNumber(L.elevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m</span><span>${tool ? esc(t(tool).replace(/ \(.*\)/, '')) : ''}</span>${this.tool === 'window' ? `<select id="winPre" class="fsel" style="width:auto">${Object.entries(WINDOW_PRESETS).map(([k]) => `<option value="${k}" ${this.windowPreset === k ? 'selected' : ''}>${t(`editor.windowPreset.${k}`)}</option>`).join('')}</select>` : ''}<label class="check"><input type="checkbox" id="snapOn" ${snapCfg.on ? 'checked' : ''}> ${t('editor.status.snap')}</label><label class="check" title="${t('editor.status.wallSnapTitle')}"><input type="checkbox" id="wallOn" ${wallCfg.on ? 'checked' : ''}> ${t('editor.status.wallSnap')}</label><span id="stCoord" class="sunline"></span>`;
@@ -509,7 +514,7 @@ export class Editor {
     }
     if (this.multi?.length) {
       const sel = this.selection(); title(t('editor.selection.objectCount', { count: sel.length }));
-      box.innerHTML = this.sec(t('editor.section.multiSelect'), `<p class="hint">${sel.map((x) => { const it = findItem(p, x.id)?.item; return esc(x.type === 'device' ? (it?.entity_id ? app.nameOf(it.entity_id) : KINDS[it?.kind]?.label || '') : this.furnLabel(it || {})); }).join(', ')}</p><p class="hint">${t('editor.selection.help')}</p>`)
+      box.innerHTML = this.sec(t('editor.section.multiSelect'), `<p class="hint">${sel.map((x) => { const it = findItem(p, x.id)?.item; return esc(x.type === 'device' ? (it?.entity_id ? app.nameOf(it.entity_id) : KINDS[it?.kind]?.label || '') : this.furnLabel(it || {})); }).join(', ')}</p><p class="hint">${t('editor.selection.help')}</p><p class="hint">${t('editor.position.keyboardHint')}</p>`)
         + `<div class="actions"><button class="btn small" data-act="rot90">↻ 90°</button><button class="btn small" data-act="dup">${t('editor.common.duplicate')}</button><button class="btn small danger" data-act="del">${t('editor.selection.deleteAll')}</button></div>`;
       return;
     }
@@ -532,7 +537,7 @@ export class Editor {
           ${item.kind === 'tv' && item.style === 'curved' ? num('iCurve', t('editor.device.curveRadius'), item.curve ?? 4, 0.1, 'min="1" max="20"') : ''}
           ${item.kind === 'tv' ? `<p class="hint">${t('editor.device.mediaScreenHelp')}</p>` : ''}`)
         + (item.kind === 'frame' ? this.frameHtml(item, num) : '')
-        + this.sec(t('editor.section.position'), `<div class="row2">${num('iX', 'X (m)', item.pos[0])}${num('iZ', 'Z (m)', item.pos[1])}</div>
+        + this.sec(t('editor.section.position'), `<p class="hint">${t('editor.position.keyboardHint')}</p><div class="row2">${num('iX', 'X (m)', item.pos[0])}${num('iZ', 'Z (m)', item.pos[1])}</div>
           ${num('iElevation', t('editor.position.elevation'), app.stage.itemElevation(L.id, type, item.id).toFixed(3), 0.01)}<label><input type="checkbox" id="iAutoElevation" ${automaticPlacement(item, type) ? 'checked' : ''}> ${t('editor.position.automatic')}</label><button class="btn small" data-act="onSurface">${t('editor.position.onSurface')}</button>
           ${rot(item.rot)}`) + vis();
     } else if (type === 'furniture') {
@@ -546,7 +551,7 @@ export class Editor {
           ${def.stools != null ? `<div class="row2">${num('fStools', t('editor.furniture.stools'), item.stools ?? def.stools, 1, 'min="0" max="6"')}<span></span></div>` : ''}
           ${def.color ? `<div class="field"><label for="fC">${t('editor.common.color')}</label><input type="color" id="fC" value="${fp.color}"></div>` : ''}`)
         + (item.type === 'stairs' ? this.stairHtml(item, fp, L, num) : '')
-        + this.sec(t('editor.section.position'), `<div class="row2">${num('iX', 'X (m)', item.pos[0])}${num('iZ', 'Z (m)', item.pos[1])}</div>${num('iElevation', t('editor.position.elevation'), app.stage.itemElevation(L.id, type, item.id).toFixed(3), 0.01)}<label><input type="checkbox" id="iAutoElevation" ${automaticPlacement(item, type) ? 'checked' : ''}> ${t('editor.position.automatic')}</label><button class="btn small" data-act="onSurface">${t('editor.position.onSurface')}</button>${rot(item.rot)}`) + vis();
+        + this.sec(t('editor.section.position'), `<p class="hint">${t('editor.position.keyboardHint')}</p><div class="row2">${num('iX', 'X (m)', item.pos[0])}${num('iZ', 'Z (m)', item.pos[1])}</div>${num('iElevation', t('editor.position.elevation'), app.stage.itemElevation(L.id, type, item.id).toFixed(3), 0.01)}<label><input type="checkbox" id="iAutoElevation" ${automaticPlacement(item, type) ? 'checked' : ''}> ${t('editor.position.automatic')}</label><button class="btn small" data-act="onSurface">${t('editor.position.onSurface')}</button>${rot(item.rot)}`) + vis();
     } else if (type === 'room') {
       const surf = Object.entries(SURFACES).filter(([, v]) => (item.kind === 'outdoor') === !!v.outdoor);
       title(t(item.kind === 'outdoor' ? 'editor.roomKind.outdoor' : 'editor.common.room'));
@@ -782,6 +787,7 @@ export class Editor {
   onKey(e) {
     if (this.app.mode !== 'edit') return;
     const tag = e.composedPath()[0]?.tagName; if (/INPUT|SELECT|TEXTAREA/.test(tag)) return;
+    if (nudgeSelection(this, e)) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? this.app.redo() : this.app.undo(); return; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); this.app.redo(); return; }
     if (e.key === 'v' || e.key === 'V') this.setTool('select');
