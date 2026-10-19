@@ -1,3 +1,8 @@
+import { installEditorHover } from './editor-hover.js';
+import { openingModels, shutterColors } from './opening-models.js';
+import { openingPickerHtml, openingRecipeColorFields, openingRecipeDefaults } from './opening-picker.js';
+import { startTransform, moveTransform } from './editor-transform.js';
+import { startSolarDrag, solarMoveCandidate, dragSolarPoint, previewSolar, transferSolarDrag, focusSolar, solarEditorHtml, solarInput, solarAction, moveSolarModule, solarContext } from './editor-solar.js';
 import { nudgeSelection } from './editor-nudge.js';
 import { automaticPlacement } from './object-placement.js';
 import { installEditorStart } from './editor-start.js';
@@ -12,13 +17,13 @@ import { KINDS, KIND_STYLES, deviceDefaults, entityMatchesKind, kindForEntity, F
 import { SURFACES } from './kit.js';
 import { findItem, roomAt, roomOfOpening, usedEntities, newId, newLevel, roomCenter, demoPlan, emptyPlan, migrate, computeElevations, slabThickness, plinthHeight, DEFAULT_BASEMENT_HEIGHT, DEFAULT_ROOM_HEIGHT } from './plan.js';
 import { ROOF_TYPES, ROOF_COVERS, FACADES, FACADE_PRESETS, roofRect, rectCorners, rectAxes, HEAD_SHAPES, SOFFITS, BARGES, WOOD_PRESETS, DEFAULT_DETAILS, ROOF_STYLES, applyStyle, headSvg, ROOF_WINDOWS, newExtraRoof, rectOfPoints } from './roof.js';
-import { isIndoor } from './house.js';
+import { isIndoor, wallSegments as openingSegments, EXT_T, INT_T } from './house.js';
 const WINDOW_PRESETS = { std: { w: 1.2, sill: 0.9, head: 2.2 }, floor: { w: 1.2, sill: 0.05, head: 2.2 }, terrace: { w: 2.0, sill: 0.02, head: 2.2 }, wide: { w: 2.4, sill: 0.5, head: 2.2 }, bath: { w: 0.8, sill: 1.4, head: 2.1 }, top: { w: 1.0, sill: 1.6, head: 2.2 } };
 import { snapCfg, snapPoint, snap, distToSeg, projectOnSeg, edges, area as polyArea, bbox, r3, rectPoints, pointInPolygon } from './geometry.js';
 import { importSh3d } from './sh3d.js';
 import { placeItem, wallSegments, wallCfg } from './walls.js';
 import { installTreeMenu } from './treemenu.js';
-import { t, formatNumber } from './i18n.js';
+import { getLanguage, t, formatNumber } from './i18n.js';
 
 const fmt = (v) => `${formatNumber(Math.round(v * 100) / 100, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`;
 const DOMAIN_LABEL = { light: 'editor.domain.light', cover: 'editor.domain.cover', climate: 'editor.domain.climate', sensor: 'editor.domain.sensor', binary_sensor: 'editor.domain.binarySensor', media_player: 'editor.domain.mediaPlayer', vacuum: 'editor.domain.vacuum', lawn_mower: 'editor.domain.lawnMower', camera: 'editor.domain.camera', fan: 'editor.domain.fan', valve: 'editor.domain.valve', switch: 'editor.domain.switch' };
@@ -39,14 +44,15 @@ export class Editor {
     this.catalog = assetCatalog(); this.images = new Map();
     const $ = app.$;
     this.renderStart = installEditorStart(this);
+    this.hoverUI = installEditorHover(this);
     $('ltabs').addEventListener('click', (e) => { const b = e.target.closest('[data-ltab]'); if (b) { this.left = b.dataset.ltab; this.renderLeft(); } });
-    $('lbody').addEventListener('click', (e) => this.onLeftClick(e));
+    $('lbody').addEventListener('click', (e) => { this.onLeftClick(e); if(e.target.closest('[data-pick]')&&['solar','furniture','device','roofitem'].includes(this.app.sel?.type)){this.setTool('select');this.app.stage.canvas.focus({preventScroll:true});if(this.app.sel.type==='solar')focusSolar(this);this.app.stage.wake();} });
     $('lbody').addEventListener('dblclick', (e) => this.onLeftDbl(e));
     $('lbody').addEventListener('input', (e) => this.onLeftInput(e));
     installTreeMenu(this);
     $('lbody').addEventListener('dragstart', (e) => { const a = e.target.closest('[data-asset],[data-place]'); if (!a) return; e.dataTransfer.setData('text/plain', a.dataset.asset ? `asset:${a.dataset.asset}` : `entity:${a.dataset.place}`); e.dataTransfer.effectAllowed = 'copy'; });
-    $('inspBody').addEventListener('change', (e) => this.onInspChange(e));
-    $('inspBody').addEventListener('input', (e) => { if (e.target.type === 'range' || e.target.type === 'color') this.onInspChange(e, true); });
+    $('inspBody').addEventListener('change', (e) => { if (e.target.id !== 'oSearch') this.onInspChange(e); });
+    $('inspBody').addEventListener('input', (e) => { if (e.target.id === 'oSearch') { const query = e.target.value.toLocaleLowerCase().replace(/[\s_]+/g, ''); for (const option of $('inspBody').querySelector('#oC').options) option.hidden = !!option.value && !option.textContent.toLocaleLowerCase().replace(/[\s_]+/g, '').includes(query); return; } if (e.target.id === 'oModelSearch') { const query = e.target.value.toLocaleLowerCase().trim(); for (const card of $('inspBody').querySelectorAll('[data-opening-model]')) card.hidden = !!query && !card.textContent.toLocaleLowerCase().includes(query); return; } if (e.target.type === 'range' || e.target.type === 'color') this.onInspChange(e, true); });
     $('inspBody').addEventListener('click', (e) => this.onInspClick(e));
     $('inspBody').addEventListener('toggle', (e) => { const d = e.target; if (d.tagName === 'DETAILS') d.open ? this.closedSecs.delete(d.dataset.sec) : this.closedSecs.add(d.dataset.sec); }, true);
     $('inspClose').addEventListener('click', () => this.select(null));
@@ -74,7 +80,7 @@ export class Editor {
     this.catalog = assetCatalog(); this.renderBar(); this.renderLeft(); this.renderInspector(); this.renderStatus();
     const hint = this.app.$('toolHint'); if (hint && TOOL_HINT[this.tool]) hint.textContent = t(TOOL_HINT[this.tool]);
   }
-  close() { this.app.$('dims').replaceChildren(); this._dims = []; this.select(null); this.setTool('select'); this.app.stage.exitTopView(); this.app.stage.setPreview(null); this.app.$('agent').hidden = true; this.app.$('toolHint').hidden = true; }
+  close() { this.hoverUI?.clear(); this.app.$('dims').replaceChildren(); this._dims = []; this.select(null); this.setTool('select'); this.app.stage.exitTopView(); this.app.stage.setPreview(null); this.app.$('agent').hidden = true; this.app.$('toolHint').hidden = true; }
   refresh(planChanged) { if (planChanged) { this.renderLeft(); this.renderInspector(); this.renderStatus(); } }
   onLevelChange() {
     const app = this.app, s = app.sel, sc = app.levelSel;
@@ -130,6 +136,7 @@ export class Editor {
     const app = this.app, b = app.$('lbody'), L = this.level; if (!L) return;
     app.$('ltabs').querySelectorAll('[data-ltab]').forEach((x) => x.setAttribute('aria-pressed', x.dataset.ltab === this.left));
     if (this.left === 'tree') { b.innerHTML = this.treeHtml(); const s = b.querySelector('#treeSearch'); if (this._focusTree) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); this._focusTree = false; } return; }
+    if (this.left === 'robots') { b.innerHTML = `<h3>${t('robots.title')}</h3><p class="hint">${t('robots.intro')}</p><button class="btn primary" data-robot-areas>${t('robots.open')}</button>`; return; }
     const seg = `<div class="seg" style="display:flex;margin:0 0 8px">${[['lib', 'editor.insert.objects'], ['ents', 'editor.insert.entities']].map(([k, key]) => `<button data-sub="${k}" aria-pressed="${this.insertSub === k}" style="flex:1">${t(key)}</button>`).join('')}</div>`;
     if (this.insertSub === 'lib') {
       const q = this.query.toLowerCase();
@@ -182,7 +189,7 @@ export class Editor {
     h += row({ type: 'house', id: 'house', depth: 0, ic: 'home', label: p.name || t('editor.common.house'), meta: t('editor.tree.houseMeta') });
     const roofExp = this.expanded.has('roof:roof');
     h += row({ type: 'roof', id: 'roof', depth: 1, ic: 'roof', label: t('editor.common.roof'), meta: ROOF_TYPES[p.site.roof?.type] || '', exp: p.site.solar.length || (p.site.roofItems || []).length ? roofExp : null });
-    if (roofExp) h += p.site.solar.map((a, i) => row({ type: 'solar', id: a.id, depth: 2, ic: 'sun', label: `PV-Feld ${i + 1}`, meta: `${a.rows}×${a.cols}` })).join('');
+    if (roofExp) h += p.site.solar.map((a, i) => row({ type: 'solar', id: a.id, depth: 2, ic: 'sun', label: `PV-Feld ${i + 1}`, meta: a.modules ? `${a.modules.length}` : `${a.rows}×${a.cols}` })).join('');
     h += (p.site.roofs || []).map((x) => row({ type: 'xroof', id: x.id, depth: 1, ic: 'roof', label: x.name, meta: `${ROOF_TYPES[x.type] || ''}${x.posts ? ' · Pfosten' : ''}` })).join('');
     if (roofExp) h += (p.site.roofItems || []).map((a, i) => row({ type: 'roofitem', id: a.id, depth: 2, ic: 'window', label: `${t(a.kind === 'dormer' ? 'editor.common.dormer' : 'editor.common.roofWindow')} ${i + 1}`, meta: `${Math.round(a.w * 100)}×${Math.round((a.kind === 'dormer' ? a.dormer?.h ?? 1.3 : a.h) * 100)}` })).join('');
     for (const L of [...p.levels].reverse()) {
@@ -212,6 +219,7 @@ export class Editor {
   }
   onLeftClick(e) {
     const app = this.app, g = (s) => e.target.closest(s);
+    if (g('[data-robot-areas]')) return app.robotAreas.open();
     const sub = g('[data-sub]'); if (sub) { this.insertSub = sub.dataset.sub; this.renderLeft(); return; }
     const a = g('[data-asset]'); if (a) return this.addAsset(a.dataset.asset);
     const sh = g('[data-show]'); if (sh) { this.entFilter.show = sh.dataset.show; this.renderLeft(); return; }
@@ -344,7 +352,7 @@ export class Editor {
     const dc = s.attributes.device_class, dom = id.split('.')[0];
     if (dom === 'cover' || (dom === 'binary_sensor' && ['door', 'window', 'garage_door', 'opening'].includes(dc))) {
       const field = dom === 'cover' ? 'cover' : 'contact';
-      const want = dom === 'cover' ? (dc === 'garage' ? ['garage'] : ['window', 'garage']) : dc === 'door' ? ['door', 'window'] : dc === 'garage_door' ? ['garage'] : ['window', 'door'];
+      const want = dom === 'cover' ? (dc === 'garage' ? ['garage'] : ['window', 'door', 'garage']) : dc === 'door' ? ['door', 'window'] : dc === 'garage_door' ? ['garage'] : ['window', 'door'];
       let cands = L.openings.filter((o) => want.includes(o.type) && !o[field] && (!room || roomOfOpening(L, o)?.id === room.id));
       if (at) cands = cands.sort((x, y) => distToSeg(at, x.from, x.to) - distToSeg(at, y.from, y.to));
       if (!cands.length) return this.app.toast(t('editor.toast.noFreeOpening', { kind: t(dom === 'cover' ? 'editor.common.windowOrGate' : 'editor.common.windowOrDoor'), room: room ? t('editor.common.inRoom', { room: room.name }) : '' }));
@@ -421,11 +429,11 @@ export class Editor {
         <div class="field"><label for="dtBarge">${t('editor.roof.bargeboard')}</label><select id="dtBarge">${Object.entries(BARGES).map(([k, v]) => `<option value="${k}" ${D.barge === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
         <div class="field"><span class="lbl">${t('editor.roof.woodColor')}</span><div class="swatches">${Object.entries(WOOD_PRESETS).map(([c, n]) => `<button data-wood="${c}" style="background:${c}" aria-pressed="${D.wood === c}" aria-label="${n}" title="${n}"></button>`).join('')}<input type="color" id="dtWood" value="${D.wood}" aria-label="${t('editor.roof.customWoodColor')}" style="width:30px;height:30px;padding:0;border:0;background:none"></div></div>
         ${D.soffit !== 'open' && D.rafters ? `<p class="hint">${t('editor.roof.rafterVisibilityHint')}</p>` : ''}` : `<p class="hint">${t('editor.roof.detailsPitchedOnly')}</p>`;
-      const solarHtml = (site.solar.length ? site.solar.map((a, i) => `<button class="listrow" data-solar="${a.id}"><span class="nm">${t('editor.solar.fieldNumber', { number: i + 1 })}</span><small>${t('editor.solar.moduleCount', { rows: a.rows, cols: a.cols })}${a.entity_id ? ' · ' + esc(app.nameOf(a.entity_id)) : ''}</small></button>`).join('') : `<p class="hint">${t('editor.solar.none')}</p>`) + `<button class="btn small" data-act="addSolar" style="margin-top:6px" ${roof.type === 'none' ? 'disabled' : ''}>${icon('plus')}${t('editor.solar.addField')}</button>`;
+      const solarHtml = (site.solar.length ? site.solar.map((a, i) => `<button class="listrow" data-solar="${a.id}"><span class="nm">${t('editor.solar.fieldNumber', { number: i + 1 })}</span><small>${a.modules ? a.modules.length : t('editor.solar.moduleCount', { rows: a.rows, cols: a.cols })}${a.entity_id ? ' · ' + esc(app.nameOf(a.entity_id)) : ''}</small></button>`).join('') : `<p class="hint">${t('editor.solar.none')}</p>`) + `<button class="btn small" data-act="addSolar" style="margin-top:6px" ${roof.type === 'none' ? 'disabled' : ''}>${icon('plus')}${t('editor.solar.addField')}</button>`;
       const riHtml = (site.roofItems || []).map((it, i) => `<button class="listrow" data-ritem="${it.id}"><span class="nm">${t(it.kind === 'dormer' ? 'editor.common.dormer' : 'editor.common.roofWindow')} ${i + 1}</span><small>${Math.round(it.w * 100)}×${Math.round(it.h * 100)}${it.cover ? ' · ' + esc(app.nameOf(it.cover)) : ''}</small></button>`).join('') + `<div class="actions" style="margin-top:6px"><button class="btn small" data-act="addRoofWin" ${pitched ? '' : 'disabled'}>${icon('plus')}${t('editor.common.roofWindow')}</button><button class="btn small" data-act="addDormer" ${pitched ? '' : 'disabled'}>${icon('plus')}${t('editor.common.dormer')}</button></div>`;
       const roofSecs = this.sec(t('editor.common.roof'), roofHtml) + this.sec(t('editor.section.styleTemplate'), styleHtml) + this.sec(t('editor.section.roofDetails'), detHtml) + this.sec(t('editor.section.roofWindowsDormers'), riHtml);
       const moreHtml = `${(site.roofs || []).map((x) => `<button class="listrow" data-xroof="${x.id}"><span class="nm">${esc(x.name)}</span><small>${ROOF_TYPES[x.type] || ''}</small></button>`).join('')}<p class="hint">${t('editor.roof.extraHelp')}</p><div class="actions"><button class="btn small" data-act="toolRoof">${icon('plus')}${t('editor.roof.draw')}</button></div>`;
-      if (s?.type === 'roof') { title(t('editor.common.roof')); box.innerHTML = roofSecs + this.sec(t('editor.section.extraRoofs'), moreHtml) + (geoHtml ? this.sec(t('editor.section.locationDimensions'), geoHtml) : '') + this.sec(t('editor.section.photovoltaics'), solarHtml); return; }
+      if (s?.type === 'roof') { title(t('editor.common.roof')); box.innerHTML = roofSecs + this.sec(t('editor.section.extraRoofs'), moreHtml) + (geoHtml ? this.sec(t('editor.section.locationDimensions'), geoHtml) : '') + this.sec(t('editor.roof.gutters'), `<label class="chk"><input type="checkbox" id="rfGutters" ${roof.gutters ? 'checked' : ''}> ${t('editor.roof.showGutters')}</label>`) + this.sec(t('editor.section.photovoltaics'), solarHtml); return; }
       title(t('editor.common.house'));
       const fac = site.facade;
       box.innerHTML = this.sec(t('editor.section.general'), `<div class="field"><label for="stName">${t('editor.common.name')}</label><input type="text" id="stName" value="${esc(p.name)}"></div>`)
@@ -435,7 +443,7 @@ export class Editor {
           <div class="field"><span class="lbl">${t('editor.common.color')}</span><div class="swatches">${FACADE_PRESETS.map((c) => `<button data-fcol="${c}" style="background:${c}" aria-pressed="${fac.color === c}" aria-label="${t('editor.common.colorValue', { value: c })}"></button>`).join('')}<input type="color" id="faColor" value="${fac.color}" aria-label="${t('editor.common.customColor')}" style="width:30px;height:30px;padding:0;border:0;background:none"></div></div>
           <div class="row2"><div class="field"><label for="faPlinth">${t('editor.facade.plinth')}</label><input type="color" id="faPlinth" value="${fac.plinth}"></div><div class="field"><label for="faFrame">${t('editor.facade.windowFrame')}</label><input type="color" id="faFrame" value="${fac.frame}"></div></div>
           ${num('faPlinthH', t('editor.facade.plinthHeight'), plinthHeight(site), 0.05, 'min="0" max="1.5"')}<p class="hint">${t('editor.facade.plinthHelp')}</p>`)
-        + roofSecs + (geoHtml ? this.sec(t('editor.section.roofLocationDimensions'), geoHtml) : '') + this.sec(t('editor.section.photovoltaics'), solarHtml)
+        + roofSecs + (geoHtml ? this.sec(t('editor.section.roofLocationDimensions'), geoHtml) : '') + this.sec(t('editor.roof.gutters'), `<label class="chk"><input type="checkbox" id="rfGutters" ${roof.gutters ? 'checked' : ''}> ${t('editor.roof.showGutters')}</label>`) + this.sec(t('editor.section.photovoltaics'), solarHtml)
         + this.sec(t('editor.section.backup'), `<p class="hint">${t('editor.backup.help')}</p><div class="actions"><button class="btn small primary" data-act="backupExport">${icon('save')}${t('editor.backup.export')}</button><label class="btn small">${icon('upload')}${t('editor.backup.import')}<input type="file" id="backupFile" accept=".json,application/json" hidden></label></div>`)
         + this.sec(t('editor.section.file'), `<div class="actions"><button class="btn small" data-act="export">${icon('code')}${t('editor.file.planAsJson')}</button><label class="btn small">${t('editor.file.loadJson')}<input type="file" id="jsonFile" accept=".json,application/json" hidden></label><label class="btn small">Sweet Home 3D<input type="file" id="sh3dFile" accept=".sh3d" hidden></label></div>
           <div class="actions" style="margin-top:6px"><button class="btn small" data-act="demo">${t('editor.file.loadExample')}</button><button class="btn small danger" data-act="empty">${t('editor.file.startEmpty')}</button></div>
@@ -484,9 +492,10 @@ export class Editor {
       const S = app.states(); const sensors = Object.keys(S).filter((id) => id.startsWith('sensor.') && (S[id].attributes.device_class === 'power' || /^(k?w)$/i.test(S[id].attributes.unit_of_measurement || '')));
       title(t('editor.solar.field'));
       box.innerHTML = this.sec(t('editor.section.location'), `<div class="field"><label for="pvPlane">${t('editor.roofItem.roofPlane')}</label><select id="pvPlane"><option value="auto" ${a.plane === 'auto' ? 'selected' : ''}>${t('editor.solar.automaticSunniest')}</option>${planes.map((pl, i) => `<option value="${i}" ${String(a.plane) === String(i) ? 'selected' : ''}>${esc(pl.label)}${pl.azimuth != null ? ` (${Math.round(pl.azimuth)}°)` : ''}</option>`).join('')}</select></div>
-          <div class="row2">${num('pvRows', t('editor.solar.rows'), a.rows, 1, 'min="1" max="12"')}${num('pvCols', t('editor.solar.columns'), a.cols, 1, 'min="1" max="30"')}</div>
+          ${!a.modules ? `<div class="row2">${num('pvRows', t('editor.solar.rows'), a.rows, 1, 'min="1" max="12"')}${num('pvCols', t('editor.solar.columns'), a.cols, 1, 'min="1" max="30"')}</div>
           <div class="field"><label for="pvOrient">${t('editor.solar.orientation')}</label><select id="pvOrient"><option value="1" ${a.portrait !== false ? 'selected' : ''}>${t('editor.solar.portrait')}</option><option value="0" ${a.portrait === false ? 'selected' : ''}>${t('editor.solar.landscape')}</option></select></div>
-          <div class="row2">${num('pvOu', t('editor.solar.sideOffset'), a.offset?.[0] ?? 0)}${num('pvOv', t('editor.solar.ridgeOffset'), a.offset?.[1] ?? 0)}</div>`)
+          <div class="row2">${num('pvOu', t('editor.solar.sideOffset'), a.offset?.[0] ?? 0)}${num('pvOv', t('editor.solar.ridgeOffset'), a.offset?.[1] ?? 0)}</div>` : ''}`)
+        + this.sec(t('editor.solar.custom'), solarEditorHtml(this,a,num))
         + this.sec(t('editor.section.link'), `<div class="field"><label for="pvEnt">${t('editor.solar.powerSensor')}</label><select id="pvEnt"><option value="">—</option>${sensors.map((id) => `<option value="${id}" ${id === a.entity_id ? 'selected' : ''}>${esc(app.nameOf(id))}</option>`).join('')}</select></div>${num('pvPeak', t('editor.solar.peakPower'), a.peak_kw ?? 5, 0.1, 'min="0.1"')}<p class="hint">${t('editor.solar.powerHelp')}</p>`)
         + `<div class="actions"><button class="btn small danger" data-act="delSolar">${t('editor.common.delete')}</button></div>`;
       return;
@@ -502,6 +511,7 @@ export class Editor {
           ${num('lvElev', t('editor.level.floorAboveGround'), L.elevation.toFixed(2), 0.05, idx > 0 && L.autoElevation !== false ? 'disabled' : '')}
           <div class="field"><label for="lvCut">${t('editor.level.cutWallsAt')} <output>${formatNumber(L.cutHeight, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m</output></label><input type="range" id="lvCut" min="0.3" max="${L.height}" step="0.05" value="${L.cutHeight}"></div>`)
         + this.sec(t('editor.section.floorPlanTemplate'), (this.calib?.measured ? `<div class="field"><label for="calReal">${t('editor.underlay.measuredLength', { measured: formatNumber(this.calib.measured, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}</label><div class="actions"><input type="number" id="calReal" step="0.01" min="0.1" style="flex:1" placeholder="${t('editor.underlay.lengthExample')}"><button class="btn primary small" data-act="calApply">${t('editor.common.apply')}</button></div></div>` : '')
+          + (u?.vacuum ? `<button class="btn small" data-act="vacuumRefresh">${t('assistant.vacuum.refresh')}</button>` : '')
           + (u ? `<div class="field"><label for="ulOpacity">${t('editor.underlay.opacity')} <output>${Math.round((u.opacity ?? 0.6) * 100)} %</output></label><input type="range" id="ulOpacity" min="0.1" max="1" step="0.05" value="${u.opacity ?? 0.6}"></div>
             <div class="row2">${num('ulX', t('editor.underlay.offsetX'), u.x0)}${num('ulZ', t('editor.underlay.offsetZ'), u.z0)}</div>
             <label class="chk"><input type="checkbox" id="ulShow3d" ${u.show3d ? 'checked' : ''}> ${t('editor.underlay.show3d')}</label>
@@ -566,13 +576,17 @@ export class Editor {
       const S = app.states(); const width = Math.hypot(item.to[0] - item.from[0], item.to[1] - item.from[1]);
       const covers = Object.keys(S).filter((id) => id.startsWith('cover.')), contacts = Object.keys(S).filter((id) => id.startsWith('binary_sensor.') && ['door', 'window', 'garage_door', 'opening'].includes(S[id].attributes.device_class));
       const room = roomOfOpening(L, item);
+      const openingDepth = openingSegments(L).find(segment => segment.opening?.id === item.id)?.kind === 'interior' ? INT_T : EXT_T;
       const sortA = (ids) => ids.sort((a, b) => (app.areaOf(b) === room?.area_id) - (app.areaOf(a) === room?.area_id) || app.nameOf(a).localeCompare(app.nameOf(b)));
-      const opt = (ids, cur) => `<option value="">—</option>` + sortA(ids).map((id) => `<option value="${id}" ${id === cur ? 'selected' : ''}>${esc(app.nameOf(id))}${app.areaOf(id) ? ' · ' + esc(app.areaName(app.areaOf(id))) : ''}</option>`).join('');
+      const opt = (ids, cur) => `<option value="">—</option>` + sortA(ids).map((id) => `<option value="${id}" ${id === cur ? 'selected' : ''}>${esc(app.nameOf(id))} · ${esc(id)}${app.areaOf(id) ? ' · ' + esc(app.areaName(app.areaOf(id))) : ''}</option>`).join('');
       title(t(OPEN_TYPES[item.type]));
       h = `<div class="kind"><div><b>${t(OPEN_TYPES[item.type])}</b><small>${esc(room?.name || '')} · ${esc(L.name)}</small></div></div>`
         + (item.type === 'window' ? `<div class="field" style="margin-top:8px"><label for="oPre">${t('editor.common.template')}</label><select id="oPre"><option value="">${t('editor.opening.customDimensions')}</option>${Object.entries(WINDOW_PRESETS).map(([k, w]) => `<option value="${k}" ${item.preset === k ? 'selected' : ''}>${t(`editor.windowPreset.${k}`)} (${formatNumber(w.w, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m)</option>`).join('')}</select></div>` : '')
-        + (item.type !== 'open' ? this.sec(t('editor.section.link'), `${['window', 'garage'].includes(item.type) ? `<div class="field"><label for="oC">${t(item.type === 'garage' ? 'editor.opening.gateDrive' : 'editor.opening.shutter')}</label><select id="oC">${opt(covers, item.cover)}</select></div>${item.cover ? `<label class="chk"><input type="checkbox" id="oInv" ${item.coverInvert ? 'checked' : ''}> ${t('editor.opening.reversePosition')}</label>` : ''}` : ''}
+        + (['door', 'window'].includes(item.type) ? openingPickerHtml({ models: openingModels(item.type, site), current: item.model, opening: item, width, height: (item.head ?? (item.type === 'window' ? 2.2 : 2.1)) - (item.type === 'window' ? (item.sill ?? .9) : 0), depth: openingDepth, language: getLanguage(), t, esc }) : '')
+        + (['door', 'window'].includes(item.type) && item.model ? openingRecipeColorFields(site.library?.[item.model] || LIBRARY.get(item.model), item, { t, esc }) : '')
+        + (item.type !== 'open' ? this.sec(t('editor.section.link'), `${['window', 'door', 'garage'].includes(item.type) ? `<div class="field"><label for="oC">${t(item.type === 'garage' ? 'editor.opening.gateDrive' : 'editor.opening.shutter')}</label><input id="oSearch" type="text" placeholder="${t('editor.opening.searchEntities')}" aria-label="${t('editor.opening.searchEntities')}"><select id="oC">${opt(covers, item.cover)}</select></div>${item.cover ? `<label class="chk"><input type="checkbox" id="oInv" ${item.coverInvert ? 'checked' : ''}> ${t('editor.opening.reversePosition')}</label>` : ''}` : ''}
             <div class="field"><label for="oK">${t('editor.opening.contact')}</label><select id="oK">${opt(contacts, item.contact)}</select></div>`) : '')
+        + (item.cover && ['door','window'].includes(item.type) ? this.sec(t('editor.opening.shutterAppearance'), `<div class="row2"><div class="field"><label for="oShutterColor">${t('editor.opening.shutterColor')}</label><input type="color" id="oShutterColor" value="${esc(shutterColors(item,site).slats)}"></div><div class="field"><label for="oShutterFrameColor">${t('editor.opening.shutterFrameColor')}</label><input type="color" id="oShutterFrameColor" value="${esc(shutterColors(item,site).frame)}"></div></div><button class="btn small" data-act="resetShutterColors">${t('editor.opening.resetShutterColors')}</button>`) : '')
         + this.sec(t('editor.section.dimensions'), `<div class="row2"><div class="field"><label for="oT">${t('editor.common.type')}</label><select id="oT">${Object.entries(OPEN_TYPES).map(([k, key]) => `<option value="${k}" ${k === item.type ? 'selected' : ''}>${t(key)}</option>`).join('')}</select></div>${num('oW', t('editor.common.widthMeters'), width.toFixed(2), 0.05, 'min="0.3"')}</div>
           <div class="row2">${item.type === 'window' ? num('oS', t('editor.opening.sill'), item.sill ?? 0.9) : '<span></span>'}${num('oH', t('editor.opening.topEdge'), item.head ?? (item.type === 'garage' ? 2.2 : item.type === 'window' ? 2.2 : 2.1))}</div>
           <p class="hint">${t('editor.opening.distancesHelp')}</p>
@@ -590,7 +604,10 @@ export class Editor {
     if (id === 'frFile' && target.files?.[0]) { const found = s && findItem(p, s.id); if (found?.type === 'device') await this.uploadArt(found.item, target.files[0]); return this.renderInspector(); }
     if (id === 'jsonFile' && target.files?.[0]) { try { const plan = migrate(JSON.parse(await target.files[0].text())); if (!plan) throw new Error(t('editor.error.unknownFormat')); app.pushUndo(); app.setPlan(plan, { frame: true }); app.markDirty(); app.toast(t('editor.toast.planLoaded')); } catch (err) { app.toast(t('editor.toast.importFailed', { message: err.message })); } return; }
     if (id === 'sh3dFile' && target.files?.[0]) { try { const { plan, stats } = await importSh3d(target.files[0], p); app.pushUndo(); app.setPlan(plan, { frame: true }); app.markDirty(); app.toast(t('editor.toast.sh3dImported', stats)); } catch (err) { console.error(err); app.toast(t('editor.toast.sh3dImportFailed', { message: err.message })); } return; }
+    if (id === 'rfGutters') { app.pushUndo(); site.roof.gutters=target.checked; app.stage.layout(); app.markDirty(); return; }
     if (id === 'stKeep') { this.keepRoofType = target.checked; this.renderInspector(); return; }
+    if(live && s?.type==='solar')return;
+    if(s?.type==='solar'&&['pvMode','pvModule','pvPattern'].includes(id)){solarInput(this,id,v);return;}
     if (!live || !this._liveUndo) { app.pushUndo(); this._liveUndo = live; } if (!live) this._liveUndo = false;
     // house
     if (id === 'stName') { p.name = v; app.markDirty(); this.renderLeft(); return; }
@@ -629,9 +646,10 @@ export class Editor {
     }
     if (s?.type === 'solar') {
       const a = site.solar.find((x) => x.id === s.id); if (!a) return;
+      if (solarInput(this, id, v)) return;
       if (id === 'pvPlane') a.plane = v === 'auto' ? 'auto' : +v; if (id === 'pvRows') a.rows = Math.max(1, Math.round(+v)); if (id === 'pvCols') a.cols = Math.max(1, Math.round(+v)); if (id === 'pvOrient') a.portrait = v === '1';
       if (id === 'pvOu' || id === 'pvOv') { a.offset = a.offset || [0, 0]; a.offset[id === 'pvOu' ? 0 : 1] = +v; } if (id === 'pvEnt') a.entity_id = v || null; if (id === 'pvPeak') a.peak_kw = +v;
-      app.stage.layout(); app.markDirty(); this.renderLeft(); app.scheduleUI(); return;
+      app.stage.layout(); app.markDirty(); this.renderLeft(); this.renderInspector(); app.scheduleUI(); return;
     }
     if (s?.type === 'level') {
       const L = p.levels.find((l) => l.id === s.id); if (!L) return;
@@ -674,6 +692,8 @@ export class Editor {
     } else if (type === 'opening') {
       if (id === 'oPre' && WINDOW_PRESETS[v]) { const w = WINDOW_PRESETS[v]; item.preset = v; item.sill = w.sill; item.head = w.head; const cx = (item.from[0] + item.to[0]) / 2, cz = (item.from[1] + item.to[1]) / 2, dx = item.to[0] - item.from[0], dz = item.to[1] - item.from[1], L0 = Math.hypot(dx, dz) || 1; item.from = [r3(cx - dx / L0 * w.w / 2), r3(cz - dz / L0 * w.w / 2)]; item.to = [r3(cx + dx / L0 * w.w / 2), r3(cz + dz / L0 * w.w / 2)]; }
       if (['oS', 'oH', 'oW'].includes(id)) delete item.preset;
+      if (id === 'oShutterColor') item.shutterColor = v; if (id === 'oShutterFrameColor') item.shutterFrameColor = v;
+      if (id === 'oFrameColor') item.frameColor = v; if (id === 'oLeafColor') item.leafColor = v;
       if (id === 'oT') item.type = v; if (id === 'oS') item.sill = +v; if (id === 'oH') item.head = +v; if (id === 'oC') item.cover = v || undefined; if (id === 'oInv') item.coverInvert = target.checked || undefined; if (id === 'oK') item.contact = v || undefined;
       if (id === 'oW') { const w = Math.max(0.3, +v); const cx = (item.from[0] + item.to[0]) / 2, cz = (item.from[1] + item.to[1]) / 2, dx = item.to[0] - item.from[0], dz = item.to[1] - item.from[1], L0 = Math.hypot(dx, dz) || 1; item.from = [r3(cx - dx / L0 * w / 2), r3(cz - dz / L0 * w / 2)]; item.to = [r3(cx + dx / L0 * w / 2), r3(cz + dz / L0 * w / 2)]; }
       app.stage.rebuildLevel(L.id);
@@ -685,6 +705,16 @@ export class Editor {
   showRoofIfOff() { const app = this.app; if (!app.roofOn && app.hasRoof()) app.setLevel('all'); }
   onInspClick(e) {
     const app = this.app, s = app.sel, p = app.plan, L = this.level;
+    const modelCard = e.target.closest('[data-opening-model]');
+    if (modelCard && s?.type === 'opening' && !modelCard.disabled) {
+      const found = findItem(p, s.id); const model = p.site.library?.[modelCard.dataset.openingModel] || LIBRARY.get(modelCard.dataset.openingModel);
+      if (found && modelCard.dataset.openingModel === '') { app.pushUndo(); delete found.item.model; app.stage.rebuildLevel(found.level.id); app.stage.select(s); app.markDirty(); this.renderInspector(); return; }
+      if (found && model) {
+        if (found.item.model === model.id) return;
+        app.pushUndo(); found.item.model = model.id; (p.site.library ||= {})[model.id] = structuredClone(model);
+        openingRecipeDefaults(model, found.item); app.stage.rebuildLevel(found.level.id); app.stage.select(s); app.markDirty(); this.renderInspector(); return;
+      }
+    }
     const sty = e.target.closest('[data-style]'); if (sty) { app.pushUndo(); applyStyle(p.site, sty.dataset.style, { keepType: this.keepRoofType !== false }); this.showRoofIfOff(); app.stage.rebuildAll(); app.stage.layout(); app.markDirty(); this.renderInspector(); app.toast(t('editor.toast.styleApplied', { style: ROOF_STYLES[sty.dataset.style].label })); return; }
     const hd = e.target.closest('[data-head]'); if (hd) { app.pushUndo(); const D = (p.site.roof.details = { ...DEFAULT_DETAILS, ...(p.site.roof.details || {}) }); D.head = hd.dataset.head; if (D.head === 'bracket') D.brackets = true; app.stage.layout(); app.markDirty(); this.renderInspector(); return; }
     const wd = e.target.closest('[data-wood]'); if (wd) { app.pushUndo(); const D = (p.site.roof.details = { ...DEFAULT_DETAILS, ...(p.site.roof.details || {}) }); D.wood = wd.dataset.wood; app.stage.layout(); app.markDirty(); this.renderInspector(); return; }
@@ -693,6 +723,14 @@ export class Editor {
     const so = e.target.closest('[data-solar]'); if (so) { this.showRoof(); return this.select({ type: 'solar', id: so.dataset.solar }); }
     const xb = e.target.closest('[data-xroof]'); if (xb) return this.select({ type: 'xroof', id: xb.dataset.xroof });
     const act = e.target.closest('[data-act]')?.dataset.act; if (!act) return;
+    if (act === 'resetShutterColors' && s?.type === 'opening') {
+      const found = findItem(p,s.id); if (!found) return; app.pushUndo(); delete found.item.shutterColor; delete found.item.shutterFrameColor;
+      app.stage.rebuildLevel(found.level.id); app.stage.select(s); app.markDirty(); this.renderInspector(); return;
+    }
+    if (act === 'resetOpeningModel' && s?.type === 'opening') {
+      const found = findItem(p, s.id); const model = found && (p.site.library?.[found.item.model] || LIBRARY.get(found.item.model)); if (!found || !model) return;
+      app.pushUndo(); openingRecipeDefaults(model, found.item); app.stage.rebuildLevel(found.level.id); app.stage.select(s); app.markDirty(); this.renderInspector(); return;
+    }
     if (act === 'toolRoof') return this.setTool('roofrect');
     if (act === 'roomRoof' && s?.type === 'room') { const f = findItem(p, s.id); if (f) return this.addExtraRoof(f.item.points, { levelId: f.level.id, room: f.item }); return; }
     if ((act === 'doorHinge' || act === 'doorSwing') && s?.type === 'opening') {
@@ -728,6 +766,7 @@ export class Editor {
       if (!confirm(t('editor.confirm.resetAll'))) return;
       this.images?.clear?.(); app.undoStack = []; app.redoStack = []; app.setPlan(emptyPlan(), { frame: true }); app.markDirty(); app.setMode('view'); app._firstRun = true; app.showOnboarding(); return;
     }
+    if (act === 'vacuumRefresh') return app.wizard.open({ levelId: s?.type === 'level' ? s.id : L.id, vacuum: true });
     if (act === 'wizard') return app.wizard.open({ levelId: s?.type === 'level' ? s.id : L.id });
     if (act === 'addRoofWin' || act === 'addDormer') {
       app.pushUndo(); const dormer = act === 'addDormer'; const top = [...app.stage.levels.values()].find((o) => o.roof)?.roof;
@@ -737,6 +776,7 @@ export class Editor {
       (p.site.roofItems ||= []).push(it); this.showRoof(); app.stage.layout(); app.markDirty(); this.expanded.add('roof:roof'); return this.select({ type: 'roofitem', id: it.id });
     }
     if (act === 'delRoofItem') { app.pushUndo(); p.site.roofItems = (p.site.roofItems || []).filter((x) => x.id !== app.sel?.id); app.stage.layout(); app.markDirty(); return this.select({ type: 'roof', id: 'roof' }); }
+    if (solarAction(this, act)) return;
     if (act === 'addSolar') { app.pushUndo(); const a = { id: newId('pv'), plane: 'auto', rows: 2, cols: 5, portrait: true, offset: [0, 0], entity_id: null, peak_kw: 4 }; p.site.solar.push(a); this.showRoof(); app.stage.layout(); app.markDirty(); this.expanded.add('roof:roof'); return this.select({ type: 'solar', id: a.id }); }
     if (act === 'delSolar') { app.pushUndo(); p.site.solar = p.site.solar.filter((x) => x.id !== s.id); app.stage.layout(); app.markDirty(); return this.select({ type: 'roof', id: 'roof' }); }
     if (act === 'backupExport') return this.exportBackup();
@@ -777,6 +817,7 @@ export class Editor {
     }
     if (s.type === 'roofitem') { this.app.pushUndo(); this.app.plan.site.roofItems = (this.app.plan.site.roofItems || []).filter((x) => x.id !== s.id); this.app.stage.layout(); this.app.markDirty(); return this.select({ type: 'roof', id: 'roof' }); }
     if (s.type === 'xroof') { this.app.pushUndo(); this.app.plan.site.roofs = (this.app.plan.site.roofs || []).filter((x) => x.id !== s.id); this.app.stage.setMarks(null); this.app.stage.layout(); this.app.markDirty(); this.renderLeft(); return this.select(null); }
+    if (s.type === 'solar' && this.solarMode==='module') { solarAction(this,'pvRemove'); return; }
     if (s.type === 'solar') { this.app.pushUndo(); this.app.plan.site.solar = this.app.plan.site.solar.filter((x) => x.id !== s.id); this.app.stage.layout(); this.app.markDirty(); return this.select(null); }
     if (!['device', 'furniture', 'room', 'opening'].includes(s.type)) return;
     const f = findItem(this.app.plan, s.id); if (!f) return;
@@ -800,6 +841,7 @@ export class Editor {
   /* ---------------- pointer interaction ---------------- */
   vertices(L) { return L.rooms.flatMap((r) => r.points); }
   pointerDown(e) {
+    if(startTransform(this,e))return;
     if (e.button !== 0) return; const app = this.app, st = app.stage, L = this.level;
     if (this.tool === 'rect' || this.tool === 'roofrect') { const p = st.floorPoint(e, L.id); if (!p) return; this.draw = { rect: true, a: snapPoint(p, this.vertices(L)) }; return; }
     if (this.tool !== 'select') return;
@@ -818,15 +860,16 @@ export class Editor {
       st.controls.enabled = false; return;
     }
     if (p?.type === 'xroof') { this.select({ type: 'xroof', id: p.id }); this._pendingPick = p; return; }
-    if (p?.type === 'solar' || p?.type === 'roofitem') { this.select({ type: p.type, id: p.id }); this._pendingPick = p; if (p.type === 'roofitem') { this.drag = { roofItem: p.id, undo: false }; st.controls.enabled = false; } return; }
+    if(p?.type==='solar'){startSolarDrag(this,p,e);return;}
+    if(p?.type==='roofitem'){this.select({type:p.type,id:p.id});this.drag={roofItem:p.id,undo:false};st.controls.enabled=false;return;}
     if (p && (p.type === 'device' || p.type === 'furniture')) {
       if (e.shiftKey) { this.select({ type: p.type, id: p.id, level: p.level }, { add: true }); this._pendingPick = { type: 'none' }; return; }
       const inGroup = this.selection().some((x) => x.id === p.id);
       if (!inGroup) this.select({ type: p.type, id: p.id, level: p.level });
-      const fp = st.floorPoint(e, L.id); const f = findItem(app.plan, p.id);
+      const f = findItem(app.plan, p.id); const fp = st.floorPoint(e, f.level.id);
       if (f.item.locked || !fp) { this._pendingPick = p; return; }
       const group = this.selection().map((x) => ({ ...x, item: findItem(app.plan, x.id)?.item })).filter((x) => x.item && !x.item.locked && x.item.pos);
-      this.drag = { item: f.item, type: p.type, group, start: fp, orig: group.map((x) => [...x.item.pos]), segs: wallSegments(L), moved: false, undo: false }; st.controls.enabled = false; return;
+      this.drag = { level:f.level.id, item: f.item, type: p.type, group, start: fp, orig: group.map((x) => [...x.item.pos]), segs: wallSegments(f.level), moved: false, undo: false }; st.controls.enabled = false; return;
     }
     if (p?.type === 'opening') { this.select({ type: 'opening', id: p.id, level: p.level }); this._pendingPick = p; return; }
     if (p?.type === 'room' && app.sel?.type === 'room' && app.sel.id === p.id && st.topView) {
@@ -847,8 +890,19 @@ export class Editor {
     const o = [...app.stage.levels.values()].find((x) => x.roof?.rebuildItem); if (o) o.roof.rebuildItem(it); else app.stage.layout(); app.markDirty(); if (!live) { this.renderInspector(); this.renderLeft(); }
   }
   pointerMove(e) {
+    if(moveTransform(this,e))return true;
     const app = this.app, st = app.stage, L = this.level;
     if (!this._coordT) { this._coordT = requestAnimationFrame(() => { this._coordT = null; }); const fp = st.floorPoint(e, L.id), el = app.$('stCoord'); if (fp && el) el.textContent = `x ${formatNumber(fp[0], { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · z ${formatNumber(fp[1], { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`; }
+    if (this.drag?.solar) {
+      if(transferSolarDrag(this,e))return true;
+      const d=this.drag,a=app.plan.site.solar.find(a=>a.id===d.solar),rp=dragSolarPoint(this,e),c=d.solarContext;
+      if(!rp||!c||rp.plane!==c.index){d.invalid=true;st.canvas.style.cursor='not-allowed';return true;}
+      const du=snap(rp.u-d.start.u),dv=snap(rp.v-d.start.v);
+      if(!du&&!dv&&!d.undo)return true;
+      const next=solarMoveCandidate(this,a,d.source,du,dv);d.invalid=!next;st.canvas.style.cursor=next?'grabbing':'not-allowed';
+      if(next){if(!d.undo){app.pushUndo();d.undo=true;}a.modules=next;a.plane=c.index;previewSolar(this,a);}
+      return true;
+    }
     if (this.drag?.roofItem) {
       const it = (app.plan.site.roofItems || []).find((x) => x.id === this.drag.roofItem); const rp = it && st.roofPlanePoint(e); if (!rp) return true;
       if (!this.drag.undo) { app.pushUndo(); this.drag.undo = true; }
@@ -864,13 +918,13 @@ export class Editor {
       this.dimsDirty = true; if (!this._rh) this._rh = requestAnimationFrame(() => { this._rh = null; this.roofHandles(); if (!st.topView) app.stage.layout(); }); return true;
     }
     if (this.drag) {
-      const fp = st.floorPoint(e, L.id); if (!fp) return true;
+      const fp = st.floorPoint(e, this.drag.level||L.id); if (!fp) return true;
       if (this.drag.vertex) { const others = this.vertices(L).filter((q) => q !== this.drag.room.points[this.drag.idx]); const prev = this.drag.room.points[(this.drag.idx - 1 + this.drag.room.points.length) % this.drag.room.points.length]; this.drag.room.points[this.drag.idx] = snapPoint(fp, others, prev); this.throttleRebuild(L, this.drag.room); return true; }
       if (this.drag.roomMove) { if (!this.drag.undo) { app.pushUndo(); this.drag.undo = true; } const dx = snap(fp[0] - this.drag.start[0]), dz = snap(fp[1] - this.drag.start[1]); this.drag.room.points = this.drag.orig.map(([x, z]) => [r3(x + dx), r3(z + dz)]); this.throttleRebuild(L, this.drag.room); return true; }
       if (this.drag.item) {
         if (!this.drag.undo) { app.pushUndo(); this.drag.undo = true; }
         const d = this.drag, dx = snap(fp[0] - d.start[0]), dz = snap(fp[1] - d.start[1]);
-        d.group.forEach((g, i) => { g.item.pos = [r3(d.orig[i][0] + dx), r3(d.orig[i][1] + dz)]; if (d.group.length === 1) placeItem(L, g.type, g.item, d.segs); st.moveItem(L.id, g.type, g.item); });
+        d.group.forEach((g, i) => { g.item.pos = [r3(d.orig[i][0] + dx), r3(d.orig[i][1] + dz)]; if (d.group.length === 1) placeItem(app.plan.levels.find(l=>l.id===g.level)||L, g.type, g.item, d.segs); st.moveItem(g.level||L.id, g.type, g.item); });
         d.moved = true; return true;
       }
     }
@@ -888,7 +942,7 @@ export class Editor {
     this.dimsDirty = true; if (this._rb) return; this._rb = requestAnimationFrame(() => { this._rb = null; this.app.stage.rebuildLevel(L.id); this.app.stage.setHandles(L, room); });
   }
   pointerUp(e, moved) {
-    const app = this.app, st = app.stage, L = this.level; st.controls.enabled = !st.topView;
+    const app = this.app, st = app.stage, L = this.level; st.controls.enabled = !st.topView; st.controls2.enabled=!!st.topView;st.canvas.style.cursor='';
     if (this.marquee) {
       const m = this.marquee; this.marquee = null;
       if (m.active) {
@@ -905,9 +959,10 @@ export class Editor {
     if (this.drag?.roofCorner) { this.drag = null; app.stage.layout(); this.roofHandles(); app.markDirty(); this.renderInspector(); return; }
     if (this.drag) {
       const d = this.drag; this.drag = null;
+      if(d.invalid)app.toast(t('editor.solar.noSpace'));
       if (d.vertex || d.roomMove) { cancelAnimationFrame(this._rb); this._rb = null; st.rebuildLevel(L.id); st.setHandles(L, d.room); app.buildLabels(); app.markDirty(); app.scheduleUI(true); this.renderInspector(); }
       if (d.item && d.moved) { app.markDirty(); this.renderInspector(); app.scheduleUI(true); this.renderLeft(); }
-      if (d.roofItem) { if (d.undo) { app.markDirty(); this.renderInspector(); this.renderLeft(); } }
+      if (d.roofItem || d.solar || d.transform) { if (d.undo) { app.markDirty(); this.renderInspector(); this.renderLeft(); } }
       return;
     }
     if (this.draw?.rect) {
@@ -1108,7 +1163,7 @@ export class Editor {
     }
     for (const L of plan.levels) {
       if (!L.underlay) continue;
-      try { const r = await app.hass.fetchWithAuth(`/api/hometwin/underlay/${L.id}`); if (!r.ok) continue; const b = await r.blob(); images[L.id] = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }); } catch { /* image missing */ }
+      try { const r = await app.hass.fetchWithAuth(`/api/hometwin/underlay/${L.underlay?.imageId || L.id}`); if (!r.ok) continue; const b = await r.blob(); images[L.underlay.imageId || L.id] = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }); } catch { /* image missing */ }
     }
     const settings = {}; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(hometwin|raumwerk)-/.test(k) && !/plan/.test(k)) settings[k] = localStorage.getItem(k); } } catch { /* storage blocked */ }
     const data = { format: 'hometwin-backup', version: 1, created: new Date().toISOString(), app_version: app.version || null, plan, images, settings };
@@ -1148,8 +1203,8 @@ export class Editor {
     for (const L of this.app.plan.levels) {
       if (!L.underlay) continue;
       try {
-        let img = this.images.get(L.id);
-        if (!img) { const r = await this.app.hass.fetchWithAuth(`/api/hometwin/underlay/${L.id}?v=${L.underlay.v || 0}`); if (!r.ok) continue; img = await createImageBitmap(await r.blob()); this.images.set(L.id, img); }
+        let img = this.images.get(L.underlay.imageId || L.id);
+        if (!img) { const r = await this.app.hass.fetchWithAuth(`/api/hometwin/underlay/${L.underlay?.imageId || L.id}?v=${L.underlay.v || 0}`); if (!r.ok) continue; img = await createImageBitmap(await r.blob()); this.images.set(L.underlay.imageId || L.id, img); }
         this.app.stage.setUnderlay(L.id, img);
       } catch (e) { console.warn('hometwin: underlay', e); }
     }

@@ -17,16 +17,25 @@ Bauplan hochladen, KI liest die Räume, jedes Gerät dort bedienen, wo es ist.</
 > **HomeTwin ist eine öffentliche Beta.** Es läuft im Alltag, Datenformate können sich aber noch ändern. Bitte ab und zu ein Backup exportieren (*Bearbeiten → Haus → Backup*). HomeTwin unterstützt derzeit **Englisch und Deutsch**. Englisch ist die Standardsprache; Deutsch wählst du in den Integrationsoptionen. Hilfe bei der Einrichtung findest du unter [Installation](#-installation). Du möchtest HomeTwin verbessern? Dann lies [In 5 Minuten beitragen](#-in-5-minuten-beitragen).
 
 ## ✨ Was es kann
-
-- 🏠 **Dein Haus in 3D**: Etagen, Räume, Wände, Fenster, Türen, Treppen, Dächer, Garten. Aus dem Bauplan oder selbst gezeichnet.
-- 💡 **Geräte live**: Licht leuchtet in seiner Farbe, Rollläden und Tore fahren, offene Fenster leuchten auf, PV zeigt die Leistung. Tippen schaltet, langes Drücken öffnet den Detaildialog von Home Assistant.
-- ☀️ **Echter Sonnenstand** mit Schatten.
-- 🤖 **Bauplan-KI**: Räume, Türen, Fenster und Maßstab aus dem Architektenplan, mit zweitem Prüfdurchgang.
+- 🏠 **Dein Haus in 3D**: Etagen, Räume, Wände, Fenster, Türen, Treppen, Dächer und Garten. Aus dem Bauplan oder selbst gezeichnet.
+- 💡 **Raumsteuerung**: Geräte nach Kategorien, dazu Temperatur, Luftfeuchtigkeit und Kontaktstatus auf einen Blick. Lichter und Rollläden bedienen, Gerätedetails öffnen, Szenen starten und Automationen aktivieren oder deaktivieren. Raumbezogene Szenen und Automationen verwenden die Bereichszuordnung aus Home Assistant.
+- 📱 **Für Handy und Wand-Tablet**: Die Raumleiste wird mobil zum Bottom Sheet mit kompakter und erweiterter Ansicht.
+- 🤖 **Bauplan-KI**: liest Räume, Türen, Fenster und Maßstab aus dem Architektenplan, mit zweitem Prüfdurchgang. Das Ergebnis lässt sich im Editor prüfen und korrigieren.
+- 🚪 **Türen und Fenster**: Modelle aus der Bibliothek wählen, generische Rahmenfarben anpassen und Rollladenfarben separat festlegen. Hinweise beim Überfahren und der Objektbaum erleichtern die Auswahl kleiner Öffnungen.
+- ☀️ **PV und Dächer**: Sattel-, Walm-, Pult- und Flachdach, Gauben, Dachfenster und Regenrinnen. Einzelne PV-Module oder Reihen anordnen, Maße sowie Hoch- oder Querformat wählen.
+- 🌤️ **Echter Sonnenstand** mit Schatten für Standort und Tageszeit.
 - 🚶 **Begehen**: in Augenhöhe durchs Haus gehen, unterwegs bedienen und umstellen.
-- 🏡 **Mehrere Dächer**: Sattel-, Walm-, Pult- oder Flachdach, eigene Dächer für Garage, Carport und Gartenhaus. Dazu Gauben und Dachfenster.
-- 📱 **Fürs Handy und Wand-Tablet**: Bottom Sheet, Raumauswahl, Gesten, Leistungsmodus.
-- 🧩 **Objekt-Bibliothek der Community**, neue Objekte erscheinen live nach dem Merge.
+- 🧩 **Objekt-Bibliothek der Community**: echte Produkte und generische Objekte, einschließlich Türen und Fenstern. Neue gemergte Objekte werden über die Bibliothek verfügbar.
+- ⌨️ **Platzierung**: ausgewählte Objekte mit Maus oder Pfeiltasten bewegen; bei geeigneten Objekten Höhe und automatisches Aufsetzen verwenden.
 - 💾 **Backup**: komplette Konfiguration exportieren und importieren.
+
+| Raumsteuerung | Bauplan-Assistent | Begehen | Smartphone |
+|---|---|---|---|
+| ![Demo-Raumsteuerung](docs/assets/screenshot-room.png) | ![Bauplan-Assistent](docs/assets/screenshot-wizard.png) | ![Demo-Rundgang](docs/assets/screenshot-walk.png) | ![Mobile Demo-Raumsteuerung](docs/assets/screenshot-mobile.png) |
+
+Alle Screenshots zeigen das integrierte Demohaus, kein privates Zuhause.
+
+**In Entwicklung:** Roboter-Arbeitsbereiche bleiben bis zum erfolgreichen Gerätetest ausgeblendet. Gespeicherte Bereiche bleiben erhalten; eine Gerätekompatibilität wird noch nicht zugesagt. Siehe [Implementierungsstand und Grenzen](docs/robot-work-areas.md).
 
 ## ⚡ Vom Bauplan zum 3D-Haus in ca. 2 Minuten
 

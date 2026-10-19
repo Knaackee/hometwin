@@ -129,6 +129,7 @@ export const poolTex = (() => {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 })();
 export const slatTex = canvasTex(64, (g, s) => { g.fillStyle = '#a3abb8'; g.fillRect(0, 0, s, s); g.fillStyle = 'rgba(0,0,0,.25)'; for (let y = 0; y < s; y += 8) g.fillRect(0, y, s, 1.5); });
+export const neutralSlatTex = canvasTex(64, (g, s) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, s, s); g.fillStyle = 'rgba(0,0,0,.25)'; for (let y = 0; y < s; y += 8) g.fillRect(0, y, s, 1.5); });
 export const garageTex = canvasTex(128, (g, s) => { g.fillStyle = '#d9dcdf'; g.fillRect(0, 0, s, s); g.fillStyle = 'rgba(0,0,0,.18)'; for (let y = 0; y < s; y += 32) g.fillRect(0, y, s, 3); g.fillStyle = 'rgba(0,0,0,.06)'; for (let x = 0; x < s; x += 8) g.fillRect(x, 0, 1, s); });
 
 // A soft additive light pool lying on the floor.

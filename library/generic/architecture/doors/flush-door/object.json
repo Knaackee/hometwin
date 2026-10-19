@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "generic/architecture/doors/flush-door",
+  "name": {
+    "en": "Flush door",
+    "de": "Glatte Tür"
+  },
+  "description": {
+    "en": "Generic parametric design. Default dimensions are illustrative; fitted to the existing wall opening.",
+    "de": "Generischer parametrischer Entwurf. Beispielmaße; wird an die vorhandene Wandöffnung angepasst."
+  },
+  "category": "architecture/doors",
+  "dimensions": {
+    "w": 0.9,
+    "h": 2.1,
+    "d": 0.14
+  },
+  "mount": "opening",
+  "opening": "door",
+  "license": "CC0-1.0",
+  "author": "hometwin",
+  "generated_by": "unknown (Codex runtime; model identifier not exposed)",
+  "sources": [],
+  "tags": [
+    "door",
+    "parametric"
+  ],
+  "created": "2026-10-19"
+}

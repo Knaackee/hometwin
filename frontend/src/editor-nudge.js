@@ -1,3 +1,4 @@
+import { nudgeSolar } from './editor-solar.js';
 import { findItem } from './plan.js';
 
 // Screen-right projected onto the floor gives stable axes even in the top view.
@@ -9,6 +10,14 @@ export function nudgeSelection(editor, event) {
   const target = event.composedPath()[0];
   if (target?.isContentEditable || target?.closest?.('button,a,[role="dialog"],[role="slider"]')) return false;
   if (['wizard', 'onboard'].some(id => app.$(id) && !app.$(id).hidden)) return false;
+  if(app.sel?.type==='solar')return nudgeSolar(editor,event,direction,(event.ctrlKey||event.metaKey)?0.01:event.shiftKey?0.5:0.05);
+  if(app.sel?.type==='roofitem') {
+    const item=(app.plan.site.roofItems||[]).find(i=>i.id===app.sel.id);if(!item)return false;
+    event.preventDefault();event.stopPropagation();if(!event.repeat)app.pushUndo();
+    const step=(event.ctrlKey||event.metaKey)?0.01:event.shiftKey?0.5:0.05;
+    item.u=(item.u||0)+direction[0]*step;item.v=(item.v||0)+direction[1]*step;
+    const roof=[...app.stage.levels.values()].find(o=>o.roof?.rebuildItem)?.roof;roof?.rebuildItem(item);app.markDirty();editor.renderInspector();return true;
+  }
   const items = editor.selection().filter(s => ['device', 'furniture'].includes(s.type))
     .map(s => ({ ...findItem(app.plan, s.id), type: s.type }))
     .filter(f => f.item?.pos && !f.item.locked);

@@ -1,8 +1,10 @@
 {
  "schema": 1,
- "generated": "2026-10-16T19:37:04.851Z",
- "count": 8,
+ "generated": "2026-10-19T07:01:23.777Z",
+ "count": 11,
  "categories": [
+  "architecture/doors",
+  "architecture/windows",
   "climate/radiator",
   "climate/thermostat",
   "furniture/seating",
@@ -13,6 +15,87 @@
   "music/instruments"
  ],
  "items": [
+  {
+   "id": "generic/architecture/doors/flush-door",
+   "name": {
+    "en": "Flush door",
+    "de": "Glatte Tür"
+   },
+   "category": "architecture/doors",
+   "manufacturer": null,
+   "model": null,
+   "variant": null,
+   "dimensions": {
+    "w": 0.9,
+    "h": 2.1,
+    "d": 0.14
+   },
+   "mount": "opening",
+   "opening": "door",
+   "ha": {},
+   "tags": [
+    "door",
+    "parametric"
+   ],
+   "license": "CC0-1.0",
+   "author": "hometwin",
+   "format": "recipe",
+   "preview": "generic/architecture/doors/flush-door/preview.webp"
+  },
+  {
+   "id": "generic/architecture/doors/glass-door",
+   "name": {
+    "en": "Glass door",
+    "de": "Glastür"
+   },
+   "category": "architecture/doors",
+   "manufacturer": null,
+   "model": null,
+   "variant": null,
+   "dimensions": {
+    "w": 0.9,
+    "h": 2.1,
+    "d": 0.14
+   },
+   "mount": "opening",
+   "opening": "door",
+   "ha": {},
+   "tags": [
+    "door",
+    "parametric"
+   ],
+   "license": "CC0-1.0",
+   "author": "hometwin",
+   "format": "recipe",
+   "preview": "generic/architecture/doors/glass-door/preview.webp"
+  },
+  {
+   "id": "generic/architecture/windows/fixed-window",
+   "name": {
+    "en": "Fixed window",
+    "de": "Festverglastes Fenster"
+   },
+   "category": "architecture/windows",
+   "manufacturer": null,
+   "model": null,
+   "variant": null,
+   "dimensions": {
+    "w": 1.2,
+    "h": 1.3,
+    "d": 0.14
+   },
+   "mount": "opening",
+   "opening": "window",
+   "ha": {},
+   "tags": [
+    "window",
+    "parametric"
+   ],
+   "license": "CC0-1.0",
+   "author": "hometwin",
+   "format": "recipe",
+   "preview": "generic/architecture/windows/fixed-window/preview.webp"
+  },
   {
    "id": "generic/climate/radiator/panel-radiator-type-22",
    "name": {

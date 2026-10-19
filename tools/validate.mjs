@@ -50,6 +50,13 @@ function check(dir) {
     if (recipe && !vRecipe(recipe)) for (const e of vRecipe.errors.slice(0, 15)) err(`recipe.json${e.instancePath || ''} ${e.message}${e.params?.additionalProperty ? ` ("${e.params.additionalProperty}")` : ''}${e.params?.allowedValues ? ' ' + JSON.stringify(e.params.allowedValues) : ''}`);
   }
   if (recipe && !errors.some((e) => e.startsWith('recipe.json'))) {
+    if (obj.mount === 'opening') {
+      if (!['door', 'window'].includes(obj.opening)) err('opening mount requires opening: door or window');
+      for (const key of ['w', 'h', 'd']) if (!recipe.params?.[key]) err(`opening recipe requires ${key} parameter`);
+      const names = recipe.parts.map(p => p.name);
+      if (!names.includes('fixed') || (obj.opening === 'door' && !names.includes('leaf'))) err('opening recipe requires fixed group and doors require leaf group');
+      if (recipe.parts.some(p => p.shape !== 'group' || !['fixed', 'leaf'].includes(p.name))) err('opening top-level parts must be fixed/leaf groups');
+    }
     // parameter sanity
     for (const [k, d] of Object.entries(recipe.params || {})) {
       if (typeof d !== 'object') continue;

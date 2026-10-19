@@ -83,6 +83,17 @@ Read [references/recipe-format.md](references/recipe-format.md) (format) and [re
 2. Translate it into `recipe.json`. Repeated elements with computed positions (frets, slats, ribs) use `repeat` plus `let` for per-copy helper values; `pow`, `floor`, ternaries etc. are available. Use `params` for what users may sensibly change (width of a sofa, colour, number of seats). For a specific product, defaults must equal the real product.
 3. Fill `object.json`: `dimensions` = real outer size, `mount`, `ha.domains` (e.g. `light` for lamps, `climate` for radiators/thermostats, `media_player` for TVs/speakers, `cover` for blinds), `tags`, `sources`, `license` (`CC0-1.0` by default), `author`, `generated_by`.
 
+
+### Wall-opening models (door/window)
+Use `mount: "opening"`, `opening: "door"` or `"window"`, and category `architecture/doors` or `architecture/windows`. The editor lists these as model cards in the opening inspector, not as furniture. Follow `library/generic/architecture/doors/flush-door`, `doors/glass-door` or `windows/fixed-window`.
+
+The first contract supports fixed windows and single swinging doors. Recipes require `w`, `h`, `d`: rough-opening width, height and wall depth, with supported min/max ranges. Keep frame/handle thickness constant while adapting geometry; do not stretch a finished mesh. Only top-level groups named `fixed` and (for doors) `leaf` are allowed. Both use centred x/z coordinates and y=0 at the opening bottom. The host supplies the door hinge 0.04 m inward from the opening edge; design the leaf edge and rebates accordingly. Arbitrary hinge layouts, multiple moving leaves and sliding animations need an engine extension before submission.
+
+Submit distinct designs as distinct objects: a glass door has its own card, not a separate editor checkbox. Its `glazed` default is true; a solid door uses false. Declare only supported customization: `color` (type color) for the frame, and optional `leafColor` (type color) for the door leaf. Their defaults describe the intended appearance, including original manufacturer colours. The editor offers only declared controls and can reset overrides to these defaults. Do not invent brand colours or measured dimensions. Generic reference defaults are illustrative design dimensions.
+
+Every object needs `preview.webp` and a four-view `review.png`. Previews are generated from the recipe, shipped with the repository and bundled locally for offline selection. Published community entries use the same catalogue metadata and the existing optional library refresh. Keep English and German names complete. A merge makes compatible models discoverable without writing a new editor option.
+
+Verify the four-view sheet, fit at different supported widths/heights/depths, hinge reversal, glass vs solid appearance, colour overrides/reset, open/closed views, and closed shutters at oblique viewing angles. Run strict library validation, `node tools/test-opening-models.mjs`, `node tools/test-opening-seals.mjs`, and `node tools/test-opening-picker.mjs` (demo at port 4185). Model selection must preserve dimensions and cover/contact entities, save the recipe into the plan for offline use, and leave existing homes unchanged until a model is explicitly selected. Incompatible sizes must be explained in the picker. Never self-certify the user's visual acceptance.
 ## 5. Validate and look at it
 
 ```bash

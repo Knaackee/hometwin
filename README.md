@@ -30,20 +30,25 @@ Upload your floor plan, let AI read the rooms, control every device right where 
 > **HomeTwin is a public beta.** It runs in daily use, but data formats can still change. Export a backup now and then (*Edit → House → Backup*). HomeTwin currently supports **English and German**. The interface defaults to English; choose German in the integration options. For setup help, see [Installation](#-installation). Want to improve HomeTwin? See [Contribute in 5 minutes](#-contribute-in-5-minutes).
 
 ## ✨ What it does
-
-- 🏠 **Your house in 3D**: storeys, rooms, walls, windows, doors, stairs, roofs, garden. Built from your floor plan or drawn by hand.
-- 💡 **Live devices**: lights glow in their colour, blinds and garage doors move, open windows light up, PV panels shine with your solar output. Tap to toggle, long-press for Home Assistant's detail dialog.
-- ☀️ **Real sun and shadows** for your location and time of day.
-- 🤖 **Floor-plan AI**: rooms, doors, windows and the scale are read from an architect's plan, including a self-check pass.
+- 🏠 **Your house in 3D**: storeys, rooms, walls, windows, doors, stairs, roofs and garden. Built from your floor plan or drawn by hand.
+- 💡 **Room controls**: devices grouped by category, with room temperature, humidity and contact status at a glance. Control lights and covers, open device details, run scenes and enable or disable automations. Room-specific scenes and automations use Home Assistant area assignments.
+- 📱 **Phone and wall tablet ready**: a room sidebar on desktop becomes a bottom sheet on mobile, with compact and expanded views.
+- 🤖 **Floor-plan AI**: reads rooms, doors, windows and scale from an architect's plan, including a self-check pass. Review and correct the result in the editor.
+- 🚪 **Doors and windows**: choose models from the library, adjust generic frame colours and set shutter colours separately. Hover hints and the object tree help select small openings.
+- ☀️ **Solar and roofs**: gable, hip, shed and flat roofs, dormers, roof windows and gutters. Arrange individual PV modules or rows, choose dimensions and portrait or landscape mounting.
+- 🌤️ **Real sun and shadows** for your location and time of day.
 - 🚶 **Walk through** your home at eye level and operate or rearrange things on the way.
-- 🏡 **Several roofs**: gable, hip, shed or flat, plus garage, carport or garden house with their own roof. Add dormers and roof windows.
-- 📱 **Phone and wall tablet ready**: bottom-sheet controls, room picker, touch gestures, performance mode.
-- 🧩 **Community object library**: real products and generic furniture, modelled from real dimensions, updated live when new objects are merged.
+- 🧩 **Community object library**: real products and generic objects, including architectural openings. New merged objects become available through the library.
+- ⌨️ **Placement tools**: move selected objects with the mouse or arrow keys; use height settings and automatic support placement for applicable objects.
 - 💾 **Backup**: export and import the complete configuration as one file.
 
-| Room view | Floor-plan assistant | Walkthrough | Phone |
+| Room controls | Floor-plan assistant | Walkthrough | Phone |
 |---|---|---|---|
-| ![Room view](docs/assets/screenshot-room.png) | ![Floor-plan assistant](docs/assets/screenshot-wizard.png) | ![Walkthrough](docs/assets/screenshot-walk.png) | ![Phone](docs/assets/screenshot-mobile.png) |
+| ![Demo room controls](docs/assets/screenshot-room.png) | ![Floor-plan assistant](docs/assets/screenshot-wizard.png) | ![Demo walkthrough](docs/assets/screenshot-walk.png) | ![Demo mobile room controls](docs/assets/screenshot-mobile.png) |
+
+All screenshots show the built-in demo house, not a private home.
+
+**In development:** robot work areas remain hidden until real-device testing is complete. Saved areas are retained; no robot compatibility is claimed yet. See [implementation status and limitations](docs/robot-work-areas.md).
 
 ## ⚡ From floor plan to 3D in about 2 minutes
 

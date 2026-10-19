@@ -145,6 +145,7 @@ export function createDemoHass(onChange) {
         return { title: id.split('/').pop(), children: Array.from({ length: 8 }, (_, i) => ({ title: t('data.demo.media.photoFile', { number: i + 1 }), media_content_id: `${id}/photo_${i + 1}.jpg`, media_class: 'image', media_content_type: 'image/jpeg', can_expand: false })) };
       }
       case 'media_source/resolve_media': return { url: generativeArt(msg.media_content_id, 640, 480).toDataURL('image/jpeg', 0.85), mime_type: 'image/jpeg' };
+      case 'hometwin/vacuum/maps': return { maps: [] };
       case 'hometwin/agent/info': return { configured: true, model: t('data.demo.simulatedModel') };
       case 'hometwin/agent/chat': await new Promise((r) => setTimeout(r, 700)); return demoAgent(msg, states);
       case 'hometwin/agent/detect': await new Promise((r) => setTimeout(r, 1800)); return demoDetect(msg);

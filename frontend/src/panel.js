@@ -1,3 +1,6 @@
+import { renderRoomControls, wireRoomControls, guardRoomDetail } from './room-controls.js';
+import { ROOM_CONTROLS_CSS } from './room-controls.css.js';
+import { ROBOT_PREVIEW_ENABLED } from './features.js';
 import englishFlag from './assets/flags/gb.svg';
 import germanFlag from './assets/flags/de.svg';
 import { t as tr, setLanguage, getLanguage, getLocale, formatNumber } from './i18n.js';
@@ -11,6 +14,7 @@ import { sunPosition } from './sun.js';
 import { Editor } from './editor.js';
 import { Agent } from './agent.js';
 import { PlanWizard } from './wizard.js';
+import { RobotAreas } from './robot-areas.js';
 import { bbox, area as polyArea, pointInPolygon } from './geometry.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -52,6 +56,7 @@ export class HomeTwinPanel extends HTMLElement {
     this.renderLevels(); this.renderSunPop(); this.updateLabelText();
     this.editor.refreshLanguage();
     if (!this.$('wizard').hidden) this.wizard.render();
+    this.robotAreas?.render();
     if (!this.$('onboard').hidden) this.showOnboarding();
     if (this.detailEntity) this.renderDetail(true);
     this.scheduleUI(true);
@@ -97,13 +102,13 @@ export class HomeTwinPanel extends HTMLElement {
     setLanguage(this._panel?.config?.ui_language);
     this.lang = getLanguage();
     const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>${CSS}</style>${template()}`;
+    root.innerHTML = `<style>${CSS}${ROOM_CONTROLS_CSS}</style>${template()}`;
     this.$ = (id) => root.getElementById(id);
     root.querySelectorAll('[data-ic]').forEach((b) => b.insertAdjacentHTML('afterbegin', icon(b.dataset.ic)));
     this.setAttribute('mode', 'view');
     this.$('menuBtn').hidden = !this._narrow;
     this.stage = new Stage(this.$('stage'), this);
-    this.editor = new Editor(this); this.agent = new Agent(this); this.wizard = new PlanWizard(this);
+    this.editor = new Editor(this); this.agent = new Agent(this); this.wizard = new PlanWizard(this); this.robotAreas = new RobotAreas(this);
     this._wireTop(); this._wireView();
     new ResizeObserver(() => { this.stage.resize(); }).observe(this);
     this.stage.resize();
@@ -117,7 +122,7 @@ export class HomeTwinPanel extends HTMLElement {
         const p = migrate(msg.plan); if (p) { this.setPlan(p); this.toast(tr('panel.remoteChange')); }
       }, { type: 'hometwin/plan/subscribe' });
     } catch { /* older backend or demo */ }
-    this.stage.start(); setTimeout(() => this.stage.riseAll(), 250);
+    this.stage.connect(); setTimeout(() => this.stage.riseAll(), 250);
     this._sunTimer = setInterval(() => this.updateSun(), 30000);
     if (!this.isAdmin()) this.$('mEdit').hidden = true;
     if (this._firstRun && this.isAdmin()) this.showOnboarding();
@@ -157,8 +162,8 @@ export class HomeTwinPanel extends HTMLElement {
       else this.toast(tr('panel.drawFirst'));
     };
   }
-  connectedCallback() { this.stage?.start(); }
-  disconnectedCallback() { this.stage?.stop(); }
+  connectedCallback() { this.stage?.connect(); }
+  disconnectedCallback() { this.stage?.disconnect(); }
 
   setPlan(plan, { frame = false } = {}) {
     this.plan = plan;
@@ -175,12 +180,12 @@ export class HomeTwinPanel extends HTMLElement {
 
   /* ---------- persistence ---------- */
   pushUndo() { this.undoStack.push(JSON.stringify(this.plan)); if (this.undoStack.length > 60) this.undoStack.shift(); this.redoStack = []; this.editor?.renderBar(); }
-  undo() { const s = this.undoStack.pop(); if (!s) return; this.redoStack.push(JSON.stringify(this.plan)); this.setPlan(JSON.parse(s)); this.markDirty(); this.editor.select(null); this.editor.renderBar(); }
-  redo() { const s = this.redoStack.pop(); if (!s) return; this.undoStack.push(JSON.stringify(this.plan)); this.setPlan(JSON.parse(s)); this.markDirty(); this.editor.select(null); this.editor.renderBar(); }
-  markDirty() {
+  undo() { const s = this.undoStack.pop(); if (!s) return; this.redoStack.push(JSON.stringify(this.plan)); this.setPlan(JSON.parse(s)); this.markDirty({ settle: false }); this.editor.select(null); this.editor.renderBar(); }
+  redo() { const s = this.redoStack.pop(); if (!s) return; this.undoStack.push(JSON.stringify(this.plan)); this.setPlan(JSON.parse(s)); this.markDirty({ settle: false }); this.editor.select(null); this.editor.renderBar(); }
+  markDirty({ settle = true } = {}) {
     const voids = syncStairVoids(this.plan);
     if (voids.size) { for (const id of voids) this.stage.rebuildLevel(id); this.buildLabels(); if (this.mode === 'edit') this.editor.renderLeft(); }
-    this.stage.settleAutomaticItems();
+    if (settle) this.stage.settleAutomaticItems();
     this.stage.select(this.sel, this.editor?.multi || []);
     this.dirty = true; this.$('saveState').textContent = tr('panel.unsaved');
     clearTimeout(this._saveT); this._saveT = setTimeout(() => this.save(), 900);
@@ -191,10 +196,10 @@ export class HomeTwinPanel extends HTMLElement {
     catch (e) { this.$('saveState').textContent = tr('panel.notSaved'); this.toast(tr('panel.saveError', {error: e.message || e.code || e})); }
   }
   // Applies ops (from editor tools or the agent), rebuilding only what changed.
-  apply(ops, { undo = true } = {}) {
+  apply(ops, { undo = true, settle = true } = {}) {
     if (undo) this.pushUndo();
     const res = applyOps(this.plan, ops);
-    this.stage.rebuildAll(); this.buildLabels(); this.renderLevels(); this.markDirty(); this.scheduleUI(true);
+    this.stage.rebuildAll(); this.buildLabels(); this.renderLevels(); this.markDirty({ settle }); this.scheduleUI(true);
     return res;
   }
 
@@ -379,6 +384,7 @@ export class HomeTwinPanel extends HTMLElement {
   }
   _wireView() {
     const vp = this.$('vp');
+    wireRoomControls(this);
     for (const id of ['vp', 'lib']) { const el = this.$(id); el.addEventListener('pointerdown', () => (this._panelBusy = true)); const free = () => setTimeout(() => (this._panelBusy = false), 0); ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => el.addEventListener(ev, free)); }
     vp.addEventListener('click', (e) => {
       const more = e.target.closest('[data-more]'); if (more) { e.stopPropagation(); return this.openDetail(more.dataset.more); }
@@ -388,9 +394,9 @@ export class HomeTwinPanel extends HTMLElement {
       if (e.target.closest('#dBack')) this.closeDetail();
     });
     const c = this.$('stage');
-    c.addEventListener('pointerdown', (e) => { this._down = { x: e.clientX, y: e.clientY, pick: this.stage.pick(e), started: performance.now() }; this._lastXY = null; if (this.mode === 'edit') return this.editor.pointerDown(e);
+    c.addEventListener('pointerdown', (e) => { this._down = { x: e.clientX, y: e.clientY, pick: this.stage.pick(e), started: performance.now() }; this._lastXY = null; if (this.mode === 'edit') { if(e.button!==0||e.isPrimary===false)return; this.editor.pointerDown(e); if(this.editor.drag){this.$('tip').hidden=true;this.stage.tween=null;this.stage.controls.enabled=false;this.stage.controls2.enabled=false;c.setPointerCapture(e.pointerId);}return; }
       clearTimeout(this._lp); this._lpFired = false; if (e.isPrimary === false) return;
-      this._lp = setTimeout(() => { const d = this._down; if (!d || this.mode !== 'view') return; this._lpFired = true; this.inspectPick(d.pick); }, 520); });
+      this._lp = setTimeout(() => { const d = this._down; if (!d || this.mode !== 'view') return; this._lpFired = true; this.inspectPick(d.pick); }, 520); }, {capture:true});
     c.addEventListener('contextmenu', (e) => { if (this.mode !== 'view') return; e.preventDefault(); clearTimeout(this._lp); this._lpFired = true; this.inspectPick(this.stage.pick(e)); });
     vp.addEventListener('contextmenu', (e) => { const entity = e.target.closest('[data-ent]'); if (entity) { e.preventDefault(); this.moreInfo(entity.dataset.ent); } const scene = e.target.closest('[data-scene]'); if (scene) { e.preventDefault(); this.previewScene(scene.dataset.scene); } });
     { let lt = null; vp.addEventListener('pointerdown', (e) => { const target = e.target.closest('[data-ent],[data-scene]'); if (!target || e.isPrimary === false) return; this._tileLp = false; lt = setTimeout(() => { lt = null; this._tileLp = true; navigator.vibrate?.(15); if (target.dataset.scene) this.previewScene(target.dataset.scene); else this.moreInfo(target.dataset.ent); }, 520); });
@@ -411,10 +417,11 @@ export class HomeTwinPanel extends HTMLElement {
       else if (p.type === 'roofitem') { const o = (this.plan.site.roofItems || []).find((x) => x.id === p.id); if (o?.cover) this.primaryAction(o.cover); }
       else if (p.type === 'room') { const r = this.findRoom(p.level, p.id); if (r?.kind === 'outdoor' && polyArea(r.points) > 60) return this.setFocus(null); this.setFocus(this.focusRoom === p.id ? null : p.id, p.level); }
     });
-    c.addEventListener('pointercancel', () => { clearTimeout(this._lp); this._down = null; this._lpFired = false; });
+    c.addEventListener('pointercancel', (e) => { if(this.mode==='edit'&&this.editor.drag)this.editor.pointerUp(e,true); clearTimeout(this._lp); this._down = null; this._lpFired = false; });
     c.addEventListener('pointerleave', () => { this.$('tip').hidden = true; this.hoverRoom = null; });
   }
   hover(e) {
+    if (this.mode === 'edit') return this.editor.hoverUI?.move(e);
     if (e.pointerType === 'touch') return;
     const p = this.stage.pick(e, { furniture: this.mode === 'edit' }); const tip = this.$('tip');
     this.hoverRoom = p?.type === 'room' ? p.id : null;
@@ -489,7 +496,7 @@ export class HomeTwinPanel extends HTMLElement {
     return null;
   }
   setFocus(roomId, levelId) {
-    this.focusRoom = roomId; { const el = this.$('roomSel'); if (el) { const v = roomId ? [...el.options].find((o) => o.value.endsWith('|' + roomId))?.value : ''; if (v != null) el.value = v; } } this.closeDetail(false);
+    this.roomCategory = 'all'; this.setSheet('half'); this.focusRoom = roomId; { const el = this.$('roomSel'); if (el) { const v = roomId ? [...el.options].find((o) => o.value.endsWith('|' + roomId))?.value : ''; if (v != null) el.value = v; } } this.closeDetail(false);
     if (roomId) { const l = this.plan.levels.find((x) => x.id === levelId && x.rooms.some((r) => r.id === roomId)) || this.plan.levels.find((x) => x.rooms.some((r) => r.id === roomId)); const r = l?.rooms.find((x) => x.id === roomId); if (!r) return;
       if (this.stage.walk) { const w = this.stage.walk; if (w.levelId !== l.id) { w.levelId = l.id; this.setLevel(l.id, false); this.stage.rebuildAll(); this.stage.layout(); this.$('whLevel').textContent = l.name; this.focusRoom = roomId; } [w.x, w.z] = roomCenter(r); }
       else { if (this.levelSel !== l.id) { this.setLevel(l.id, false); this.focusRoom = roomId; this.renderRoomSel(); } // only this storey, others hidden
@@ -539,33 +546,7 @@ export class HomeTwinPanel extends HTMLElement {
     if (e.kind === 'contact') return this.states()[e.id]?.attributes?.device_class === 'window' ? 'window' : 'door';
     return KINDS[e.kind]?.icon || 'dots';
   }
-  renderView() {
-    if (this.mode !== 'view' || !this.plan) return;
-    const S = this.states(); const ents = this.boundEntities();
-    const lights = ents.filter((e) => e.id.startsWith('light.')), lit = lights.filter((e) => S[e.id].state === 'on').length;
-    const temps = this.plan.levels.flatMap((l) => l.rooms.filter((r) => r.kind !== 'outdoor').map((r) => this.roomTemp(l, r))).filter((x) => x != null && !isNaN(x));
-    const avg = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : null;
-    const open = ents.filter((e) => e.kind === 'contact' && S[e.id].state === 'on').length;
-    const alarm = ents.some((e) => e.kind === 'smoke' && S[e.id].state === 'on');
-    const pv = (this.plan.site.solar || []).filter((a) => a.entity_id && S[a.entity_id]).reduce((sum, a) => { const s = S[a.entity_id]; let v = parseFloat(s.state); if (/^w$/i.test(s.attributes.unit_of_measurement || '')) v /= 1000; return sum + (Number.isFinite(v) ? v : 0); }, null);
-    set(this.$('summary'), (pv != null ? `<div class="stat"><b style="color:var(--lamp)">${formatNumber(pv, {minimumFractionDigits: 1, maximumFractionDigits: 1})}</b><span>${tr('panel.solarPower')}</span></div>` : '') + `<div class="stat"><b>${lit}/${lights.length}</b><span>${tr('panel.lightsOn')}</span></div><div class="stat"><b>${avg != null ? formatNumber(avg, {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '°' : '—'}</b><span>${tr('panel.inside')}</span></div><div class="stat"><b style="color:${open || alarm ? 'var(--warn)' : 'inherit'}">${alarm ? tr('panel.alarm') : open}</b><span>${alarm ? tr('panel.smoke') : tr('panel.openCount')}</span></div>`);
-    const scenes = Object.keys(S).filter((id) => id.startsWith('scene.')).slice(0, 8);
-    set(this.$('scenes'), scenes.map((id) => `<button class="chip scene" data-scene="${id}">${esc(this.nameOf(id))}</button>`).join(''));
-    const rooms = this.plan.levels.filter((l) => this.stage.isVisible(l)).flatMap((l) => l.rooms.filter((r) => r.kind !== 'void').map((r) => ({ l, r })));
-    set(this.$('roomChips'), `<button class="chip" data-room="" aria-pressed="${!this.focusRoom}">${tr('panel.allRooms')}</button>` + rooms.filter(({ l, r }) => ents.some((e) => e.room === r.id && e.level === l)).map(({ r }) => `<button class="chip" data-room="${r.id}" aria-pressed="${this.focusRoom === r.id}">${esc(r.name)}</button>`).join(''));
-    const fr = this.focusRoom && rooms.find((x) => x.r.id === this.focusRoom);
-    this.$('vpTitle').textContent = fr ? fr.r.name : this.levelSel === 'all' ? this.plan.name : this.levelSel === 'roof' ? tr('panel.roof') : this.plan.levels.find((l) => l.id === this.levelSel)?.name;
-    let html = '';
-    for (const { l, r } of rooms.filter((x) => !this.focusRoom || x.r.id === this.focusRoom)) {
-      const list = ents.filter((e) => e.room === r.id && e.level === l && !e.id.startsWith('sensor.')); if (!list.length) continue;
-      const t = this.roomTemp(l, r);
-      html += `<div class="room-group"><h3>${esc(r.name)}<span>${t != null && !isNaN(t) ? formatNumber(t, {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' °C' : ''}</span></h3><div class="tiles">`;
-      for (const e of list) html += this.tileHtml(e);
-      html += '</div></div>';
-    }
-    set(this.$('tileArea'), html || `<p class="hint">${tr('panel.noDevices')}</p>`);
-    if (this.detailEntity) this.renderDetail();
-  }
+  renderView() { renderRoomControls(this); }
   tileHtml(e) {
     const s = this.states()[e.id], d = e.id.split('.')[0], a = s.attributes;
     const on = (d === 'light' && s.state === 'on') || (['switch', 'fan', 'input_boolean'].includes(d) && s.state === 'on') || (d === 'media_player' && s.state === 'playing') || ['cleaning', 'mowing'].includes(s.state) || (d === 'climate' && a.hvac_action === 'heating') || (d === 'cover' && (coverPercent(s, coverInverted(this.plan, e.id)) ?? 0) > 0) || (d === 'valve' && s.state === 'open');
@@ -576,7 +557,7 @@ export class HomeTwinPanel extends HTMLElement {
     const more = ['light', 'cover', 'climate', 'camera', 'media_player'].includes(d) ? `<span class="more" data-more="${e.id}" role="button" aria-label="${tr('panel.details')}">${icon('dots')}</span>` : '';
     return `<button class="${cls}" data-ent="${e.id}"><span class="ic">${icon(this.entIcon(e))}</span><span class="nm">${esc(a.friendly_name || e.id)}</span><span class="st">${esc(this.stateText(e.id))}</span>${more}${bar}</button>`;
   }
-  openDetail(id) { this.detailEntity = id; this.$('vpList').hidden = true; this.$('vpDetail').hidden = false; this.renderDetail(true); }
+  openDetail(id) { this.setSheet('full'); this.detailEntity = id; this.$('vpList').hidden = true; this.$('vpDetail').hidden = false; this.renderDetail(true); }
   closeDetail(render = true) { this.detailEntity = null; this.$('vpDetail').hidden = true; this.$('vpList').hidden = false; if (this._camTimer) { clearInterval(this._camTimer); this._camTimer = null; } if (render) this.scheduleUI(); }
   renderDetail(full) {
     const id = this.detailEntity, s = this.states()[id]; const el = this.$('vpDetail'); if (!s) return;
@@ -604,6 +585,7 @@ export class HomeTwinPanel extends HTMLElement {
       body = `<p class="hint">${esc(a.media_title || '')}${a.media_artist ? ' · ' + esc(a.media_artist) : ''}</p><div class="actions"><button class="btn" data-mp="media_previous_track">◀◀</button><button class="btn" data-mp="media_play_pause">${s.state === 'playing' ? tr('panel.pause') : tr('panel.play')}</button><button class="btn" data-mp="media_next_track">▶▶</button></div>${a.volume_level != null ? `<div class="field"><label for="dV">${tr('panel.volume')} <output>${Math.round(a.volume_level * 100)} %</output></label><input id="dV" type="range" min="0" max="100" value="${Math.round(a.volume_level * 100)}"></div>` : ''}`;
     }
     el.innerHTML = `<div class="detail"><button class="btn" id="dBack" style="align-self:flex-start">${icon('back')}${tr('panel.back')}</button><div><h3>${esc(a.friendly_name || id)}</h3><div class="eid">${esc(id)}</div></div>${body}</div>`;
+    guardRoomDetail(el, s, d);
     const q = (s2) => el.querySelector(s2);
     q('#dB')?.addEventListener('change', (e) => this.call('light', 'turn_on', { entity_id: id, brightness: +e.target.value }));
     q('#dK')?.addEventListener('change', (e) => this.call('light', 'turn_on', { entity_id: id, color_temp_kelvin: +e.target.value }));
@@ -643,7 +625,7 @@ const template = () => `
   <button class="ibtn" id="menuBtn" title="${tr('panel.menu')}" data-i18n-title="panel.menu" data-ic="menu" hidden></button>
   <div class="brand"><i class="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="ht-l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f6fd8"/><stop offset="1" stop-color="#22408f"/></linearGradient><linearGradient id="ht-r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#79a6ff"/><stop offset="1" stop-color="#4b7be6"/></linearGradient><linearGradient id="ht-t" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#b9d0ff"/><stop offset="1" stop-color="#e8f0ff"/></linearGradient><radialGradient id="ht-g"><stop offset="0" stop-color="#ffd59a"/><stop offset=".45" stop-color="#ffb35c"/><stop offset="1" stop-color="#ffb35c" stop-opacity="0"/></radialGradient></defs><path d="M10 27 L32 39.5 L32 60 L10 47.5 Z" fill="url(#ht-l)"/><path d="M32 39.5 L54 27 L54 47.5 L32 60 Z" fill="url(#ht-r)"/><path d="M32 39.5 L54 27 L43 21 Z" fill="#8fb4ff"/><path d="M10 27 L32 39.5 L43 21 L21 8.5 Z" fill="url(#ht-t)"/><path d="M21 8.5 L43 21" stroke="#ffffff" stroke-opacity=".7" stroke-width="1.2" stroke-linecap="round"/><circle cx="26.5" cy="24" r="9" fill="url(#ht-g)"/><circle cx="26.5" cy="24" r="3.1" fill="#fff4e3"/><path d="M21 50 L21 43.5 L26 46.3 L26 52.8 Z" fill="#ffb35c" fill-opacity=".85"/></svg></i><strong>HomeTwin</strong><span class="savestate edit-only" id="saveState" data-i18n="panel.saved">${tr('panel.saved')}</span></div>
   <div class="seg" id="levels" role="group" aria-label="${tr('panel.floor')}" data-i18n-aria-label="panel.floor"></div>
-  <label class="roomsel view-only"><span class="sr" data-i18n="panel.room">${tr('panel.room')}</span><select id="roomSel" aria-label="${tr('panel.pickRoom')}" data-i18n-aria-label="panel.pickRoom"></select></label>
+
   <span class="spacer"></span>
   <div class="seg mode" role="group" aria-label="${tr('panel.mode')}" data-i18n-aria-label="panel.mode"><button id="mView" aria-pressed="true" data-ic="eye"><span class="wide" data-i18n="panel.view">${tr('panel.view')}</span></button><button id="mEdit" aria-pressed="false" data-ic="edit"><span class="wide" data-i18n="panel.edit">${tr('panel.edit')}</span></button></div>
  <button class="ibtn" id="tWalk" title="${tr('panel.walkTitle')}" data-i18n-title="panel.walkTitle" aria-label="${tr('panel.walk')}" data-i18n-aria-label="panel.walk" aria-pressed="false" data-ic="walk"></button>
@@ -653,17 +635,16 @@ const template = () => `
 <aside class="panel popover" id="sunPop" hidden></aside>
 <aside class="panel vp view-only" id="vp" aria-label="${tr('panel.controls')}" data-i18n-aria-label="panel.controls" data-sheet="half">
   <button class="sheet-grip" id="sheetGrip" aria-label="${tr('panel.resizeSheet')}" data-i18n-aria-label="panel.resizeSheet"><i></i></button>
-  <div class="panel-head"><h2 id="vpTitle" data-i18n="panel.home">${tr('panel.home')}</h2></div>
+  <div class="panel-head"><div class="rc-heading"><span id="roomContext"></span><h2 id="vpTitle"></h2><label class="roomsel view-only"><span class="sr" data-i18n="panel.room">${tr('panel.room')}</span><select id="roomSel" aria-label="${tr('panel.pickRoom')}" data-i18n-aria-label="panel.pickRoom"></select></label><div id="summary"></div></div><button id="roomCollapse" aria-label="${tr('panel.roomControl.collapse')}">↕</button></div>
   <div id="vpList" style="display:flex;flex-direction:column;min-height:0;flex:1">
-    <div class="summary" id="summary"></div>
-    <div class="chips" id="scenes"></div>
-    <div class="chips" id="roomChips"></div>
+    <div id="roomTabs" role="group" aria-label="${tr('panel.controls')}"></div>
+    <div id="roomCategories"></div>
     <div class="panel-body" id="tileArea"></div>
   </div>
   <div class="panel-body" id="vpDetail" hidden></div>
 </aside>
 <aside class="panel lib edit-only" id="lib" aria-label="Editor" lang="${getLanguage()}">
-  <div class="tabs" id="ltabs" style="padding-top:12px"><button data-ltab="tree" aria-pressed="true" data-i18n="panel.floors">${tr('panel.floors')}</button><button data-ltab="insert" aria-pressed="false" data-i18n="panel.insert">${tr('panel.insert')}</button></div>
+  <div class="tabs" id="ltabs" style="padding-top:12px"><button data-ltab="tree" aria-pressed="true" data-i18n="panel.floors">${tr('panel.floors')}</button><button data-ltab="insert" aria-pressed="false" data-i18n="panel.insert">${tr('panel.insert')}</button>${ROBOT_PREVIEW_ENABLED ? `<button data-ltab="robots" aria-pressed="false" data-i18n="robots.tab">${tr('robots.tab')}</button>` : ''}</div>
   <div class="panel-body" id="lbody"></div>
 </aside>
 <aside class="panel insp edit-only" id="insp" aria-label="${tr('panel.properties')}" data-i18n-aria-label="panel.properties" hidden>
@@ -684,6 +665,7 @@ const template = () => `
 <div class="edstatus edit-only" id="edStatus"></div>
 <div class="modal" id="modal" hidden><div class="card" id="modalCard"></div></div>
 <div class="wzwrap" id="wizard" hidden></div>
+<div class="wzwrap" id="robotAreas" hidden></div>
 <div class="onboard" id="onboard" hidden></div>
 <div class="toast" id="toast" hidden></div>
 <div class="stats" id="stats" hidden></div>

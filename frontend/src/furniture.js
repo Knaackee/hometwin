@@ -169,6 +169,7 @@ export function registerLibrary(items, { source = 'bundled' } = {}) {
   for (const it of items || []) {
     if (!it?.id || !it.recipe) continue; const key = `lib:${it.id}`; if (FURNITURE[key] && source !== 'plan') continue;
     const d = it.dimensions || { w: 1, d: 1, h: 1 }; LIBRARY.set(it.id, it); n++;
+    if (it.mount === 'opening') continue;
     const name = it.name?.de || it.name?.en || it.id.split('/').pop();
     FURNITURE[key] = { label: it.manufacturer ? `${name}` : name, cat: 'Bibliothek', w: d.w, d: d.d, h: d.h, lib: it.id, noShadow: Math.max(d.w, d.d, d.h) < 0.3, /* small things: no shadow pass */ screen: /"(shape|role)":\s*"screen"/.test(JSON.stringify(it.recipe)), build: (p) => {
       // built once per object (merged per material), instances share geometry and materials

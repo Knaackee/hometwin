@@ -1,0 +1,273 @@
+{
+  "schema": 1,
+  "params": {
+    "w": {
+      "default": 0.9,
+      "min": 0.3,
+      "max": 6
+    },
+    "h": {
+      "default": 2.1,
+      "min": 0.3,
+      "max": 4
+    },
+    "d": {
+      "default": 0.14,
+      "min": 0.06,
+      "max": 0.6
+    },
+    "color": {
+      "type": "color",
+      "default": "#d6d0c4"
+    },
+    "glazed": {
+      "type": "bool",
+      "default": true
+    }
+  },
+  "materials": {
+    "frame": {
+      "base": "plastic_white",
+      "color": "$color"
+    },
+    "panel": {
+      "base": "plastic_white",
+      "color": "$color"
+    },
+    "handle": {
+      "base": "metal_black"
+    },
+    "glass": {
+      "base": "glass"
+    }
+  },
+  "parts": [
+    {
+      "name": "fixed",
+      "shape": "group",
+      "parts": [
+        {
+          "name": "left jamb",
+          "shape": "box",
+          "size": [
+            0.04,
+            "h",
+            "d"
+          ],
+          "pos": [
+            "-w/2+0.02",
+            0,
+            0
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "right jamb",
+          "shape": "box",
+          "size": [
+            0.04,
+            "h",
+            "d"
+          ],
+          "pos": [
+            "w/2-0.02",
+            0,
+            0
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "head",
+          "shape": "box",
+          "size": [
+            "w",
+            0.04,
+            "d"
+          ],
+          "pos": [
+            0,
+            "h-0.04",
+            0
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "left stop",
+          "shape": "box",
+          "size": [
+            0.025,
+            "h-0.04",
+            0.02
+          ],
+          "pos": [
+            "-w/2+0.0475",
+            0,
+            -0.035
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "right stop",
+          "shape": "box",
+          "size": [
+            0.025,
+            "h-0.04",
+            0.02
+          ],
+          "pos": [
+            "w/2-0.0475",
+            0,
+            -0.035
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "head stop",
+          "shape": "box",
+          "size": [
+            "w-.08",
+            0.025,
+            0.02
+          ],
+          "pos": [
+            0,
+            "h-.065",
+            -0.035
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "threshold",
+          "shape": "box",
+          "size": [
+            "w",
+            0.012,
+            "d"
+          ],
+          "pos": [
+            0,
+            0,
+            0
+          ],
+          "mat": "frame"
+        }
+      ]
+    },
+    {
+      "name": "leaf",
+      "shape": "group",
+      "parts": [
+        {
+          "name": "handle",
+          "shape": "box",
+          "size": [
+            0.12,
+            0.018,
+            0.025
+          ],
+          "pos": [
+            "w/2-.16",
+            "h*.48",
+            0.0325
+          ],
+          "mat": "handle"
+        },
+        {
+          "name": "back handle",
+          "shape": "box",
+          "size": [
+            0.12,
+            0.018,
+            0.025
+          ],
+          "pos": [
+            "w/2-.16",
+            "h*.48",
+            -0.0325
+          ],
+          "mat": "handle"
+        },
+        {
+          "name": "glass",
+          "shape": "box",
+          "size": [
+            "w-.08",
+            "h-.05",
+            0.018
+          ],
+          "pos": [
+            0,
+            0.01,
+            0
+          ],
+          "mat": "glass",
+          "when": "glazed"
+        },
+        {
+          "name": "left stile",
+          "shape": "box",
+          "size": [
+            0.04,
+            "h-.05",
+            0.04
+          ],
+          "pos": [
+            "-w/2+.06",
+            0.01,
+            0
+          ],
+          "mat": "frame",
+          "when": "glazed"
+        },
+        {
+          "name": "right stile",
+          "shape": "box",
+          "size": [
+            0.04,
+            "h-.05",
+            0.04
+          ],
+          "pos": [
+            "w/2-.06",
+            0.01,
+            0
+          ],
+          "mat": "frame",
+          "when": "glazed"
+        },
+        {
+          "name": "top rail",
+          "shape": "box",
+          "size": [
+            "w-.08",
+            0.04,
+            0.04
+          ],
+          "pos": [
+            0,
+            "h-.08",
+            0
+          ],
+          "mat": "frame",
+          "when": "glazed"
+        },
+        {
+          "name": "bottom rail",
+          "shape": "box",
+          "size": [
+            "w-.08",
+            0.04,
+            0.04
+          ],
+          "pos": [
+            0,
+            0.01,
+            0
+          ],
+          "mat": "frame",
+          "when": "glazed"
+        }
+      ]
+    }
+  ]
+}
