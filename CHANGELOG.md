@@ -1,6 +1,12 @@
 # Changelog
+## 0.6.0 (2026-10-19)
 
-## Unreleased
+- Add responsive room controls with device categories, room summaries, scenes and area-assigned automations; use a bottom sheet on mobile.
+- Add library doors and windows with configurable frame and shutter colours, improved picking and sealed openings.
+- Support flexible PV module layouts, dimensions, portrait/landscape mounting and roof-side movement; add roof gutters.
+- Improve mouse and keyboard placement, editor onboarding, closed wall heights and recovery after returning to a browser tab.
+- Refresh the English/German documentation and demo screenshots.
+- Keep robot work-area functionality hidden pending successful real-device testing; preserve existing saved areas.
 
 - Floor-plan recognition, international and plan-agnostic:
   - Vector PDFs: the scale is read from the PDF (printed scale such as "1:100", "M 1:50" or "1/4\" = 1'-0\"") and checked against the printed dimensions; without a printed scale it is calculated from the dimensions. No measuring needed.
