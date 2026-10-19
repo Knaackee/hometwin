@@ -1,3 +1,5 @@
+import robotsEn from './locales/robots.en.json' with { type: 'json' };
+import robotsDe from './locales/robots.de.json' with { type: 'json' };
 import mediaEn from './locales/media.en.json' with { type: 'json' };
 import mediaDe from './locales/media.de.json' with { type: 'json' };
 import panelEn from './locales/panel.en.json' with { type: 'json' };
@@ -10,8 +12,8 @@ import dataEn from './locales/data.en.json' with { type: 'json' };
 import dataDe from './locales/data.de.json' with { type: 'json' };
 
 const messages = {
-  en: { ...panelEn, ...editorEn, ...assistantEn, ...dataEn, ...mediaEn },
-  de: { ...panelDe, ...editorDe, ...assistantDe, ...dataDe, ...mediaDe },
+  en: { ...panelEn, ...editorEn, ...assistantEn, ...dataEn, ...mediaEn, ...robotsEn },
+  de: { ...panelDe, ...editorDe, ...assistantDe, ...dataDe, ...mediaDe, ...robotsDe },
 };
 let language = 'en';
 

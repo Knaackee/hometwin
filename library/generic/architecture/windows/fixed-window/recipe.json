@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "params": {
+    "w": {
+      "default": 1.2,
+      "min": 0.3,
+      "max": 6
+    },
+    "h": {
+      "default": 1.3,
+      "min": 0.3,
+      "max": 4
+    },
+    "d": {
+      "default": 0.14,
+      "min": 0.06,
+      "max": 0.6
+    },
+    "color": {
+      "type": "color",
+      "default": "#d6d0c4"
+    }
+  },
+  "materials": {
+    "frame": {
+      "base": "plastic_white",
+      "color": "$color"
+    },
+    "panel": {
+      "base": "plastic_white",
+      "color": "$color"
+    },
+    "handle": {
+      "base": "metal_black"
+    },
+    "glass": {
+      "base": "glass"
+    }
+  },
+  "parts": [
+    {
+      "name": "fixed",
+      "shape": "group",
+      "parts": [
+        {
+          "name": "left jamb",
+          "shape": "box",
+          "size": [
+            0.04,
+            "h",
+            "d"
+          ],
+          "pos": [
+            "-w/2+0.02",
+            0,
+            0
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "right jamb",
+          "shape": "box",
+          "size": [
+            0.04,
+            "h",
+            "d"
+          ],
+          "pos": [
+            "w/2-0.02",
+            0,
+            0
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "head",
+          "shape": "box",
+          "size": [
+            "w",
+            0.04,
+            "d"
+          ],
+          "pos": [
+            0,
+            "h-0.04",
+            0
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "sill",
+          "shape": "box",
+          "size": [
+            "w",
+            0.04,
+            "d"
+          ],
+          "pos": [
+            0,
+            0,
+            0
+          ],
+          "mat": "frame"
+        },
+        {
+          "name": "glass",
+          "shape": "box",
+          "size": [
+            "w-.06",
+            "h-.06",
+            0.018
+          ],
+          "pos": [
+            0,
+            0.03,
+            0
+          ],
+          "mat": "glass"
+        }
+      ]
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { ROBOT_PREVIEW_ENABLED } from './features.js';
 // Floor-plan wizard: source → align → scale → recognise → review & apply, in one dialog.
 import { icon } from './icons.js';
 import { esc } from './panel.js';
@@ -7,6 +8,7 @@ import { newExtraRoof, rectOfPoints } from './roof.js';
 import { t, getLanguage, formatNumber } from './i18n.js';
 import { rotFrame, renderCrop, pageModel, pdfScale, labelsForModel, snapRegion } from './wizardpdf.js';
 import { mergeTextItems } from './dimtext.js';
+import { vacuumHints, vacuumSourceHtml, wireVacuumSource, prepareVacuumReview, vacuumReviewHtml, wireVacuumReview, drawExistingMapRooms, applyVacuum, loadVacuumMap } from './wizard-vacuum.js';
 
 const steps = () => ['source', 'align', 'scale', 'recognize', 'review'].map((key) => t(`assistant.wizard.step.${key}`));
 const COLORS = ['#79a6ff', '#ffb35c', '#7fd18b', '#e57fd1', '#5fd3d0', '#f2d35b', '#ff7f7f', '#a68bff', '#9ad26a', '#ff9fcb'];
@@ -217,12 +219,14 @@ class PlanView {
 export class PlanWizard {
   constructor(app) { this.app = app; }
 
-  open({ levelId } = {}) {
+  open({ levelId, vacuum = false } = {}) {
+    if (vacuum && !ROBOT_PREVIEW_ENABLED) return;
     const app = this.app;
     const lv = app.plan.levels.find((l) => l.id === (levelId || app.activeLevelId)); const busyLevel = lv && lv.rooms.some((r) => r.kind !== 'void');
-    this.st = { step: 0, src: null, srcName: '', pdf: null, page: 0, levelId: levelId === '__new' || busyLevel ? '__new' : levelId || app.activeLevelId, newLevel: '', rot90: 0, fine: 0, quad: null, bw: false, contrast: 0, img: null,
+    this.st = { step: 0, src: null, srcName: '', pdf: null, page: 0, levelId: levelId === '__new' || (busyLevel && !vacuum) ? '__new' : levelId || app.activeLevelId, newLevel: '', rot90: 0, fine: 0, quad: null, bw: false, contrast: 0, img: null,
       measure: { a: null, b: null, m: '' }, check: { a: null, b: null, m: '' }, mpp: null, dims: null,
       opts: { openings: true, stairs: true, names: true, detail: true }, hints: '', result: null, sel: null, busy: false, mode: 'replace', keepUnderlay: true, mapAreas: true, overlayAlpha: 0.55, err: null };
+    this.st.vacuum = vacuum;
     this.meas = null; this.rubber = null; this.gray = null; this._key2 = null; this.openTool = null;
     this.root = app.$('wizard'); this.root.hidden = false; this.root.innerHTML = '';
     this._paste = (e) => { const it = [...(e.clipboardData?.items || [])].find((x) => x.type.startsWith('image/')); if (it && this.st.step === 0) { e.preventDefault(); this.loadFile(it.getAsFile(), t('assistant.wizard.clipboard')); } };
@@ -234,6 +238,7 @@ export class PlanWizard {
     this.pending = null; this.detectRun = null; this.layoutRun = null; this.stopTicker?.();
     app.hass.callWS({ type: 'hometwin/agent/info' }).then((i) => { this.ai = i; if (this.st.step >= 2) this.render(); if (i.configured) this.checkPendingJob(); }).catch(() => { this.ai = { configured: false }; });
     this.render();
+    if (vacuum && lv?.underlay?.vacuum?.entity_id) loadVacuumMap(this, lv.underlay.vacuum.entity_id);
   }
   close() { if (this.pendingRise) { const id = this.pendingRise; this.pendingRise = null; setTimeout(() => this.app.stage.riseLevel(id), 350); }
     this.detectRun = null; this.layoutRun = null; this.stopTicker(); this.view?.destroy(); this.view = null; this.root.hidden = true; this.root.innerHTML = ''; window.removeEventListener('paste', this._paste); window.removeEventListener('keydown', this._key); }
@@ -262,11 +267,11 @@ export class PlanWizard {
   }
   nextButton() {
     const s = this.st;
-    if (s.step === 0) return `<button class="btn primary" data-wz="next" ${s.src ? '' : 'disabled'}>${t('assistant.common.next')}</button>`;
+    if (s.step === 0) return `<button class="btn primary" data-wz="next" ${s.src && !s.mapLoading ? '' : 'disabled'}>${t('assistant.common.next')}</button>`;
     if (s.step === 1) return `<button class="btn primary" data-wz="next">${t('assistant.wizard.nextToScale')}</button>`;
-    if (s.step === 2) return `<button class="btn primary" data-wz="next" ${s.mpp || (this.ai?.configured && !s.busy && !s.pendingResult) ? '' : 'disabled'}>${this.ai?.configured ? t(s.mpp ? 'assistant.wizard.recognizeRooms' : 'assistant.wizard.recognizeRoomsAndScale') : t('assistant.common.next')}</button>`;
+    if (s.step === 2) return `<button class="btn primary" data-wz="next" ${s.mpp || (!s.vacuum && this.ai?.configured && !s.busy && !s.pendingResult) ? '' : 'disabled'}>${this.ai?.configured ? t(s.mpp ? 'assistant.wizard.recognizeRooms' : 'assistant.wizard.recognizeRoomsAndScale') : t('assistant.common.next')}</button>`;
     if (s.step === 3) return '';
-    return `<button class="btn primary" data-wz="next" ${s.result?.rooms.length ? '' : 'disabled'}>${t('assistant.common.apply')}</button>`;
+    return `<button class="btn primary" data-wz="next" ${s.vacuum || s.result?.rooms.length ? '' : 'disabled'}>${t('assistant.common.apply')}</button>`;
   }
   go(step) { this.st.err = null; this.st.step = step; this.render(); }
   msg(t, err = false) { const m = this.root.querySelector('#wzMsg'); if (m) m.innerHTML = t ? `<span class="${err ? 'err' : ''}">${esc(t)}</span>` : ''; }
@@ -280,7 +285,7 @@ export class PlanWizard {
         openings: (res.openings || []).map((o) => ({ ...o, from: sc(o.from), to: sc(o.to) })), stairs: (res.stairs || []).map((st) => ({ ...st, points: st.points.map(sc), up_from: st.up_from && sc(st.up_from), up_to: st.up_to && sc(st.up_to) })) };
       return this.useResult(out, k, locked, seconds);
     }
-    if (s.step === 2) { this.go(3); if (this.ai?.configured) this.detect(); return; }
+    if (s.step === 2) { if (s.vacuum && !(s.mpp > 0)) return this.msg(t('assistant.vacuum.measure'), true); this.go(3); if (this.ai?.configured) this.detect(); return; }
     if (s.step === 4) return this.apply();
   }
 
@@ -298,6 +303,7 @@ export class PlanWizard {
         <small>${t('assistant.wizard.fileFormats')}${s.src ? ` · ${esc(s.srcName)} (${s.src.width}×${s.src.height} px)` : ''}</small>
       </div>
       <div class="wz-side">
+        ${vacuumSourceHtml(this)}
         ${this.pending ? `<div class="wz-resume"><strong>${this.pending.status === 'running' ? t('assistant.wizard.detectionStillRunning') : t('assistant.wizard.lastDetectionFinished', { rooms: this.pending.result?.rooms ? t('assistant.wizard.roomCountSuffix', { count: this.pending.result.rooms.length }) : '' })}</strong><span>${t('assistant.wizard.startedMinutesAgo', { minutes: Math.max(1, Math.round((Date.now() / 1000 - this.pending.started) / 60)) })}</span><div class="actions"><button class="btn primary small" data-act="resume">${t(this.pending.status === 'running' ? 'assistant.wizard.showProgress' : 'assistant.wizard.openResult')}</button><button class="btn small" data-act="dismissJob">${t('assistant.common.discard')}</button></div></div>` : ''}
         ${s.pdf ? `<div class="field"><span class="lbl">${t('assistant.wizard.pdfPage')}</span><div class="wz-pages" id="wzPages">${Array.from({ length: s.pdf.pages }, (_, i) => `<button data-page="${i}" aria-pressed="${i === s.page}"><span>${t('assistant.wizard.pageNumber', { number: i + 1 })}</span></button>`).join('')}</div></div>` : ''}
         <div class="field"><label for="wzLevel">${t('assistant.wizard.chooseLevel')}</label><select id="wzLevel">${levels.map((l) => `<option value="${l.id}" ${l.id === s.levelId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="__new" ${s.levelId === '__new' ? 'selected' : ''}>${t('assistant.wizard.newLevelOption')}</option></select></div>
@@ -307,6 +313,7 @@ export class PlanWizard {
   }
   wire0() {
     const R = this.root, s = this.st;
+    wireVacuumSource(this);
     const drop = R.querySelector('#wzDrop');
     drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
@@ -331,9 +338,11 @@ export class PlanWizard {
         this.msg(t('assistant.wizard.openingPdf')); const { openPdf } = await import('./pdfload.js');
         s.pdf = await openPdf(file); s.page = 0; s.src = await s.pdf.render(0); await this.analyzePdf();
       } else { s.pdf = null; s.pdfPage = null; const bmp = await createImageBitmap(file); s.src = limit(bmp, 4000); }
+      s.mapEntity = null; s.mapChoices = null;
       s.srcName = name || file.name || t('assistant.wizard.image'); s.quad = null;  s.pendingResult = null; s.roi = null; s.rot90 = 0; s.fine = 0; s.mpp = null; s.measure = { a: null, b: null, m: '' }; s.check = { a: null, b: null, m: '' }; s.result = null;
-      this.render();
-    } catch (e) { console.error(e); this.msg(t('assistant.wizard.fileOpenFailed', { error: e.message || e }), true); }
+      if (this.st !== s || this.root.hidden) return false;
+      this.render(); return true;
+    } catch (e) { if (this.st !== s || this.root.hidden) return false; console.error(e); this.msg(t('assistant.wizard.fileOpenFailed', { error: e.message || e }), true); return false; }
   }
 
   // Vector PDFs: text labels and line segments of the page (for exact scale and model context).
@@ -695,12 +704,13 @@ export class PlanWizard {
   }
   async detect({ keepLocked = false } = {}) {
     const s = this.st; if (s.busy) return;
+    if (s.vacuum) { if (!(s.mpp > 0)) return this.msg(t('assistant.vacuum.measure'), true); s.opts = { ...s.opts, source: 'vacuum', map_entity: s.mapEntity || null, openings: false, stairs: false, detail: false, refine: false }; }
     s.busy = true; s.err = null; this.scaleOnly = false; if (s.step !== 3 && !keepLocked) s.step = 3; this.render();
     const locked = keepLocked ? (s.result?.rooms || []).filter((r) => r.locked) : [];
     try {
       const im = this.modelImage();
       const res = await this.runJob({ mode: 'rooms', image: im.url, width: im.w, height: im.h, mpp: s.mpp ? s.mpp * im.k : null, x0: 0, z0: 0,
-        options: s.opts, hints: s.hints || undefined, language: getLanguage(), locked: locked.map((r) => ({ name: r.name, points: r.points })), labels: s.pdfModel ? labelsForModel(s.pdfModel, s.mpp, im.k) : undefined });
+        options: s.opts, hints: s.vacuum ? `${vacuumHints} ${s.hints || ''}` : s.hints || undefined, language: getLanguage(), locked: locked.map((r) => ({ name: r.name, points: r.points })), labels: s.pdfModel ? labelsForModel(s.pdfModel, s.mpp, im.k) : undefined });
       if (!res?.rooms?.length && !locked.length) throw new Error(t('assistant.wizard.noRoomsReturned'));
       const t0 = this.detectStart; let out = res;
       if (s.opts.detail !== false && s.opts.openings && res.scale_source !== 'unknown') {
@@ -712,7 +722,7 @@ export class PlanWizard {
         try {
           const mppM = res.mpp || s.mpp * im.k, px = (p) => [Math.round(p[0] / mppM), Math.round(p[1] / mppM)];
           const current = { rooms: res.rooms.map((r, i) => ({ nr: i + 1, name: r.name, kind: r.kind, points: r.points.map(px), label_area_m2: r.label_area ?? undefined })), openings: (res.openings || []).map((o) => ({ type: o.type, from: px(o.from), to: px(o.to) })), stairs: (res.stairs || []).map((t) => ({ points: t.points.map(px), up_from: t.up_from && px(t.up_from), up_to: t.up_to && px(t.up_to) })) };
-          const ref = await this.runJob({ mode: 'refine', image: im.url, overlay: this.overlayImage(im, current.rooms), current, width: im.w, height: im.h, mpp: mppM, x0: 0, z0: 0, options: s.opts, hints: s.hints || undefined, language: getLanguage() });
+          const ref = await this.runJob({ mode: 'refine', image: im.url, overlay: this.overlayImage(im, current.rooms), current, width: im.w, height: im.h, mpp: mppM, x0: 0, z0: 0, options: s.opts, hints: s.vacuum ? `${vacuumHints} ${s.hints || ''}` : s.hints || undefined, language: getLanguage() });
           // accept pass 2 only if it is not worse: same overall size, area errors vs. the printed m² not larger
           const err = (x) => { const v = (x.rooms || []).filter((r) => r.label_area > 0.5 && r.net_area > 0).map((r) => Math.min(1, Math.abs(r.net_area / r.label_area - 1))); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0; };
           const size = (x) => { const b = bbox((x.rooms || []).flatMap((r) => r.points)); return Math.sqrt(b.w * b.d); };
@@ -739,7 +749,7 @@ export class PlanWizard {
     const rooms = res.rooms.map((r, i) => ({ ...r, id: newId('wr'), color: COLORS[(locked.length + i) % COLORS.length] }));
     const sc = res.scale_check && Math.abs(res.scale_check.factor - 1) > 0.025 ? res.scale_check : null;
     s.result = { level: res.level || s.result?.level || null, roof: res.roof || s.result?.roof || null, rooms: [...locked, ...rooms], openings: s.opts.openings ? res.openings || [] : [], stairs: s.opts.stairs ? res.stairs || [] : [], notes: res.notes || '', adjusted: [...(res.scale_source === 'dimensions' ? [t('assistant.wizard.scaleReadFromDimensions')] : []), ...(res.adjusted || [])], serverProblems: res.problems || [], scale: sc, seconds };
-    s.busy = false; s.sel = null; this.go(4);
+    s.busy = false; s.sel = null; if (s.vacuum) prepareVacuumReview(this); this.go(4);
   }
   // Offers the result of a recognition that finished (or still runs) while the dialog was closed.
   async checkPendingJob() {
@@ -750,16 +760,18 @@ export class PlanWizard {
   async resumeJob() {
     const s = this.st, job = this.pending; this.pending = null; if (!job) return;
     try {
-      const { job: full } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: job.id, with_image: true }); this.jobId = full.id;
-      const img = new Image(); img.src = full.image; await img.decode(); s.img = canvasOf(img); s.src = s.img; s.srcName = t('assistant.wizard.lastDetection'); this.rotated = s.img; s.quad = [[0, 0], [s.img.width, 0], [s.img.width, s.img.height], [0, s.img.height]];
+      const { job: full } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: job.id, with_image: true }); if (this.st !== s || this.root.hidden) return; this.jobId = full.id;
+      s.vacuum = full.source === 'vacuum'; s.mapEntity = full.map_entity || null;
+      if (s.vacuum) s.opts = { ...s.opts, openings: false, stairs: false, detail: false, refine: false };
+      const img = new Image(); img.src = full.image; await img.decode(); if (this.st !== s || this.root.hidden) return; s.img = canvasOf(img); s.src = s.img; s.srcName = t('assistant.wizard.lastDetection'); this.rotated = s.img; s.quad = [[0, 0], [s.img.width, 0], [s.img.width, s.img.height], [0, s.img.height]];
       if (full.level_id && this.app.plan.levels.some((l) => l.id === full.level_id)) s.levelId = full.level_id;
       if (full.status === 'running') { s.step = 3; s.busy = true; this.render(); const run = (this.detectRun = { id: full.id }); this.detectStart = Date.now() - full.elapsed * 1000; this.job = full; this.startTicker();
-        for (;;) { await new Promise((r) => setTimeout(r, 1200)); if (this.detectRun !== run) return; const { job: j } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: full.id }); this.job = j; if (j.status === 'done') { this.stopTicker(); this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {}); return this.useResult(j.result, 1, [], Math.round(j.elapsed)); } if (j.status === 'error') { this.stopTicker(); s.busy = false; this.go(3); s.err = j.error; return this.render(); } } }
+        for (;;) { await new Promise((r) => setTimeout(r, 1200)); if (this.detectRun !== run || this.st !== s || this.root.hidden) return; const { job: j } = await this.app.hass.callWS({ type: 'hometwin/agent/job', job_id: full.id }); if (this.detectRun !== run || this.st !== s || this.root.hidden) return; this.job = j; if (j.status === 'done') { this.stopTicker(); this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {}); return this.useResult(j.result, 1, [], Math.round(j.elapsed)); } if (j.status === 'error') { this.stopTicker(); s.busy = false; this.go(3); s.err = j.error; return this.render(); } } }
       this.app.hass.callWS({ type: 'hometwin/agent/job_consume', job_id: full.id }).catch(() => {});
       this.useResult(full.result, 1, [], Math.round(full.elapsed));
-    } catch (e) { this.msg(t('assistant.wizard.resultLoadFailed', { error: e.message || e }), true); }
+    } catch (e) { if (this.st !== s || this.root.hidden) return; this.msg(t('assistant.wizard.resultLoadFailed', { error: e.message || e }), true); }
   }
-  async manual() { const id = await this.targetLevel(); await this.saveUnderlay(id); this.app.markDirty(); this.close(); const ed = this.app.editor; this.app.setMode('edit'); this.app.setLevel(id); ed.setView2d(true); ed.setTool('rect'); this.app.toast(t('assistant.wizard.manualTemplateToast')); }
+  async manual() { if (this.st.vacuum) { this.st.result = { rooms: [], openings: [], stairs: [], notes: '' }; prepareVacuumReview(this); this.go(4); return; } const id = await this.targetLevel(); await this.saveUnderlay(id); this.app.markDirty(); this.close(); const ed = this.app.editor; this.app.setMode('edit'); this.app.setLevel(id); ed.setView2d(true); ed.setTool('rect'); this.app.toast(t('assistant.wizard.manualTemplateToast')); }
 
   /* ---------- step 5: review ---------- */
   problems() {
@@ -772,7 +784,7 @@ export class PlanWizard {
     const ops = this.st.result?.openings || [], walls = wallEdges(walled);
     const onBoundary = (p, r) => r.points.some((a, i) => distToSeg(p, a, r.points[(i + 1) % r.points.length]) < 0.06);
     const mid = (o) => [(o.from[0] + o.to[0]) / 2, (o.from[1] + o.to[1]) / 2];
-    for (const r of walled.filter((x) => x.kind === 'room')) {
+    for (const r of walled.filter((x) => !this.st.vacuum && x.kind === 'room')) {
       const ext = walls.filter((w) => w.ext && dist(w.a, w.b) > 2 && onBoundary(w.a, r) && onBoundary(w.b, r));
       if (ext.length && !ops.some((o) => o.type === 'window' && ext.some((w) => distToSeg(mid(o), w.a, w.b) < 0.25))) out.push({ ids: [r.id], text: t('assistant.wizard.noWindowFound', { name: r.name }) });
     }
@@ -812,18 +824,20 @@ export class PlanWizard {
           <textarea id="wzHints2" rows="2" placeholder="${t('assistant.wizard.recognizeAgainPlaceholder')}">${esc(s.hints)}</textarea>
           <div class="actions"><button class="btn small" data-act="redetect" ${s.busy ? 'disabled' : ''}>${icon('sparkle')}${t(s.busy ? 'assistant.wizard.recognizing' : 'assistant.wizard.recognizeUnlocked')}</button></div></details>
         ${s.levelId === '__new' ? this.heightsHtml() : ''}
-        <fieldset class="wz-apply"><legend class="lbl">${t('assistant.wizard.applyToLevel', { name: esc(levelName) })}</legend>
+        ${s.vacuum ? vacuumReviewHtml(this) : `<fieldset class="wz-apply"><legend class="lbl">${t('assistant.wizard.applyToLevel', { name: esc(levelName) })}</legend>
           ${hasRooms ? `<label class="chk"><input type="radio" name="wzMode" value="replace" ${s.mode === 'replace' ? 'checked' : ''}> ${t('assistant.wizard.replaceRooms')}</label><label class="chk"><input type="radio" name="wzMode" value="add" ${s.mode === 'add' ? 'checked' : ''}> ${t('assistant.common.add')}</label>` : ''}
           <label class="chk"><input type="checkbox" id="wzKeep" ${s.keepUnderlay ? 'checked' : ''}> ${t('assistant.wizard.keepTemplate')}</label>
-          <label class="chk"><input type="checkbox" id="wzMap" ${s.mapAreas ? 'checked' : ''}> ${t('assistant.wizard.mapAreas')}</label></fieldset>
+          <label class="chk"><input type="checkbox" id="wzMap" ${s.mapAreas ? 'checked' : ''}> ${t('assistant.wizard.mapAreas')}</label></fieldset>`}
         <p class="hint">${t('assistant.wizard.reviewEditHint')}</p>
       </div></div>`;
   }
   wire4() {
     const R = this.root, s = this.st, res = s.result; const v = this.mkView(); v.setImage(s.img); v.imgAlpha = 1;
     const toPx = (p) => [p[0] / s.mpp, p[1] / s.mpp], toM = (p) => [p[0] * s.mpp, p[1] * s.mpp];
+    if (s.vacuum) wireVacuumReview(this);
     const probs = new Set(this.problems().flatMap((p) => p.ids));
     v.overlay = (g) => {
+      if (s.vacuum) drawExistingMapRooms(this, g, v);
       const a = s.overlayAlpha; const labels = [];
       for (const r of res.rooms) {
         const q = r.points.map((p) => v.toScr(toPx(p)));
@@ -924,12 +938,12 @@ export class PlanWizard {
     R.querySelector('[data-act="redetect"]').onclick = () => this.detect({ keepLocked: true });
     R.querySelectorAll('[name="wzMode"]').forEach((x) => (x.onchange = () => (s.mode = x.value)));
     for (const [sel, key] of [['#wzLvH', 'lvH'], ['#wzLvSlab', 'lvSlab']]) R.querySelector(sel)?.addEventListener('input', (e) => { const v = parseFloat(e.target.value); s[key] = Number.isFinite(v) ? v : undefined; this.updateHeights(); });
-    R.querySelector('#wzKeep').onchange = (e) => (s.keepUnderlay = e.target.checked);
-    R.querySelector('#wzMap').onchange = (e) => (s.mapAreas = e.target.checked);
+    if (R.querySelector('#wzKeep')) R.querySelector('#wzKeep').onchange = (e) => (s.keepUnderlay = e.target.checked);
+    if (R.querySelector('#wzMap')) R.querySelector('#wzMap').onchange = (e) => (s.mapAreas = e.target.checked);
     this._v4 = v;
   }
   openingsHtml() {
-    const s = this.st, R = s.result; const cnt = (t) => R.openings.filter((o) => o.type === t).length; const noDoor = roomsWithoutDoor(R);
+    const s = this.st, R = s.result; if (s.vacuum) return '<div class="wz-open"></div>'; const cnt = (t) => R.openings.filter((o) => o.type === t).length; const noDoor = roomsWithoutDoor(R);
     const o = R.openings[s.selOpen]; const w = o ? Math.hypot(o.to[0] - o.from[0], o.to[1] - o.from[1]) : 0;
     const labels = openingLabels();
     return `<div class="wz-open"><div class="lbl">${t('assistant.wizard.doorsAndWindows')}</div>
@@ -998,6 +1012,7 @@ export class PlanWizard {
     for (const input of this.root.querySelectorAll('#wzLvH, #wzLvSlab')) {
       if (input.validity.rangeUnderflow || input.validity.rangeOverflow || input.validity.badInput) { input.reportValidity(); return; }
     }
+    if (this.st.vacuum) return applyVacuum(this);
     const s = this.st, app = this.app, res = s.result; this.msg(t('assistant.common.applying'));
     try {
       app.pushUndo();

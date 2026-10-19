@@ -465,7 +465,7 @@ async def run_agent(hass: HomeAssistant, cfg: AgentConfig, history: list[dict[st
     if include_underlay and messages[-1]["role"] == "user":
         level = next((lvl for lvl in plan.get("levels", []) if lvl.get("id") == level_id), None)
         u = (level or {}).get("underlay")
-        img = await hass.async_add_executor_job(read_underlay, hass.config.path(), level_id) if u else None
+        img = await hass.async_add_executor_job(read_underlay, hass.config.path(), u.get("imageId") or level_id) if u else None
         if img:
             mime = "image/png" if img.startswith(b"\x89PNG") else "image/jpeg"
             note = (f"Grundriss-Bild der Etage {level_id}: {u['wpx']}×{u['hpx']} Pixel. Pixel (px, py) entspricht x = {u['x0']} + px·{u['mpp']:.5f}, "
@@ -1227,6 +1227,7 @@ def start_detect_job(hass: HomeAssistant, cfg: AgentConfig, req: dict[str, Any])
     jid = _uuid.uuid4().hex[:12]
     job: dict[str, Any] = {"id": jid, "mode": req.get("mode", "rooms"), "status": "running", "started": _time.time(), "stage": "queued",
                            "chars": 0, "rooms": 0, "kb": 0, "result": None, "error": None, "image": req["image"],
+                           "source": req.get("options", {}).get("source"), "map_entity": req.get("options", {}).get("map_entity"),
                            "width": req["width"], "height": req["height"], "level_id": req.get("level_id"), "consumed": False, "model": cfg.model}
     jobs[jid] = job
 

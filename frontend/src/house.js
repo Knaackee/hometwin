@@ -1,3 +1,4 @@
+import { buildOpeningModel, shutterColors } from './opening-models.js';
 // Turns one level of the plan (polygon rooms + openings) into floors, walls, windows,
 // doors, garage doors, slabs and shadow blockers. Walls are derived from room edges:
 // an edge shared by two rooms becomes an interior wall, a lone edge an exterior wall.
@@ -5,7 +6,7 @@
 // here from axis-aligned rectangles to arbitrary polygons.
 import * as THREE from 'three';
 import { mergeByMaterial } from '../../engine/recipe.js';
-import { box, mat, surfaceMat, slatTex, garageTex, blockerMat, canvasTex, shade } from './kit.js';
+import { box, mat, surfaceMat, slatTex, neutralSlatTex, garageTex, blockerMat, canvasTex, shade } from './kit.js';
 import { edges, lineOf, lineKey, pointInPolygon, bbox, centroid } from './geometry.js';
 import { slabThickness, plinthHeight } from './plan.js';
 import { facadeMaterial, metricUV } from './roof.js';
@@ -17,7 +18,7 @@ const k3 = (v) => Math.round(v * 1000);
 export const isIndoor = (r) => !r.kind || r.kind === 'room' || r.kind === 'garage';
 const formsWalls = (r) => isIndoor(r) || r.kind === 'void';
 
-function wallSegments(level) {
+export function wallSegments(level) {
   const lines = new Map();
   for (const r of level.rooms.filter(formsWalls)) {
     for (const [a, b] of edges(r.points)) {
@@ -107,6 +108,7 @@ export function buildLevel(level, site = {}, opts = {}) {
   const terrain = Number.isFinite(opts.terrain) ? opts.terrain : null, plinthTop = terrain === null ? 0 : Math.max(terrain + plinthHeight(site), 0);
   const g = new THREE.Group();
   const floors = {}, overlays = {}, exterior = [], windows = {}, doors = {}, garages = {}, openingHits = [];
+  const openingHitIds = new Set();
   const wb = wallBody(), cap = capMat;
   const wallMats = [wb, wb, cap, wb, wb, wb];
 
@@ -139,8 +141,28 @@ export function buildLevel(level, site = {}, opts = {}) {
     target.add(mesh); return mesh;
   };
   const glassMat = () => new THREE.MeshStandardMaterial({ color: '#9cc0ff', roughness: 0.08, transparent: true, opacity: 0.22, emissive: '#3d5fae', emissiveIntensity: 0.5 });
+  const shutterGap = 0.03;
+  // The shutter sits just inside the opening so its visible slats do not poke through
+  // the surround.  These opaque guides overlap that gap and the shutter edges.  They
+  // are children of the animated shutter mesh, so opening the cover removes the seal
+  // from the sightline together with the slats.
+  const addShutterGuides = (shutter, width, height, guideMat) => {
+    const sideW = 0.08, edgeOverlap = 0.01, guideDepth = 0.14, guideH = 0.06;
+    for (const x of [-1, 1]) {
+      const side = new THREE.Mesh(new THREE.BoxGeometry(sideW, height + guideH, guideDepth), guideMat);
+      side.position.set(x * (width / 2 + edgeOverlap), -(height + guideH) / 2 + guideH / 2, 0);
+      side.castShadow = true; side.receiveShadow = true; shutter.add(side);
+    }
+    for (const y of [-height, 0]) {
+      const guide = new THREE.Mesh(new THREE.BoxGeometry(width + sideW + edgeOverlap * 2, guideH, guideDepth), guideMat);
+      guide.position.set(0, y + (y === 0 ? -guideH / 2 : guideH / 2), 0);
+      guide.castShadow = true; guide.receiveShadow = true; shutter.add(guide);
+    }
+  };
 
   const opInfo = {};
+  const modelFrames = [];
+  const innerUpper = new THREE.Group();
   const inner = new THREE.Group(); // static interior walls, merged per material after the loop
   for (const s of wallSegments(level)) {
     const ext = s.kind === 'exterior', t = ext ? EXT_T : INT_T, o = s.opening, type = o?.type;
@@ -151,12 +173,35 @@ export function buildLevel(level, site = {}, opts = {}) {
     const wallRot = Math.atan2(-s.l.uz, s.l.ux);
     const at = (tt, y = 0) => new THREE.Vector3(s.l.ux * tt + s.l.nx * s.l.off, y, s.l.uz * tt + s.l.nz * s.l.off);
 
+    const modelHead = Math.min(o?.head ?? (type === 'window' ? 2.2 : ext ? 2.1 : 2.05), H);
+    const model = o && buildOpeningModel(o, site, s.b - s.a, modelHead - (type === 'window' ? (o.sill ?? .9) : 0), t);
+    if (model) { model.fixed.position.copy(at((s.a + s.b) / 2, type === 'window' ? (o.sill ?? .9) : 0)); model.fixed.rotation.y = wallRot; model.fixed.userData.keep = true; if (!ext) g.add(model.fixed); if (!ext) modelFrames.push({ object: model.fixed, cut: Math.min(1, Hi / modelHead) }); }
+
     if (type === 'door') {
-      const hinge = new THREE.Group(); const L = s.b - s.a - 0.04, h = ext ? (o.head ?? 2.1) : Math.min(o.head ?? 2.05, Hi - 0.02);
+      const hinge = new THREE.Group(); const L = s.b - s.a - 0.04, h = ext ? Math.min(o.head ?? 2.1, H) : Math.min(o.head ?? 2.05, Hi - 0.02);
       const leaf = box(L, h, 0.04, mat(ext ? '#3a3f4b' : '#d6d0c4', { rough: 0.7 }), 0.01); leaf.position.x = L / 2; leaf.castShadow = true;
+      if (o.glazed) {
+        leaf.material = glassMat(); leaf.castShadow = false; leaf.userData.glassPane = true;
+        const frame = frameMat(frameColor), fw = Math.min(0.05, L / 4);
+        for (const [w, height, x, y] of [[fw, h, fw / 2, h / 2], [fw, h, L - fw / 2, h / 2], [L, fw, L / 2, fw / 2], [L, fw, L / 2, h - fw / 2]]) {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(w, height, 0.06), frame);
+          rail.position.set(x, y, 0); rail.castShadow = true; hinge.add(rail);
+        }
+      }
       const dg = doorGeometry(o, s.l, s.side, at(s.a), at(s.b));
-      hinge.add(leaf); hinge.position.copy(dg.atA ? at(s.a + 0.02) : at(s.b - 0.02)); const base = dg.atA ? wallRot : wallRot + Math.PI; hinge.rotation.y = base; hinge.userData.keep = true;
+      if (model?.leaf) { hinge.clear(); model.leaf.position.x = (s.b - s.a) / 2 - .04; model.leaf.scale.y = h / modelHead; hinge.add(model.leaf); } else hinge.add(leaf); hinge.position.copy(dg.atA ? at(s.a + (model ? .04 : .02)) : at(s.b - (model ? .04 : .02))); const base = dg.atA ? wallRot : wallRot + Math.PI; hinge.rotation.y = base; hinge.userData.keep = true;
       doors[o.id] = { hinge, base, swing: dg.swing, cur: 0, ext, N: doorSwingVector(o, s.l, s.side) };
+    }
+    if (type === 'door' && o.cover) {
+      const head = Math.min(o.head ?? 2.1, H);
+      const sm = new THREE.MeshStandardMaterial({ map: (o.shutterColor ? neutralSlatTex : slatTex).clone(), color: o.shutterColor || '#ffffff', roughness: 0.6 });
+      sm.map.repeat.set(1, head * 3); sm.map.needsUpdate = true;
+      const shutter = piece(g, s, a + shutterGap, b - shutterGap, 0, head, 0.035, sm, t / 2 + 0.04);
+      if (shutter) {
+        shutter.geometry.translate(0, -head / 2, 0); shutter.position.y = head;
+        addShutterGuides(shutter, b - a - shutterGap * 2, head, frameMat(shutterColors(o, site).frame));
+        windows[o.id] = { shutter, cur: 1 };
+      }
     }
     if (type === 'garage') {
       const head = o.head ?? 2.2, w = s.b - s.a;
@@ -166,12 +211,31 @@ export function buildLevel(level, site = {}, opts = {}) {
       garages[o.id] = { panel, cur: 0 };
     }
     if (!ext) {
-      if (!type) { piece(inner, s, a, b, 0, Hi, t); if (Hi < H) piece(inner, s, a, b, Hi, H, 0.04, blockerMat); }
-      else if (type === 'door') { g.add(doors[o.id].hinge); if (Hi < H) piece(inner, s, a, b, Math.max(Hi, o.head ?? 2.05), H, 0.04, blockerMat); }
-      else if (type === 'garage') g.add(garages[o.id].panel);
+      const wall = (bottom, top) => {
+        piece(inner, s, a, b, bottom, Math.min(top, Hi), t);
+        piece(innerUpper, s, a, b, Math.max(bottom, Hi), top, t);
+        if (top > Hi) piece(inner, s, a, b, Math.max(bottom, Hi), top, 0.04, blockerMat);
+      };
+      if (!type) wall(0, H);
+      else if (type === 'door' || type === 'garage' || type === 'open') {
+        const head = Math.min(o.head ?? (type === 'door' ? 2.05 : type === 'garage' ? 2.2 : 2.3), H);
+        wall(head, H);
+        if (type === 'door') {
+          const d = doors[o.id]; d.fullHeight = head; d.cutHeight = Math.min(o.head ?? 2.05, Hi - 0.02); g.add(d.hinge);
+        } else if (type === 'garage') g.add(garages[o.id].panel);
+      } else if (type === 'window') {
+        wall(0, Math.min(o.sill ?? .9, H)); wall(Math.min(o.head ?? 2.2, H), H);
+      }
+      if (o && !openingHitIds.has(o.id)) {
+        const y0 = type === 'window' ? (o.sill ?? 0.9) : 0;
+        const y1 = Math.min(o.head ?? (type === 'garage' ? 2.2 : type === 'open' ? 2.3 : 2.05), H);
+        const hit = piece(g, s, a, b, y0, y1, Math.max(t, 0.5), new THREE.MeshBasicMaterial({ visible: false }));
+        if (hit) { hit.userData.opening = o.id; hit.castShadow = false; openingHits.push(hit); openingHitIds.add(o.id); }
+      }
       continue;
     }
     const full = new THREE.Group(), curb = new THREE.Group();
+    if (model) full.add(model.fixed);
     const em = s.side > 0 ? [fac, fac, cap, fac, wb, fac] : [fac, fac, cap, fac, fac, wb];
     // The floor plate reaches the exterior face. This closes the seam to the level below
     // without extending the room slab across interior stair voids.
@@ -197,23 +261,27 @@ export function buildLevel(level, site = {}, opts = {}) {
       const sill = o.sill ?? 0.9, head = Math.min(o.head ?? 2.2, H);
       piece(full, s, a, b, 0, sill, t, em); piece(full, s, a, b, head, H, t, em);
       piece(curb, s, a, b, 0, CURB, t, em); blocker(CURB, sill); blocker(head, H);
-      const gm = glassMat(); const glass = piece(full, s, a, b, sill, head, 0.03, gm); glass.castShadow = false;
+      const gm = model?.glassMat || glassMat();
+      if (!model) { const glass = piece(full, s, a, b, sill, head, 0.03, gm); glass.castShadow = false;
       const fw = 0.05;
       for (const [fa, fb, y0, y1] of [[a, a + fw, sill, head], [b - fw, b, sill, head], [a, b, sill, sill + fw], [a, b, head - fw, head]]) piece(full, s, fa, fb, y0, y1, 0.07, frameMat(frameColor));
       if (b - a > 1.3) piece(full, s, (a + b) / 2 - 0.025, (a + b) / 2 + 0.025, sill, head, 0.07, frameMat(frameColor));
-      const sm = new THREE.MeshStandardMaterial({ map: slatTex.clone(), roughness: 0.6 }); sm.map.repeat.set(1, (head - sill) * 3); sm.map.needsUpdate = true;
-      const shutter = piece(g, s, a + 0.03, b - 0.03, sill, head, 0.035, sm, 0.13);
+      }
+      const sm = new THREE.MeshStandardMaterial({ map: (o.shutterColor ? neutralSlatTex : slatTex).clone(), color: o.shutterColor || '#ffffff', roughness: 0.6 }); sm.map.repeat.set(1, (head - sill) * 3); sm.map.needsUpdate = true;
+      const shutter = piece(g, s, a + shutterGap, b - shutterGap, sill, head, 0.035, sm, 0.13);
       shutter.geometry.translate(0, -(head - sill) / 2, 0); shutter.position.y = head; shutter.castShadow = true; shutter.visible = !!o.cover;
+      addShutterGuides(shutter, b - a - shutterGap * 2, head - sill, frameMat(shutterColors(o, site).frame));
       windows[o.id] = { glassMat: gm, shutter, cur: 1 };
-      const hit = piece(g, s, a, b, sill, head, 0.4, new THREE.MeshBasicMaterial({ visible: false })); hit.userData.opening = o.id; hit.castShadow = false; openingHits.push(hit);
+      if (!openingHitIds.has(o.id)) { const hit = piece(g, s, a, b, sill, head, 0.4, new THREE.MeshBasicMaterial({ visible: false })); if (hit) { hit.userData.opening = o.id; hit.castShadow = false; openingHits.push(hit); openingHitIds.add(o.id); } }
     } else if (type === 'open') {
       piece(full, s, a, b, Math.min(o.head ?? 2.3, H), H, t, em); blocker(Math.min(o.head ?? 2.3, H), H);
     } else { piece(full, s, a, b, 0, H, t, em); piece(curb, s, a, b, 0, CURB, t, em); blocker(CURB, H); }
     if (type === 'door' || type === 'garage' || type === 'open') { /* no curb in the opening */ }
-    if (type === 'garage' || (type === 'door' && o.contact)) {
-      const head = o.head ?? 2.2; const hit = piece(g, s, s.a, s.b, 0, head, 0.5, new THREE.MeshBasicMaterial({ visible: false })); hit.userData.opening = o.id; hit.castShadow = false; openingHits.push(hit);
+    if (o && !openingHitIds.has(o.id)) {
+      const head = Math.min(o.head ?? (type === 'open' ? 2.3 : type === 'window' ? 2.2 : 2.2), H); const hit = piece(g, s, s.a, s.b, type === 'window' ? (o.sill ?? 0.9) : 0, head, 0.5, new THREE.MeshBasicMaterial({ visible: false }));
+      if (hit) { hit.userData.opening = o.id; hit.castShadow = false; openingHits.push(hit); openingHitIds.add(o.id); }
     }
-    full.traverse((m) => { if (m.isMesh && m.material !== blockerMat) { m.castShadow = true; m.receiveShadow = true; } });
+    full.traverse((m) => { if (m.isMesh && m.material !== blockerMat) { m.castShadow = !m.userData.glassPane; m.receiveShadow = true; } });
     curb.traverse((m) => { if (m.isMesh && m.material === blockerMat) { m.castShadow = true; m.receiveShadow = false; } });
     // one mesh per material for this wall (door leaves and garage doors stay separate objects)
     const fullM = mergeByMaterial(full), curbM = mergeByMaterial(curb);
@@ -223,6 +291,7 @@ export function buildLevel(level, site = {}, opts = {}) {
   }
   inner.traverse((m) => { if (m.isMesh && m.material === blockerMat) { m.castShadow = true; m.receiveShadow = false; } });
   g.add(mergeByMaterial(inner));
+  const upperWalls = mergeByMaterial(innerUpper); upperWalls.visible = false; g.add(upperWalls);
   // blocker meshes are invisible to the camera but must cast shadows
   g.traverse((m) => { if (m.isMesh && m.material === blockerMat) { m.castShadow = true; m.receiveShadow = false; } });
   // Plan symbols (only shown in the top view): gap in the wall, glass line, door swing.
@@ -247,6 +316,10 @@ export function buildLevel(level, site = {}, opts = {}) {
       symbols.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineM));
     }
   }
-  return { group: g, floors, overlays, exterior, windows, doors, garages, openingHits, symbols };
+  return { setInteriorFull(full) {
+    upperWalls.visible = full;
+    for (const f of modelFrames) f.object.scale.y = full ? 1 : f.cut;
+    for (const d of Object.values(doors)) if (!d.ext && d.cutHeight > 0) d.hinge.scale.y = full ? d.fullHeight / d.cutHeight : 1;
+  }, upperWalls, group: g, floors, overlays, exterior, windows, doors, garages, openingHits, symbols };
 }
 

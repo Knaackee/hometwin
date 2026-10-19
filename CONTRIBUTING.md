@@ -33,6 +33,8 @@ npm run validate -- generic/furniture/tables/dining-table --strict
 
 The format is described in [`skills/add-object/references/recipe-format.md`](skills/add-object/references/recipe-format.md).
 
+
+Doors and windows can also be contributed. They appear as preview cards when editing an existing wall opening. Start from the generic flush door, glass door or fixed window in `library/generic/architecture/`, and follow the [wall-opening recipe contract](skills/add-object/SKILL.md#wall-opening-models-doorwindow). Include supported dimensions, original colour defaults, optional frame/leaf colour parameters and rendered previews. The opening, sensor and shutter assignments remain independent of its visual model. The initial engine supports single swinging doors and fixed glazing; additional motion types need implementation first.
 ## 2. Report bugs and ideas
 
 Use the [issue templates](https://github.com/knaackee/hometwin/issues/new/choose). For bugs, include:

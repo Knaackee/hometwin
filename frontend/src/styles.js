@@ -229,6 +229,8 @@ details.sec > summary::-webkit-details-marker { display: none; }
   .brand span, .wide { display: none !important; }
   .vp, .lib, .insp, .agent { top: auto; left: 8px; right: 8px; width: auto; bottom: 8px; height: 46%; max-height: 46%; }
   .insp, .agent { z-index: 13; }
+  .insp { height:calc(46% - 48px); max-height:calc(46% - 48px); }
+  .lib:has([data-ltab="robots"][aria-pressed="true"]) ~ .insp { display:none; }
   .assets { grid-template-columns: repeat(4, 1fr); }
   .popover { left: 8px; right: 8px; width: auto; }
 }

@@ -14,6 +14,8 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .agent import AgentConfig, image_max_px, job_state, run_agent, run_detect, start_detect_job
 from .const import CONF_UI_LANGUAGE, UI_LANGUAGES, DOMAIN, SIGNAL_PLAN_UPDATED
 from .i18n import hass_message
+from .robot_control import RobotControlError, async_clean_zones, robot_entities
+from .vacuum_maps import VacuumMapError, async_fetch_map, map_sources
 
 
 def _store(hass: HomeAssistant):
@@ -25,7 +27,22 @@ def _store(hass: HomeAssistant):
 
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
-    for cmd in (ws_language_set, ws_plan_get, ws_plan_save, ws_plan_subscribe, ws_agent_info, ws_agent_chat, ws_agent_detect, ws_detect_start, ws_job, ws_job_consume):
+    for cmd in (
+        ws_language_set,
+        ws_plan_get,
+        ws_plan_save,
+        ws_plan_subscribe,
+        ws_agent_info,
+        ws_agent_chat,
+        ws_agent_detect,
+        ws_detect_start,
+        ws_job,
+        ws_job_consume,
+        ws_vacuum_maps,
+        ws_vacuum_map,
+        ws_robots_list,
+        ws_robots_clean_zone,
+    ):
         websocket_api.async_register_command(hass, cmd)
 
 
@@ -196,4 +213,70 @@ def ws_job_consume(hass: HomeAssistant, connection: websocket_api.ActiveConnecti
     job = hass.data.get(DOMAIN, {}).get("jobs", {}).get(msg["job_id"])
     if job:
         job["consumed"] = True
+    connection.send_result(msg["id"], {})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "hometwin/vacuum/maps"})
+@websocket_api.require_admin
+@callback
+def ws_vacuum_maps(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    connection.send_result(msg["id"], {"maps": map_sources(hass)})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "hometwin/vacuum/map", vol.Required("entity_id"): str}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_vacuum_map(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    try:
+        result = await async_fetch_map(hass, msg["entity_id"])
+    except VacuumMapError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "hometwin/robots/list"})
+@websocket_api.require_admin
+@callback
+def ws_robots_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    connection.send_result(msg["id"], {"robots": robot_entities(hass)})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "hometwin/robots/clean_zone",
+        vol.Required("entity_id"): str,
+        vol.Required("zones"): list,
+        vol.Required("repeats"): int,
+        vol.Required("confirmed"): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_robots_clean_zone(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    try:
+        await async_clean_zones(
+            hass, msg["entity_id"], msg["zones"], msg["repeats"], msg["confirmed"]
+        )
+    except RobotControlError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
     connection.send_result(msg["id"], {})

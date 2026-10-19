@@ -1,3 +1,5 @@
+import { addGutters } from './roof-gutters.js';
+import { solarModules, solarPlane, moduleSize } from './solar-layout.js';
 // Roofs (flat, shed, gable, hip, pyramid) over the top storey, roof coverings and PV arrays.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -151,6 +153,7 @@ export function buildRoof(level, site, isIndoor) {
   }
   // Constructive details: underside, rafters, purlins, barge boards, brackets.
   if (roof.type !== 'flat') addDetails(local, planes, roof, { hx, hz, oh, ohg, t: slopeTan, B, type: roof.type, Hr: hz * slopeTan, z0: Math.max(-0.45, Math.min(0.45, roof.ridgeOffset || 0)) * hz, S });
+  if (roof.gutters) addGutters(local, planes);
   // Facing of each plane as a compass label (for picking the PV plane).
   const north = site.north || 0;
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, local.rotation.y, 0));
@@ -165,24 +168,17 @@ export function buildRoof(level, site, isIndoor) {
   const south = sunVector(180, 0, north); const southLocal = V(south.x, 0, south.z).applyQuaternion(q.clone().invert()).normalize();
   for (const arr of site.solar || []) {
     if (!planes.length) break;
-    let pl = planes[0];
-    if (arr.plane === 'auto' || arr.plane == null) pl = planes.reduce((best, p) => (p.flat || Math.abs(((p.azimuth ?? 180) - 180 + 540) % 360 - 180) < Math.abs(((best.azimuth ?? 180) - 180 + 540) % 360 - 180) ? p : best), planes[0]);
-    else pl = planes[Math.min(planes.length - 1, +arr.plane || 0)];
-    const f = pl.frame; const w = arr.portrait === false ? 1.72 : 1.13, h = arr.portrait === false ? 1.13 : 1.72, gap = 0.03;
-    const rows = Math.max(1, arr.rows || 1), cols = Math.max(1, arr.cols || 1);
-    const totalW = cols * w + (cols - 1) * gap, totalH = rows * h + (rows - 1) * gap * 4;
+    const pl = solarPlane(arr, planes), f = pl.frame;
     const glow = new THREE.MeshStandardMaterial({ color: '#0e1a33', roughness: 0.2, metalness: 0.7, emissive: '#2a6cff', emissiveIntensity: 0, map: panelTex() });
-    const [ou, ov] = arr.offset || [0, 0];
     let u = f.u, v = f.v, n = f.n, base = f.origin.clone();
     if (pl.flat) { v = southLocal.clone(); u = V(0, 1, 0).cross(v).normalize(); n = V(0, 1, 0); }
-    const centerV = pl.flat ? 0 : Math.max(totalH / 2 + 0.3, f.slope / 2);
-    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-      const du = -totalW / 2 + w / 2 + c * (w + gap) + ou, dv = -totalH / 2 + h / 2 + r * (h + gap * 4) + ov + centerV;
+    for (const [index, module] of solarModules(arr, pl).entries()) {
+      const [w, h] = moduleSize(module.portrait !== false,module), du = module.u, dv = module.v;
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, h), glow);
       const p = base.clone().add(u.clone().multiplyScalar(du)).add(v.clone().multiplyScalar(pl.flat ? dv * 1.6 : dv)).add(n.clone().multiplyScalar(0.1));
       const basis = new THREE.Matrix4().makeBasis(u, n, u.clone().cross(n)); m.quaternion.setFromRotationMatrix(basis); m.position.copy(p);
       if (pl.flat) { m.rotateX(-THREE.MathUtils.degToRad(15)); m.position.y += 0.25; }
-      m.castShadow = true; m.userData.solar = arr.id; local.add(m); panels.push(m);
+      m.castShadow = true; m.userData.solar = arr.id; m.userData.solarModule = index; local.add(m); panels.push(m);
     }
     out.update = ((prev) => (states) => {
       prev(states);

@@ -22,5 +22,12 @@ try {
  const groupAfter=await page.evaluate(()=>{const a=document.querySelector('hometwin-panel');return a.plan.levels.find(l=>l.id===window.testSelection.level).devices.filter(i=>window.testGroup.includes(i.id)).map(i=>[...i.pos]);});
  assert.equal(groupAfter.length,2);for(let i=0;i<2;i++){assert(Math.abs(groupAfter[i][0]-groupBefore[i][0]-.05)<.000002);assert(Math.abs(groupAfter[i][1]-groupBefore[i][1])<.000002);}
  await page.evaluate(()=>document.querySelector('hometwin-panel').stage.tick());await page.screenshot({path:'.preview/keyboard-placement.png'});
+
+ const heightDrag=await page.evaluate(()=>{const a=document.querySelector('hometwin-panel');a.stage.exitTopView();const L=a.plan.levels.find(l=>l.furniture.length),item=L.furniture.find(f=>!f.locked);a.setLevel(L.id);a.editor.select({type:'furniture',id:item.id,level:L.id});a.stage.tween=null;a.stage.tick();const st=a.stage,g=st.transform,arrow=g.children.find(x=>x.userData.axis==='y'),p=arrow.cone.localToWorld(arrow.position.clone().set(0,-.5,0)),end=p.clone();end.y+=.3;const r=st.canvas.getBoundingClientRect(),px=q=>{q.project(st.camera);return [r.left+(q.x+1)*r.width/2,r.top+(1-q.y)*r.height/2];};window.heightItem={id:item.id,level:L.id};return {start:px(p),end:px(end),height:st.itemElevation(L.id,'furniture',item.id)};});
+ await page.mouse.move(...heightDrag.start);await page.mouse.down();await page.waitForFunction(()=>document.querySelector('hometwin-panel').editor.drag?.transform);
+ await page.mouse.move(...heightDrag.end,{steps:4});await page.mouse.up();
+ const heightAfter=await page.evaluate(()=>{const a=document.querySelector('hometwin-panel'),i=a.plan.levels.find(l=>l.id===heightItem.level).furniture.find(i=>i.id===heightItem.id);return {height:i.elevation,auto:i.autoElevation};});
+ assert(Math.abs(heightAfter.height-heightDrag.height-.3)<.051,'height handle raises furniture');assert.equal(heightAfter.auto,false);
+ await page.evaluate(()=>document.querySelector('hometwin-panel').stage.tick());await page.screenshot({path:'.preview/transform-height.png'});
  console.log('PASS: 5/50/1 cm, held key single undo, undo restores position, input focus and locked object protection');
 }finally{await browser.close();}
