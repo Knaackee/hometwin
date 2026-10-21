@@ -17,6 +17,8 @@ import { buildDevice } from './devices.js';
 import { planBounds, roomAt, coverPercent, terrainOf } from './plan.js';
 import { bbox, pointInPolygon } from './geometry.js';
 import { sunVector } from './sun.js';
+import { advanceStairMotion, enterStair, guardStairwellMove } from './stair-navigation.js';
+import { applyWalkGravity, clampWalkVertical, moveWithWallCollisions } from './walk-physics.js';
 
 const LIGHT_POOL = 4;
 const EXPLODE_GAP = 3.6;
@@ -123,7 +125,9 @@ export class Stage {
     const underlay = old?.underlay; this.disposeLevel(id); if (!level) return;
     const group = new THREE.Group(); group.userData.level = id;
     const ter = terrainOf(this.app.plan);
-    const house = buildLevel(this.walk ? { ...level, cutHeight: level.height } : level, this.app.plan.site, { terrain: ter.groundId === id ? ter.y - level.elevation : undefined }); group.add(house.group); house.symbols.visible = !!this.topView;
+    const stairIds = new Set(level.furniture.filter(f => f.type === 'stairs').map(f => f.id));
+    const ceilingHoles = this.app.plan.levels.flatMap(l => l.rooms.filter(r => r.kind === 'void' && stairIds.has(r.stair)).map(r => r.points));
+    const house = buildLevel(this.walk ? { ...level, cutHeight: level.height } : level, this.app.plan.site, { terrain: ter.groundId === id ? ter.y - level.elevation : undefined, ceilingHoles, visibleCeilings: !!this.walk }); group.add(house.group); house.symbols.visible = !!this.topView;
     const furnGroup = new THREE.Group(), devGroup = new THREE.Group(); group.add(furnGroup, devGroup);
     const o = { level, group, house, furnGroup, devGroup, furn: new Map(), dev: new Map(), roof: null, underlay: null };
     this.levels.set(id, o); this.root.add(group);
@@ -213,10 +217,13 @@ export class Stage {
   /* ---------- level layout / visibility ---------- */
   displayY(level) {
     const idx = this.app.plan.levels.indexOf(level);
-    return level.elevation + (this.app.levelSel === 'all' && this.app.explode && this.app.plan.levels.length > 1 ? idx * EXPLODE_GAP : 0);
+    return level.elevation + (!this.walk && this.app.levelSel === 'all' && this.app.explode && this.app.plan.levels.length > 1 ? idx * EXPLODE_GAP : 0);
   }
   topLevel() { return [...this.app.plan.levels].reverse().find((l) => l.rooms.some(isIndoor)) || null; }
   isVisible(level) {
+    // A walkthrough is inside the physical house, so every storey must remain in the
+    // scene to provide the surrounding walls, floors and ceilings.
+    if (this.walk) return true;
     const s = this.app.levelSel;
     if (s === 'all') return !this.app.hiddenLevels.has(level.id);
     if (s === 'roof') return level === this.topLevel();
@@ -241,12 +248,12 @@ export class Stage {
     for (const [id, o] of this.levels) {
       o.group.visible = this.isVisible(o.level); o.group.position.y = this.displayY(o.level);
       if (o.roof) { o.group.remove(o.roof.group); o.roof = null; }
-      if (this.app.roofOn && !(this.app.levelSel === 'all' && this.app.explode) && top && id === top.id && o.group.visible && !this.topView) { o.roof = buildRoof(o.level, plan.site, isIndoor); o.group.add(o.roof.group); }
+      if (this.app.roofOn && (this.walk || !(this.app.levelSel === 'all' && this.app.explode)) && top && id === top.id && o.group.visible && !this.topView) { o.roof = buildRoof(o.level, plan.site, isIndoor); o.group.add(o.roof.group); }
       // Roof scope: the top storey is only a faint outline. X-ray: everything above the lowest storey and the roof fade.
       const sel = this.app.levelSel, lowest = plan.levels.find((l) => this.isVisible(l));
-      const ghostLevel = !this.topView && ((sel === 'roof' && id === top?.id) || (sel === 'all' && this.app.xray && o.level !== lowest));
+      const ghostLevel = !this.walk && !this.topView && ((sel === 'roof' && id === top?.id) || (sel === 'all' && this.app.xray && o.level !== lowest));
       for (const ch of o.group.children) if (ch !== o.roof?.group) this.ghost(ch, ghostLevel);
-      if (o.roof) this.ghost(o.roof.group, sel === 'all' && this.app.xray, 0.25);
+      if (o.roof) this.ghost(o.roof.group, !this.walk && sel === 'all' && this.app.xray, 0.25);
       if (o.underlay) o.underlay.visible = this.app.mode === 'edit' && this.app.activeLevelId === id && (!!this.topView || !!o.level.underlay?.show3d);
     }
     this.extraRoofs();
@@ -257,12 +264,12 @@ export class Stage {
     if (!this.xroofs) { this.xroofs = new THREE.Group(); this.scene.add(this.xroofs); }
     for (const c of [...this.xroofs.children]) { this.xroofs.remove(c); c.traverse((x) => x.geometry?.dispose()); }
     this.xroofBuilt = [];
-    const show = this.app.roofOn && !this.topView && ((sel === 'all' && !this.app.explode) || sel === 'roof');
+    const show = this.app.roofOn && !this.topView && (!!this.walk || (sel === 'all' && !this.app.explode) || sel === 'roof');
     if (!show) return;
     for (const xr of plan.site.roofs || []) {
       if (!xr.rect || !xr.type || xr.type === 'none') continue; const L = plan.levels.find((l) => l.id === xr.levelId) || plan.levels[0]; if (!L) continue;
       const r = buildExtraRoof(xr, plan.site); r.group.position.y = this.displayY(L); this.xroofs.add(r.group); this.xroofBuilt.push(r);
-      if (sel === 'all' && this.app.xray) this.ghost(r.group, true, 0.25);
+      if (!this.walk && sel === 'all' && this.app.xray) this.ghost(r.group, true, 0.25);
     }
   }
   levelObj(id) { return this.levels.get(id); }
@@ -565,7 +572,7 @@ export class Stage {
     if (this.topView) this.exitTopView();
     this.tween = null; this.controls.enabled = false;
     const yaw = Math.atan2(this.persp.position.x - this.controls.target.x, this.persp.position.z - this.controls.target.z);
-    this.walk = { levelId: level.id, body, x: at[0], z: at[1], yaw: Number.isFinite(yaw) ? yaw : 0, pitch: -0.08, keys: new Set(), joy: [0, 0] };
+    this.walk = { levelId: level.id, body, x: at[0], z: at[1], floorY: level.elevation, velocityY: 0, vertical: 0, yaw: Number.isFinite(yaw) ? yaw : 0, pitch: -0.08, keys: new Set(), joy: [0, 0] };
     this._savedFov = this.persp.fov; this.persp.fov = 62; this.persp.near = 0.05; this.persp.updateProjectionMatrix();
     this.rebuildAll(); this.layout(); this.walkStep(0);
   }
@@ -576,8 +583,10 @@ export class Stage {
     const L = this.app.plan.levels.find((l) => l.id === w.levelId); if (L) this.controls.target.set(w.x, this.displayY(L), w.z);
   }
   walkStep(dt) {
-    const w = this.walk, L = this.app.plan.levels.find((l) => l.id === w.levelId); if (!L) return;
+    const w = this.walk; let L = this.app.plan.levels.find((l) => l.id === w.levelId); if (!L) return;
     this.controls.enabled = false;
+    if (w.stair && w.stair.levelId !== w.levelId) { w.stair = null; w.floorY = L.elevation; }
+    const physics = { walls: false, gravity: false, ...(this.app.walkOptions || {}) };
     const k = w.keys, run = k.has('shift') ? 2.6 : 1.4; let f = 0, s = 0;
     if (k.has('w') || k.has('arrowup')) f += 1; if (k.has('s') || k.has('arrowdown')) f -= 1;
     if (k.has('a')) s -= 1; if (k.has('d')) s += 1;
@@ -585,8 +594,41 @@ export class Stage {
     f += -w.joy[1]; s += w.joy[0];
     const fx = -Math.sin(w.yaw), fz = -Math.cos(w.yaw), rx = Math.cos(w.yaw), rz = -Math.sin(w.yaw);
     const len = Math.hypot(f, s) || 1, sp = Math.min(1, Math.hypot(f, s)) * run * dt;
-    if (sp > 0) { w.x += ((fx * f + rx * s) / len) * sp; w.z += ((fz * f + rz * s) / len) * sp; }
-    const eye = this.displayY(L) + w.body * 0.93;
+    if (sp > 0) {
+      const dx = ((fx * f + rx * s) / len) * sp, dz = ((fz * f + rz * s) / len) * sp;
+      if (Math.abs(w.floorY - L.elevation) < 0.25) w.stair ||= enterStair(this.app.plan, w.levelId, { x: w.x, z: w.z }, { x: dx, z: dz });
+      if (w.stair) {
+        const step = advanceStairMotion(w.stair, { x: dx, z: dz }), changed = step.levelId !== w.levelId;
+        w.stair = step.nav; w.levelId = step.levelId; w.x = step.x; w.z = step.z; w.floorY = step.floorY; w.velocityY = 0;
+        if (changed) {
+          L = this.app.plan.levels.find((l) => l.id === w.levelId) || L;
+          this.app.setLevel?.(w.levelId, false);
+          const hud = this.app.$?.('whLevel'); if (hud) hud.textContent = L.name;
+        }
+      } else {
+        const from = { x: w.x, z: w.z }, delta = { x: dx, z: dz };
+        const next = physics.walls ? moveWithWallCollisions(this.app.plan, from, delta, { floorY: w.floorY, bodyHeight: w.body }) : physics.gravity ? { x: w.x + dx, z: w.z + dz } : guardStairwellMove(L, from, { x: w.x + dx, z: w.z + dz });
+        w.x = next.x; w.z = next.z;
+      }
+    }
+    if (!w.stair) {
+      if (physics.gravity) {
+        const fall = applyWalkGravity(this, w, dt);
+        if (fall.landed && fall.support.levelId && fall.support.levelId !== w.levelId) {
+          w.levelId = fall.support.levelId; L = this.app.plan.levels.find(level => level.id === w.levelId) || L;
+          this.app.setLevel?.(w.levelId, false); const hud = this.app.$?.('whLevel'); if (hud) hud.textContent = L.name;
+        }
+      } else {
+        w.velocityY = 0;
+        const vertical = (k.has('pageup') ? 1 : 0) - (k.has('pagedown') ? 1 : 0) + (Number(w.vertical) || 0);
+        if (vertical) {
+          const target = w.floorY + Math.max(-1, Math.min(1, vertical)) * run * dt;
+          w.floorY = physics.walls ? clampWalkVertical(this, w, target) : target;
+        }
+      }
+    }
+    this.app.syncWalkRoom?.(L, w);
+    const eye = (Number.isFinite(w.floorY) ? w.floorY : this.displayY(L)) + w.body * 0.93;
     this.persp.position.set(w.x, eye, w.z);
     const cp = Math.cos(w.pitch); this.controls.target.set(w.x + -Math.sin(w.yaw) * cp, eye + Math.sin(w.pitch), w.z + -Math.cos(w.yaw) * cp);
     this.persp.lookAt(this.controls.target);

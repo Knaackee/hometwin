@@ -1,0 +1,12 @@
+{
+  "id": "tile",
+  "name": { "en": "Tile", "de": "Fliese" },
+  "pattern": "tiles",
+  "color": "#d3d8dd",
+  "secondaryColor": "#a9afb7",
+  "width": 0.6,
+  "length": 0.6,
+  "roughness": 0.55,
+  "license": "CC0-1.0",
+  "author": "HomeTwin contributors"
+}

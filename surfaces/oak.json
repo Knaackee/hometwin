@@ -1,0 +1,12 @@
+{
+  "id": "oak",
+  "name": { "en": "Oak", "de": "Eiche" },
+  "pattern": "planks",
+  "color": "#c4a17a",
+  "secondaryColor": "#9b7653",
+  "width": 0.18,
+  "length": 1.2,
+  "roughness": 0.75,
+  "license": "CC0-1.0",
+  "author": "HomeTwin contributors"
+}

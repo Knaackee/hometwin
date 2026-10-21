@@ -1,3 +1,4 @@
+import { surfacePickerHtml, surfacePickerClick, surfacePickerInput } from './surface-picker.js';
 import { installEditorHover } from './editor-hover.js';
 import { openingModels, shutterColors } from './opening-models.js';
 import { openingPickerHtml, openingRecipeColorFields, openingRecipeDefaults } from './opening-picker.js';
@@ -15,7 +16,7 @@ import { FURNITURE, furnitureParams, stairInfo, registerLibrary, LIBRARY } from 
 export const LIBRARY_URL = 'https://knaackee.github.io/hometwin/library/library.json';
 import { KINDS, KIND_STYLES, deviceDefaults, entityMatchesKind, kindForEntity, FRAME_STYLES, FRAME_SIZES } from './devices.js';
 import { SURFACES } from './kit.js';
-import { findItem, roomAt, roomOfOpening, usedEntities, newId, newLevel, roomCenter, demoPlan, emptyPlan, migrate, computeElevations, slabThickness, plinthHeight, DEFAULT_BASEMENT_HEIGHT, DEFAULT_ROOM_HEIGHT } from './plan.js';
+import { findItem, roomAt, roomOfOpening, usedEntities, newId, newLevel, roomCenter, demoPlan, emptyPlan, migrate, computeElevations, slabThickness, plinthHeight, stairTargetLevel, DEFAULT_BASEMENT_HEIGHT, DEFAULT_ROOM_HEIGHT } from './plan.js';
 import { ROOF_TYPES, ROOF_COVERS, FACADES, FACADE_PRESETS, roofRect, rectCorners, rectAxes, HEAD_SHAPES, SOFFITS, BARGES, WOOD_PRESETS, DEFAULT_DETAILS, ROOF_STYLES, applyStyle, headSvg, ROOF_WINDOWS, newExtraRoof, rectOfPoints } from './roof.js';
 import { isIndoor, wallSegments as openingSegments, EXT_T, INT_T } from './house.js';
 const WINDOW_PRESETS = { std: { w: 1.2, sill: 0.9, head: 2.2 }, floor: { w: 1.2, sill: 0.05, head: 2.2 }, terrace: { w: 2.0, sill: 0.02, head: 2.2 }, wide: { w: 2.4, sill: 0.5, head: 2.2 }, bath: { w: 0.8, sill: 1.4, head: 2.1 }, top: { w: 1.0, sill: 1.6, head: 2.2 } };
@@ -289,15 +290,17 @@ export class Editor {
     } catch (err) { app.toast(t('editor.toast.artSaveFailed', { message: err.message || err })); }
   }
   stairHtml(item, fp, L, num) {
-    const i = stairInfo(fp), p = this.app.plan, up = p.levels[p.levels.indexOf(L) + 1], need = up ? r3(up.elevation - L.elevation) : null;
+    const i = stairInfo(fp), p = this.app.plan, up = stairTargetLevel(p, L, item), need = up ? r3(up.elevation - L.elevation) : null;
     const ok = i.rise <= 0.19 && i.tread >= 0.23 && i.rule >= 0.59 && i.rule <= 0.65;
     return this.sec(t('editor.section.stairs'), `<div class="row2"><div class="field"><label for="stShape">${t('editor.common.shape')}</label><select id="stShape">${[['straight', 'editor.stairs.straight'], ['quarter', 'editor.stairs.quarter'], ['half', 'editor.stairs.half']].map(([k, key]) => `<option value="${k}" ${(item.shape || 'straight') === k ? 'selected' : ''}>${t(key)}</option>`).join('')}</select></div>
         ${item.shape ? `<div class="field"><label for="stTurn">${t('editor.stairs.turnsToward')}</label><select id="stTurn"><option value="right" ${item.turn !== 'left' ? 'selected' : ''}>${t('editor.common.right')}</option><option value="left" ${item.turn === 'left' ? 'selected' : ''}>${t('editor.common.left')}</option></select></div>` : '<span></span>'}</div>
       ${item.shape ? `<div class="row2">${num('stFw', t('editor.stairs.flightWidth'), r3(i.fw), 0.05, 'min="0.6" max="1.5"')}<span></span></div>` : ''}
+      <div class="row2"><div class="field"><label for="stTarget">${t('editor.stairs.targetLevel')}</label><select id="stTarget"><option value="" ${item.targetLevelId !== null ? 'selected' : ''}>${t('editor.stairs.nextHigher')}</option><option value="none" ${item.targetLevelId === null ? 'selected' : ''}>${t('editor.stairs.noConnection')}</option></select></div>
+        <div class="field"><label for="stOpeningMode">${t('editor.stairs.opening')}</label><select id="stOpeningMode"><option value="auto" ${(item.openingMode || 'auto') === 'auto' ? 'selected' : ''}>${t('editor.stairs.automaticOpening')}</option><option value="manual" ${item.openingMode === 'manual' ? 'selected' : ''}>${t('editor.stairs.manualOpening')}</option></select></div></div>
       <p class="${ok ? 'ok' : 'warn'}">${t('editor.stairs.metrics', { steps: i.n, rise: Math.round(i.rise * 100), tread: Math.round(i.tread * 100), rule: Math.round(i.rule * 100), warning: ok ? '✓' : t('editor.stairs.metricsWarning') })}</p>
       ${need && Math.abs(need - fp.h) > 0.02 ? `<p class="warn">${t('editor.stairs.heightMismatch', { height: formatNumber(fp.h, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), level: esc(up.name), needed: formatNumber(need, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}</p>` : ''}
       <p class="hint">${t('editor.stairs.help')}</p>
-      <div class="actions"><button class="btn small" data-act="stFlip">${t('editor.stairs.reverse')}</button>${need ? `<button class="btn small" data-act="stFit">${t('editor.stairs.fitHeight')}</button>` : ''}</div>`);
+      <div class="actions"><button class="btn small" data-act="stFlip">${t('editor.stairs.reverse')}</button>${need ? `<button class="btn small" data-act="stFit">${t('editor.stairs.fitHeight')}</button><button class="btn small" data-act="stEditOpening">${t('editor.stairs.editOpening')}</button>` : ''}</div>`);
   }
   showRoof() { if (this.app.levelSel !== 'roof') this.app.setLevel('roof'); }
   showModal(title, text) {
@@ -568,9 +571,10 @@ export class Editor {
       h = this.sec(t('editor.section.general'), `<div class="field"><label for="rN">${t('editor.common.name')}</label><input type="text" id="rN" value="${esc(item.name)}"></div>
           <div class="field"><label for="rA">${t('editor.room.haArea')}</label><select id="rA"><option value="">—</option>${app.areas().map((a) => `<option value="${a.area_id}" ${a.area_id === item.area_id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>`)
         + this.sec(t('editor.section.appearance'), `<div class="row2"><div class="field"><label for="rK">${t('editor.common.type')}</label><select id="rK">${Object.entries(KIND_ROOM).map(([k, key]) => `<option value="${k}" ${k === item.kind ? 'selected' : ''}>${t(key)}</option>`).join('')}</select></div>
-          <div class="field"><label for="rS">${t('editor.room.surface')}</label><select id="rS">${surf.map(([k, v]) => `<option value="${k}" ${k === item.surface ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div></div>
+          ${item.kind === 'outdoor' ? `<div class="field"><label for="rS">${t('editor.room.surface')}</label><select id="rS">${surf.map(([k, v]) => `<option value="${k}" ${k === item.surface ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div>` : ''}</div>
           ${item.kind === 'outdoor' ? `<div class="row2">${num('rR', t('editor.room.raise'), item.raise ?? 0, 0.01)}<span></span></div>` : ''}`)
-        + (item.kind !== 'void' ? this.sec(t('editor.common.roof'), `<p class="hint">${t(item.kind === 'room' ? 'editor.room.roofHelpRoom' : 'editor.room.roofHelpOther')}</p><div class="actions"><button class="btn small" data-act="roomRoof">${icon('roof')}${t('editor.room.roofThisRoom')}</button></div>`) : '')
+        + (!['outdoor', 'void'].includes(item.kind) ? this.sec(t('editor.floor.title'), surfacePickerHtml(item)) : '')
+        + (item.kind !== 'void' ? this.sec(t('editor.common.roof'), `<p class="hint">${t(item.kind === 'room' ? 'editor.room.roofHelpRoom' : 'editor.room.roofHelpOther')}</p><div class="actions"><button class="btn small" data-act="roomRoof">${icon('roof')}${t('editor.room.roofThisRoom')}</button></div>`) : item.stair ? `<div class="actions"><button class="btn small" data-act="stAutoOpening">${t('editor.stairs.resetAutomatic')}</button></div>` : '')
         + this.sec(t('editor.common.shape'), `<p class="hint">${t('editor.room.shapeHelp', { area: formatNumber(polyArea(item.points), { minimumFractionDigits: 1, maximumFractionDigits: 1 }), corners: item.points.length })}</p>`);
     } else if (type === 'opening') {
       const S = app.states(); const width = Math.hypot(item.to[0] - item.from[0], item.to[1] - item.from[1]);
@@ -598,6 +602,7 @@ export class Editor {
   async onInspChange(e, live = false) {
     const app = this.app, s = app.sel, p = app.plan, site = p.site; const target = e.target, v = target.value, id = target.id;
     const out = (txt) => { const o = target.previousElementSibling?.querySelector?.('output') || target.closest('.field')?.querySelector('output'); if (o) o.textContent = txt; };
+    if (live && id === 'floorColor') return;
     // files
     if (id === 'ulFile' && target.files?.[0]) return this.uploadUnderlay(target.files[0]);
     if (id === 'backupFile' && target.files?.[0]) return this.importBackup(target.files[0]);
@@ -681,13 +686,15 @@ export class Editor {
       if (['iX', 'iZ', 'fW', 'fD', 'fH'].includes(id)) app.stage.settleItem(L.id, type, item);
     } else if (type === 'furniture') {
       if (id === 'stShape') { item.shape = v === 'straight' ? undefined : v; if (v === 'half' && (item.width ?? 1) < 2) item.width = 2.2; if (v === 'quarter' && (item.width ?? 1) < 2) item.width = 2.2; }
-      if (id === 'stTurn') item.turn = v; if (id === 'stFw') item.fw = Math.max(0.6, +v); if (id === 'lEnt') item.entity_id = v || undefined;
+      if (id === 'stTurn') item.turn = v; if (id === 'stFw') item.fw = Math.max(0.6, +v); if (id === 'stTarget') item.targetLevelId = v === 'none' ? null : undefined; if (id === 'stOpeningMode') item.openingMode = v; if (id === 'lEnt') item.entity_id = v || undefined;
       if (id === 'iElevation') { item.elevation = Number.isFinite(+v) ? +v : 0; item.autoElevation = false; } if (id === 'iX') item.pos[0] = +v; if (id === 'iZ') item.pos[1] = +v; if (id === 'fLift') item.lift = Number.isFinite(+v) ? +v : 0; if (id === 'fW') item.width = +v; if (id === 'fD') item.depth = +v; if (id === 'fH') item.height = +v; if (id === 'fC') item.color = v; if (id === 'fChairs') item.chairs = +v; if (id === 'fStools') item.stools = +v;
       app.stage.refreshItem(L.id, type, item);
       if (['iX', 'iZ', 'fW', 'fD', 'fH'].includes(id)) app.stage.settleItem(L.id, type, item);
     } else if (type === 'room') {
-      if (id === 'rN') item.name = v; if (id === 'rA') item.area_id = v || null; if (id === 'rS') item.surface = v; if (id === 'rR') item.raise = +v;
+      if (id === 'rN') item.name = v; if (id === 'rA') item.area_id = v || null; if (id === 'rS') { item.surface = v; delete item.surfaceSpec; delete item.surfaceOptions; } if (id === 'rR') item.raise = +v;
       if (id === 'rK') { item.kind = v; const outdoor = v === 'outdoor'; if (outdoor !== !!SURFACES[item.surface]?.outdoor) item.surface = outdoor ? 'lawn' : v === 'garage' ? 'concrete' : 'oak'; }
+      surfacePickerInput(item, id, v);
+      if (id === 'rK' && ['outdoor', 'void'].includes(v)) { delete item.surfaceSpec; delete item.surfaceOptions; }
       app.stage.rebuildLevel(L.id); app.buildLabels();
     } else if (type === 'opening') {
       if (id === 'oPre' && WINDOW_PRESETS[v]) { const w = WINDOW_PRESETS[v]; item.preset = v; item.sill = w.sill; item.head = w.head; const cx = (item.from[0] + item.to[0]) / 2, cz = (item.from[1] + item.to[1]) / 2, dx = item.to[0] - item.from[0], dz = item.to[1] - item.from[1], L0 = Math.hypot(dx, dz) || 1; item.from = [r3(cx - dx / L0 * w.w / 2), r3(cz - dz / L0 * w.w / 2)]; item.to = [r3(cx + dx / L0 * w.w / 2), r3(cz + dz / L0 * w.w / 2)]; }
@@ -699,11 +706,12 @@ export class Editor {
       app.stage.rebuildLevel(L.id);
     }
     app.stage.select(s); app.markDirty(); app.scheduleUI(true); this.dimsDirty = true; this.markSelection();
-    if (['iElevation', 'iX', 'iZ', 'oT', 'oPre', 'iKind', 'iStyle', 'rK', 'iEnt', 'oC', 'oK', 'stShape', 'stTurn', 'frSrc', 'frSize', 'frStyle', 'lEnt'].includes(id)) { this.renderInspector(); this.renderLeft(); }
+    if (['rS', 'iElevation', 'iX', 'iZ', 'oT', 'oPre', 'iKind', 'iStyle', 'rK', 'iEnt', 'oC', 'oK', 'stShape', 'stTurn', 'stTarget', 'stOpeningMode', 'frSrc', 'frSize', 'frStyle', 'lEnt'].includes(id)) { this.renderInspector(); this.renderLeft(); }
     else if (['stFw', 'fW', 'fD', 'fH'].includes(id) && item?.type === 'stairs') this.renderInspector();
   }
   showRoofIfOff() { const app = this.app; if (!app.roofOn && app.hasRoof()) app.setLevel('all'); }
   onInspClick(e) {
+    if (surfacePickerClick(this, e)) return;
     const app = this.app, s = app.sel, p = app.plan, L = this.level;
     const modelCard = e.target.closest('[data-opening-model]');
     if (modelCard && s?.type === 'opening' && !modelCard.disabled) {
@@ -747,9 +755,11 @@ export class Editor {
       if (act === 'xrRot90') { x.rect.rot = ((x.rect.rot + 90 + 540) % 360) - 180; const l = x.rect.length; x.rect.length = x.rect.width; x.rect.width = l; app.stage.layout(); app.markDirty(); return this.renderInspector(); }
       const c = structuredClone(x); c.id = newId('xr'); c.name = t('editor.common.copyName', { name: x.name }); c.rect.cx = r3(c.rect.cx + 1); p.site.roofs.push(c); app.stage.layout(); app.markDirty(); return this.select({ type: 'xroof', id: c.id }); }
     if (act === 'frTurn') { const found = findItem(p, s?.id); if (!found) return; app.pushUndo(); const width = found.item.fw || 0.5; found.item.fw = found.item.fh || 0.7; found.item.fh = width; app.stage.refreshItem(found.level.id, 'device', found.item); app.markDirty(); return this.renderInspector(); }
+    if (act === 'stEditOpening') { const f = findItem(p, s?.id); if (!f) return; app.pushUndo(); f.item.openingMode = 'manual'; app.markDirty(); const target = stairTargetLevel(p, f.level, f.item), room = target?.rooms.find((r) => r.stair === f.item.id); if (room) { if (app.levelSel !== target.id) app.setLevel(target.id); this.select({ type: 'room', id: room.id, level: target.id }); } return; }
+    if (act === 'stAutoOpening') { const f = findItem(p, s?.id); if (!f?.item.stair) return; const stair = p.levels.flatMap((l) => l.furniture).find((it) => it.id === f.item.stair); if (!stair) return; app.pushUndo(); stair.openingMode = 'auto'; delete stair.openingPoints; delete stair.openingSig; app.markDirty(); this.renderInspector(); return; }
     if (act === 'stFlip' || act === 'stFit') { const f = findItem(p, s?.id); if (!f) return; app.pushUndo(); const it = f.item;
       if (act === 'stFlip') it.rot = (((it.rot || 0) + 180 + 180) % 360) - 180;
-      else { const i = p.levels.indexOf(f.level), up = p.levels[i + 1]; if (up) it.height = r3(up.elevation - f.level.elevation); }
+      else { const up = stairTargetLevel(p, f.level, it); if (up) it.height = r3(up.elevation - f.level.elevation); }
       app.stage.refreshItem(f.level.id, 'furniture', it); app.markDirty(); return this.renderInspector(); }
     if (act === 'onSurface') {
       const found = s && findItem(p, s.id); if (!found || !['device', 'furniture'].includes(found.type)) return;

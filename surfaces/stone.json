@@ -1,0 +1,12 @@
+{
+  "id": "stone",
+  "name": { "en": "Stone", "de": "Stein" },
+  "pattern": "tiles",
+  "color": "#9ea3aa",
+  "secondaryColor": "#7a8089",
+  "width": 0.6,
+  "length": 0.4,
+  "roughness": 0.55,
+  "license": "CC0-1.0",
+  "author": "HomeTwin contributors"
+}

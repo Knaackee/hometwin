@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HomeTwin – Your home in 3D for Home Assistant</title>
-<meta name="description" content="HomeTwin turns your floor plan into a live 3D twin of your home inside Home Assistant. Control lights, blinds and heating right where they are. Open source, beta.">
-<meta property="og:title" content="HomeTwin – Your home in 3D for Home Assistant">
-<meta property="og:description" content="Upload your floor plan, let AI read the rooms, control your devices in 3D.">
+<title>HomeTwin – Your home in 3D</title>
+<meta name="description" content="A community-driven, open-source 3D dashboard for Home Assistant. Build and review your home visually, optionally start from a floor plan with AI, and extend it together.">
+<meta property="og:title" content="HomeTwin – Your home in 3D">
+<meta property="og:description" content="One Home Assistant integration. A community that builds with you.">
 <meta property="og:image" content="assets/screenshot-house.png">
 <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -81,8 +81,8 @@ footer { padding: 44px 0 60px; color: var(--muted); font-size: 14px; border-top:
 
 <main><header class="immersive" id="home">
   <div class="hero-copy"><p class="eyebrow">HOME ASSISTANT, IN A NEW DIMENSION</p>
-    <h1>Your home.<br>In your hands.</h1>
-    <p class="hero-intro">Upload your floor plan. Let AI help build your 3D home. Control every device right where it belongs.</p>
+    <h1>Your home in 3D.<br>One integration.<br>A community that builds with you.</h1>
+    <p class="hero-intro">HomeTwin is a community-driven, open-source 3D dashboard for Home Assistant. Build and review your plan in the visual editor, optionally let AI read a floor plan, and control devices where they belong.</p>
     <div class="hero-actions"><a class="btn primary" href="#install">Make it yours <span aria-hidden="true">↗</span></a><a href="#floorplan">See how it works ↓</a></div>
     <p class="hero-note">Free &amp; open source · Public beta</p>
   </div>
@@ -109,10 +109,14 @@ footer { padding: 44px 0 60px; color: var(--muted); font-size: 14px; border-top:
     <div class="card"><div class="ic">💡</div><h3>Live devices</h3><p>Lights glow in their colour, blinds and garage doors move, windows show when they're open. Tap to toggle, long-press for details.</p></div>
     <div class="card"><div class="ic">☀️</div><h3>Real sun &amp; shadows</h3><p>Sun position from your location and time, including PV panels that light up with your solar output.</p></div>
     <div class="card"><div class="ic">🏡</div><h3>Roofs, storeys, garden</h3><p>Gable, hip or flat roofs, several roofs for garage, carport or garden house, dormers and roof windows.</p></div>
-    <div class="card"><div class="ic">🚶</div><h3>Walk through</h3><p>Set your body height and walk through your rooms in first person — operate and rearrange things on the way.</p></div>
-    <div class="card"><div class="ic">📱</div><h3>Made for phones too</h3><p>Bottom sheet controls, room picker, touch gestures and a performance mode for tablets and wall panels.</p></div>
-    <div class="card"><div class="ic">🧩</div><h3>Growing object library</h3><p>Furniture, lamps, radiators, instruments — modelled from real dimensions by the community and updated live.</p></div>
+    <div class="card"><div class="ic">🚶</div><h3>Walk through connected floors</h3><p>Use linked stairs, move up or down, and optionally enable wall collision and gravity while the complete house stays around you.</p></div>
+    <div class="card"><div class="ic">📱</div><h3>Rooms at a glance</h3><p>A responsive room picker keeps icons and live status in the top area, with room controls that fit phones, tablets and wall panels.</p></div>
+    <div class="card"><div class="ic">🎨</div><h3>Personal floor materials</h3><p>Choose from eight procedural materials and adjust colour, direction, plank or tile dimensions. Generated previews and bundled recipes work offline.</p></div>
+    <div class="card"><div class="ic">🧩</div><h3>Growing object library</h3><p>Furniture, doors and windows are modelled from real dimensions by the community and updated live.</p></div>
+    <div class="card"><div class="ic">🛠️</div><h3>A visual editor</h3><p>Review every AI suggestion or draw by hand. The contribution skill separately helps the community add objects, openings and floor materials.</p></div>
+    <div class="card"><div class="ic">✨</div><h3>What’s new</h3><p>Read concise release highlights in English or German directly in HomeTwin.</p></div>
   </div>
+  <div class="figure" style="margin-top:24px"><img src="assets/screenshot-flooring.png" alt="Floor material picker with generated previews and adjustment controls" loading="lazy"></div>
 </div></section>
 
 <section id="floorplan"><div class="wrap grid2">
@@ -136,7 +140,7 @@ footer { padding: 44px 0 60px; color: var(--muted); font-size: 14px; border-top:
   <div>
     <div class="kicker">Everyday use</div>
     <h2>Pick a room, see everything in it</h2>
-    <p class="sub">Choose a room and HomeTwin shows just that storey from above, with all its devices at hand. Scenes, temperatures, open windows and solar output at a glance.</p>
+    <p class="sub">Choose a room from the responsive top area and see its storey, icons and live status at a glance. Scenes, temperatures, open windows and solar output stay close at hand.</p>
     <div style="display:flex;gap:14px;align-items:flex-start"><div class="figure" style="width:42%"><img src="assets/screenshot-mobile.png" alt="HomeTwin on a phone" loading="lazy"></div><div class="figure" style="width:58%"><img src="assets/screenshot-walk.png" alt="Walkthrough mode" loading="lazy"></div></div>
   </div>
 </div></section>
@@ -157,6 +161,15 @@ footer { padding: 44px 0 60px; color: var(--muted); font-size: 14px; border-top:
     <h2>Got some tokens to spare?</h2>
     <p class="sub">Put them to work for the community. Look around your home: what furniture or devices are missing from HomeTwin? Grab some product photos and use our contribution guide with <b>Opus 5.5 or a comparably capable model</b>. Bring a whole room’s collection if you like. Let’s make HomeTwin better together.</p>
     <p class="sub">Contributing an object doesn't need 3D skills. Give your coding agent — Claude, Codex or any agent that supports skills — the file <span class="mono">skills/add-object/SKILL.md</span> and a product name or photo. It researches the dimensions, models the object, renders a preview, asks you to confirm and opens the pull request.</p>
+    <h3>Maintained extension points</h3>
+    <ul class="check">
+      <li><b>Furniture, decor and physical products:</b> declarative object-library recipes; non-opening recipes are inserted as visual library objects.</li>
+      <li><b>Home Assistant device visuals:</b> built-in entity-linked representations live in the frontend source and require an integration update.</li>
+      <li><b>Doors and windows:</b> declarative library recipes for the supported fixed-window and single-swinging-door opening contract.</li>
+      <li><b>Floor materials:</b> declarative, procedural surface presets with no downloaded textures; additions are bundled with an integration update.</li>
+      <li><b>Translations:</b> frontend, integration and runtime strings; a native speaker must review every string and the running UI before merge.</li>
+    </ul>
+    <p class="sub">The HomeTwin contribution skill routes each type to its files, checks and review requirements. It extends HomeTwin; the floor-plan assistant inside the integration is the separate tool for building and reviewing your own plan.</p>
     <ul class="check">
       <li><b>One photo → a Martin Ed Sheeran ÷ guitar</b> with 20 frets at their real positions, inlays and rosette — in about 5 minutes</li>
       <li><b>Look around your home</b>: what's missing in the gallery? Your sofa, lamp, fridge, wallbox?</li>

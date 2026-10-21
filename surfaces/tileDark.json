@@ -1,0 +1,12 @@
+{
+  "id": "tileDark",
+  "name": { "en": "Dark tile", "de": "Dunkle Fliese" },
+  "pattern": "tiles",
+  "color": "#5b6068",
+  "secondaryColor": "#3f444b",
+  "width": 0.6,
+  "length": 0.6,
+  "roughness": 0.5,
+  "license": "CC0-1.0",
+  "author": "HomeTwin contributors"
+}

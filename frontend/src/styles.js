@@ -1,5 +1,12 @@
 export const CSS = `
-:host { display: block; position: relative; height: 100%; width: 100%; overflow: hidden;
+.surface-palette { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:12px; }
+.surface-card { padding:5px; border:1px solid var(--line); border-radius:10px; background:var(--line-soft); color:var(--fg); text-align:left; cursor:pointer; min-width:0; }
+.surface-card img { display:block; width:100%; height:62px; object-fit:cover; border-radius:6px; }
+.surface-card span { display:block; padding:6px 3px 2px; font-size:12px; }
+.surface-card[aria-pressed="true"] { border-color:var(--edit); box-shadow:0 0 0 1px var(--edit); }
+.surface-card:focus-visible { outline:2px solid var(--edit); outline-offset:3px; }
+
+:host { display: block; position: relative; height: 100vh; height: 100dvh; width: 100%; overflow: hidden;
   --stage: #0b0f17; --panel: rgba(20, 26, 38, 0.88); --panel-solid: #141a26; --line: #273042; --line-soft: #1d2433;
   --fg: #e7ebf2; --muted: #8d97ab; --lamp: #ffb35c; --lamp-soft: rgba(255,179,92,.14); --edit: #79a6ff; --edit-soft: rgba(121,166,255,.14);
   --heat: #ff7a45; --ok: #5fd39a; --warn: #ff6b6b;
@@ -30,6 +37,8 @@ canvas.stage { position: absolute; inset: 0; width: 100%; height: 100%; display:
 
 .topbar { position: absolute; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 16px; pointer-events: none; }
 .topbar > * { pointer-events: auto; }
+:host([mode="edit"]) .navigation-divider, :host([mode="edit"]) #roomPicker { display: none; }
+@media (max-width: 520px) { .topbar .brand strong { display: none; } .home-navigation #levels { max-width: 48vw; overflow-x: auto; } }
 .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .brand strong { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
 .brand span { color: var(--muted); font-size: 13px; white-space: nowrap; }
@@ -203,10 +212,15 @@ details.sec > summary::-webkit-details-marker { display: none; }
 .sceneprev { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 23; display: flex; gap: 10px; align-items: center; background: var(--panel); border: 1px solid rgba(255,179,92,.5); border-radius: 14px; padding: 8px 10px 8px 14px; backdrop-filter: blur(12px); box-shadow: 0 10px 40px rgba(0,0,0,.4); max-width: calc(100% - 32px); flex-wrap: wrap; }
 @media (max-width: 820px) { .sceneprev { bottom: calc(46% + 16px); } }
 .stats { position: absolute; left: 16px; bottom: 16px; z-index: 22; font: 500 12px/1.4 ui-monospace, monospace; color: #cfe0ff; background: rgba(11,15,23,.82); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; pointer-events: none; }
-.walkhud { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); z-index: 21; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px 12px; backdrop-filter: blur(12px); display: flex; flex-direction: column; gap: 4px; max-width: calc(100% - 32px); }
-.walkhud .wh-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .walkhud .wh-lvl { color: var(--muted); font-size: 13px; }
-.walkhud .wh-body { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); } .walkhud .wh-body input { width: 64px; }
-.walkhud .wh-hint { font-size: 12px; color: var(--muted); }
+.walkhud { position:absolute;left:50%;top:64px;transform:translateX(-50%);z-index:21;width:360px;max-width:calc(100% - 24px);padding:12px;background:var(--panel-solid);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 28px #0003;display:flex;flex-direction:column;gap:10px; }
+.wh-header{display:flex;align-items:center;gap:10px;min-width:0}
+.wh-avatar{display:grid;place-items:center;width:32px;height:36px;flex:none;color:var(--edit)}.wh-avatar svg{width:22px;height:22px}
+.wh-location{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}.wh-location>span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.wh-location strong{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wh-floors{display:flex;gap:2px;padding:2px;background:var(--line-soft);border-radius:9px}.wh-floors button{display:grid;place-items:center;width:28px;height:30px;padding:5px;background:transparent;border:0;border-radius:7px}.wh-floors svg{width:16px;height:16px}.wh-floors button:hover{background:var(--line)}
+.walkhud .wh-exit{background:transparent;border-color:var(--line);border-radius:9px;min-height:34px;font-size:12px;padding:6px 9px}
+.wh-details{border-top:1px solid var(--line);padding-top:8px}.wh-details summary{display:flex;align-items:center;justify-content:space-between;list-style:none;cursor:pointer;font-size:11px;color:var(--muted);min-height:24px}.wh-details summary::-webkit-details-marker{display:none}.wh-details summary svg{width:14px;height:14px}.wh-details[open] summary svg{transform:rotate(180deg)}.wh-details summary:focus-visible{outline:2px solid var(--edit);outline-offset:3px;border-radius:3px}
+.wh-settings{padding:12px 0 2px}.walkhud .wh-body{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px}.wh-number{display:flex;align-items:center;background:var(--line-soft);border:1px solid var(--line);border-radius:8px;padding:0 9px 0 0;color:var(--muted)}.wh-number input{width:76px;min-height:34px;border:0;background:transparent;padding:6px 8px;outline-offset:0;color:var(--fg)}.wh-help-title{font-size:11px;font-weight:650;margin:14px 0 5px}.walkhud .wh-hint{font-size:11px;color:var(--muted);line-height:1.65}
+
 .joy { position: absolute; left: 24px; bottom: 120px; z-index: 22; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.25); backdrop-filter: blur(8px); display: grid; place-items: center; touch-action: none; }
 .joy i { width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,.55); box-shadow: 0 4px 16px rgba(0,0,0,.35); pointer-events: none; }
 @media (max-width: 820px) { .walkhud { top: 118px; } .joy { bottom: calc(104px + 24px); } }

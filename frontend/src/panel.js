@@ -1,5 +1,8 @@
 import { renderRoomControls, wireRoomControls, guardRoomDetail } from './room-controls.js';
 import { ROOM_CONTROLS_CSS } from './room-controls.css.js';
+import { RoomPicker, ROOM_PICKER_CSS } from './room-picker.js';
+import { createReleaseNotes } from './release-notes.js';
+import { WalkOptions, WALK_OPTIONS_CSS } from './walk-options.js';
 import { ROBOT_PREVIEW_ENABLED } from './features.js';
 import englishFlag from './assets/flags/gb.svg';
 import germanFlag from './assets/flags/de.svg';
@@ -30,7 +33,7 @@ export class HomeTwinPanel extends HTMLElement {
     this._uiQueued = false; this._panelBusy = false;
   }
   // Scope of the view: 'all' = whole house from outside, a level id = that storey in section, 'roof' = the roof.
-  get roofOn() { return this.levelSel === 'all' || this.levelSel === 'roof'; }
+  get roofOn() { return !!this.stage?.walk || this.levelSel === 'all' || this.levelSel === 'roof'; }
   hasRoof() { return this.plan?.site?.roof?.type && this.plan.site.roof.type !== 'none' && this.plan.levels.some((l) => l.rooms.some((r) => r.kind === 'room' || r.kind === 'garage')); }
   set hass(h) { const first = !this._hass; this._hass = h; if (first) this._init(); else this._onHass(); }
   get hass() { return this._hass; }
@@ -57,6 +60,7 @@ export class HomeTwinPanel extends HTMLElement {
     this.editor.refreshLanguage();
     if (!this.$('wizard').hidden) this.wizard.render();
     this.robotAreas?.render();
+    this.walkSettings?.render();
     if (!this.$('onboard').hidden) this.showOnboarding();
     if (this.detailEntity) this.renderDetail(true);
     this.scheduleUI(true);
@@ -102,12 +106,17 @@ export class HomeTwinPanel extends HTMLElement {
     setLanguage(this._panel?.config?.ui_language);
     this.lang = getLanguage();
     const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>${CSS}${ROOM_CONTROLS_CSS}</style>${template()}`;
+    root.innerHTML = `<style>${CSS}${ROOM_CONTROLS_CSS}${ROOM_PICKER_CSS}${WALK_OPTIONS_CSS}</style>${template()}`;
     this.$ = (id) => root.getElementById(id);
     root.querySelectorAll('[data-ic]').forEach((b) => b.insertAdjacentHTML('afterbegin', icon(b.dataset.ic)));
     this.setAttribute('mode', 'view');
     this.$('menuBtn').hidden = !this._narrow;
     this.stage = new Stage(this.$('stage'), this);
+    this.walkSettings = new WalkOptions(this);
+    this.roomPicker = new RoomPicker(this, this.$('roomPicker'));
+    this.releaseNotes = createReleaseNotes(root, { onOpen: () => {
+      if (this.stage.walk) { this.stage.walk.keys.clear(); this.stage.walk.joy = [0, 0]; }
+    } });
     this.editor = new Editor(this); this.agent = new Agent(this); this.wizard = new PlanWizard(this); this.robotAreas = new RobotAreas(this);
     this._wireTop(); this._wireView();
     new ResizeObserver(() => { this.stage.resize(); }).observe(this);
@@ -126,6 +135,7 @@ export class HomeTwinPanel extends HTMLElement {
     this._sunTimer = setInterval(() => this.updateSun(), 30000);
     if (!this.isAdmin()) this.$('mEdit').hidden = true;
     if (this._firstRun && this.isAdmin()) this.showOnboarding();
+    else this.releaseNotes.maybeShow({ enabled: !this.hass?.demo });
   }
   // First start: choose between the sample house, an empty plan or the floor-plan wizard.
   showOnboarding() {
@@ -162,11 +172,17 @@ export class HomeTwinPanel extends HTMLElement {
       else this.toast(tr('panel.drawFirst'));
     };
   }
-  connectedCallback() { this.stage?.connect(); }
-  disconnectedCallback() { this.stage?.disconnect(); }
+  connectedCallback() { this.stage?.connect(); this.roomPicker?.mount(this.$('roomPicker')); }
+  disconnectedCallback() { this.stage?.disconnect(); this.roomPicker?.destroy(); this.releaseNotes?.close(); }
 
   setPlan(plan, { frame = false } = {}) {
     this.plan = plan;
+    if (this.stage?.walk) {
+      const w = this.stage.walk;
+      const level = plan.levels.find(l => l.id === w.levelId) || plan.levels[0];
+      w.stair = null; w.velocityY = 0; w.vertical = 0; w.floorY = level?.elevation ?? 0;
+      if (level) w.levelId = level.id;
+    }
     if (!plan.site.lat && this._hass.config?.latitude != null) { plan.site.lat = this._hass.config.latitude; plan.site.lon = this._hass.config.longitude; }
     if (!plan.levels.find((l) => l.id === this.activeLevelId)) this.activeLevelId = (plan.levels.find((l) => l.elevation >= -0.01) || plan.levels[0])?.id;
     if (!['all', 'roof'].includes(this.levelSel) && !plan.levels.find((l) => l.id === this.levelSel)) this.levelSel = 'all';
@@ -184,7 +200,15 @@ export class HomeTwinPanel extends HTMLElement {
   redo() { const s = this.redoStack.pop(); if (!s) return; this.undoStack.push(JSON.stringify(this.plan)); this.setPlan(JSON.parse(s)); this.markDirty({ settle: false }); this.editor.select(null); this.editor.renderBar(); }
   markDirty({ settle = true } = {}) {
     const voids = syncStairVoids(this.plan);
-    if (voids.size) { for (const id of voids) this.stage.rebuildLevel(id); this.buildLabels(); if (this.mode === 'edit') this.editor.renderLeft(); }
+    // A stairwell changes both its upper floor and the ceiling below it.
+    if (voids.size) { this.stage.rebuildAll(); this.buildLabels(); if (this.mode === 'edit') this.editor.renderLeft(); }
+    else if (this.sel?.type === 'room') {
+      const hole = this.findRoom(this.sel.level, this.sel.id);
+      if (hole?.kind === 'void' && hole.stair) {
+        const lower = this.plan.levels.find(l => l.furniture.some(f => f.id === hole.stair));
+        if (lower) this.stage.rebuildLevel(lower.id);
+      }
+    }
     if (settle) this.stage.settleAutomaticItems();
     this.stage.select(this.sel, this.editor?.multi || []);
     this.dirty = true; this.$('saveState').textContent = tr('panel.unsaved');
@@ -226,7 +250,6 @@ export class HomeTwinPanel extends HTMLElement {
     this.$('tSun').addEventListener('click', () => { const p = this.$('sunPop'); p.hidden = !p.hidden; this.renderSunPop(); });
     this.$('levels').addEventListener('click', (e) => { const b = e.target.closest('[data-level]'); if (b) this.setLevel(b.dataset.level); });
     this._wireWalk();
-    this.$('roomSel').addEventListener('change', (e) => { const [lv, rid] = e.target.value.split('|'); if (!rid) { this.setLevel('all'); this.setFocus(null); return; } this.setFocus(rid, lv); this.setSheet('half'); });
     this.$('sheetGrip').addEventListener('click', () => { const s = this.$('vp').dataset.sheet; this.setSheet(s === 'peek' ? 'half' : s === 'half' ? 'full' : 'peek'); });
     { let y0 = null; const g = this.$('sheetGrip'); g.addEventListener('pointerdown', (e) => { y0 = e.clientY; g.setPointerCapture(e.pointerId); }); g.addEventListener('pointerup', (e) => { if (y0 == null) return; const dy = e.clientY - y0; y0 = null; if (Math.abs(dy) < 30) return; const s = this.$('vp').dataset.sheet, order = ['peek', 'half', 'full'], i = order.indexOf(s); this.setSheet(order[Math.max(0, Math.min(2, i + (dy < 0 ? 1 : -1)))]); e.stopPropagation(); this._skipGripClick = true; setTimeout(() => (this._skipGripClick = false), 50); }); }
     try { const pm = localStorage.getItem('hometwin-perf'); this.perfMode = pm == null ? matchMedia('(pointer: coarse)').matches : pm === '1'; } catch { this.perfMode = false; }
@@ -276,11 +299,8 @@ export class HomeTwinPanel extends HTMLElement {
       + [...ls].reverse().map((l) => `<button data-level="${l.id}" aria-pressed="${this.levelSel === l.id}" title="${esc(l.name)}">${esc(short(l.name))}</button>`).join('');
     this.renderRoomSel();
   }
-  // Touch-friendly room picker (native select = OS picker on phones), grouped by storey.
   renderRoomSel() {
-    const el = this.$('roomSel'); if (!el) return;
-    const groups = [...this.plan.levels].reverse().map((l) => { const rs = l.rooms.filter((r) => r.kind !== 'void' && !(r.kind === 'outdoor' && polyArea(r.points) > 60)); return rs.length ? `<optgroup label="${esc(l.name)}">${rs.map((r) => `<option value="${l.id}|${r.id}" ${this.focusRoom === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</optgroup>` : ''; }).join('');
-    el.innerHTML = `<option value="" ${this.focusRoom ? '' : 'selected'}>${tr('panel.allRooms')}</option>${groups}`;
+    this.roomPicker?.render();
   }
   renderSunPop(full = true) {
     const p = this.$('sunPop'); const s = this._sun || { azimuth: 0, elevation: 0 }; const d = this.sunDate();
@@ -293,7 +313,8 @@ export class HomeTwinPanel extends HTMLElement {
       <div class="field"><label for="sunDate">${tr('panel.date')}</label><input type="date" id="sunDate" value="${isoDate(d)}"></div>
       <div class="field"><label for="sunTime">${tr('panel.time')} <output id="sunTimeOut"></output></label><input type="range" id="sunTime" min="0" max="1439" step="5" value="${d.getHours() * 60 + d.getMinutes()}"></div>
       <div class="sunline" id="sunLine"></div>
-      <p class="hint">${tr('panel.location', {lat: fmtCoord(this.plan.site.lat, 'N'), lon: fmtCoord(this.plan.site.lon, getLanguage() === 'de' ? 'O' : 'E'), north: Math.round(this.plan.site.north || 0)})}</p>`;
+      <p class="hint">${tr('panel.location', {lat: fmtCoord(this.plan.site.lat, 'N'), lon: fmtCoord(this.plan.site.lon, getLanguage() === 'de' ? 'O' : 'E'), north: Math.round(this.plan.site.north || 0)})}</p><button class="btn" id="releaseNotesOpen">${tr('release.open')}</button>`;
+    if (full) this.$('releaseNotesOpen').onclick = () => this.releaseNotes.open(this.$('releaseNotesOpen'));
     this.$('sunTimeOut').textContent = d.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
     this.$('sunLine').textContent = tr('panel.sunAngles', {azimuth: formatNumber(s.azimuth,{maximumFractionDigits:1}), elevation: formatNumber(s.elevation,{maximumFractionDigits:1})}) + (s.source ? ' · ' + s.source : '');
     if (!full && this.timeLive) { this.$('sunDate').value = isoDate(d); this.$('sunTime').value = d.getHours() * 60 + d.getMinutes(); }
@@ -326,7 +347,7 @@ export class HomeTwinPanel extends HTMLElement {
       return this.updateLabelText();
     }
     for (const l of this.plan.levels) {
-      if (!this.stage.isVisible(l)) continue;
+      if (!this.stage.isVisible(l) || (this.stage.walk && l.id !== this.stage.walk.levelId)) continue;
       for (const r of l.rooms) {
         if (r.kind === 'void') continue;
         if (r.kind === 'outdoor' && polyArea(r.points) < 8) continue;
@@ -377,7 +398,7 @@ export class HomeTwinPanel extends HTMLElement {
     if (this._uiQueued) return; this._uiQueued = true;
     requestAnimationFrame(() => {
       this._uiQueued = false; if (this._panelBusy) return this.scheduleUI();
-      this.renderView(); this.updateLabelText();
+      this.renderView(); this.renderRoomSel(); this.updateLabelText();
       if (this.mode === 'edit') this.editor.refresh(this._planChanged);
       this._planChanged = false;
     });
@@ -442,9 +463,9 @@ export class HomeTwinPanel extends HTMLElement {
     this.$('whDown').addEventListener('click', () => this.walkLevel(-1));
     this.$('whBody').addEventListener('change', (e) => { const v = Math.max(1, Math.min(2.2, +e.target.value || 1.75)); if (this.stage.walk) this.stage.walk.body = v; try { localStorage.setItem('hometwin-body', String(v)); } catch { /* ignore */ } });
     const keyOk = (e) => this.stage.walk && !e.target.closest?.('input,textarea,select') && !(e.composedPath?.()[0]?.closest?.('input,textarea,select'));
-    window.addEventListener('keydown', (e) => { if (!keyOk(e)) return; const k = e.key.toLowerCase(); if (k === 'escape') return this.stopWalk(); if (['w', 'a', 's', 'd', 'q', 'e', 'shift', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { this.stage.walk.keys.add(k); e.preventDefault(); } });
+    window.addEventListener('keydown', (e) => { if (!keyOk(e)) return; const k = e.key.toLowerCase(); if (k === 'escape') return this.stopWalk(); if (['w', 'a', 's', 'd', 'q', 'e', 'shift', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown'].includes(k)) { this.stage.walk.keys.add(k); e.preventDefault(); } });
     window.addEventListener('keyup', (e) => { if (this.stage.walk) this.stage.walk.keys.delete(e.key.toLowerCase()); });
-    window.addEventListener('blur', () => this.stage.walk?.keys.clear());
+    window.addEventListener('blur', () => { if (this.stage.walk) { this.stage.walk.keys.clear(); this.stage.walk.vertical = 0; this.stage.walk.joy = [0, 0]; } });
     // touch joystick
     const joy = this.$('joy'), knob = joy.querySelector('i'); let jid = null, c = null;
     joy.addEventListener('pointerdown', (e) => { jid = e.pointerId; joy.setPointerCapture(jid); const r = joy.getBoundingClientRect(); c = [r.left + r.width / 2, r.top + r.height / 2]; e.stopPropagation(); });
@@ -464,7 +485,16 @@ export class HomeTwinPanel extends HTMLElement {
     this.$('walkHud').hidden = false; this.$('whBody').value = body; this.$('whLevel').textContent = L.name;
     this.$('joy').hidden = !matchMedia('(pointer: coarse)').matches;
     this.$('whHint').textContent = matchMedia('(pointer: coarse)').matches ? tr('panel.walkTouch') : tr('panel.walkKeys');
-    if (this.mode === 'view') this.setSheet('peek'); this.toast(tr('panel.walkWelcome'));
+    this.toast(tr('panel.walkWelcome'));
+  }
+  syncWalkRoom(level, walk) {
+    const rooms = level.rooms.filter(r => r.kind !== 'void' && pointInPolygon([walk.x, walk.z], r.points));
+    // Overlapping outdoor outlines must not hide the actual room under the walker.
+    rooms.sort((a,b) => polyArea(a.points)-polyArea(b.points));
+    const roomId = rooms[0]?.id || null;
+    if (this.focusRoom === roomId) return;
+    this.focusRoom = roomId; this.roomCategory = 'all'; this.closeDetail(false);
+    this.scheduleUI(true);
   }
   stopWalk() {
     if (!this.stage.walk) return; this.stage.exitWalk(); this.$('tWalk').setAttribute('aria-pressed', 'false');
@@ -472,7 +502,7 @@ export class HomeTwinPanel extends HTMLElement {
   }
   walkLevel(d) {
     const w = this.stage.walk; if (!w) return; const ls = this.plan.levels.filter((l) => l.rooms.length); const i = ls.findIndex((l) => l.id === w.levelId); const L = ls[i + d]; if (!L) return;
-    w.levelId = L.id; this.setLevel(L.id, false); this.stage.rebuildAll(); this.stage.layout(); this.$('whLevel').textContent = L.name;
+    w.levelId = L.id; w.stair = null; w.velocityY = 0; w.vertical = 0; w.floorY = L.elevation; this.setLevel(L.id, false); this.stage.rebuildAll(); this.stage.layout(); this.$('whLevel').textContent = L.name;
     if (!L.rooms.some((r) => pointInPolygon([w.x, w.z], r.points))) { const r = L.rooms.filter((x) => x.kind === 'room').sort((a, b) => polyArea(b.points) - polyArea(a.points))[0]; if (r) [w.x, w.z] = roomCenter(r); }
   }
   setSheet(s) { const vp = this.$('vp'); if (this._skipGripClick) return; vp.dataset.sheet = s; }
@@ -496,9 +526,9 @@ export class HomeTwinPanel extends HTMLElement {
     return null;
   }
   setFocus(roomId, levelId) {
-    this.roomCategory = 'all'; this.setSheet('half'); this.focusRoom = roomId; { const el = this.$('roomSel'); if (el) { const v = roomId ? [...el.options].find((o) => o.value.endsWith('|' + roomId))?.value : ''; if (v != null) el.value = v; } } this.closeDetail(false);
+    this.roomCategory = 'all'; this.setSheet('half'); this.focusRoom = roomId; this.closeDetail(false);
     if (roomId) { const l = this.plan.levels.find((x) => x.id === levelId && x.rooms.some((r) => r.id === roomId)) || this.plan.levels.find((x) => x.rooms.some((r) => r.id === roomId)); const r = l?.rooms.find((x) => x.id === roomId); if (!r) return;
-      if (this.stage.walk) { const w = this.stage.walk; if (w.levelId !== l.id) { w.levelId = l.id; this.setLevel(l.id, false); this.stage.rebuildAll(); this.stage.layout(); this.$('whLevel').textContent = l.name; this.focusRoom = roomId; } [w.x, w.z] = roomCenter(r); }
+      if (this.stage.walk) { const w = this.stage.walk; w.stair = null; w.velocityY = 0; w.vertical = 0; w.floorY = l.elevation; if (w.levelId !== l.id) { w.levelId = l.id; this.setLevel(l.id, false); this.stage.rebuildAll(); this.stage.layout(); this.$('whLevel').textContent = l.name; this.focusRoom = roomId; } [w.x, w.z] = roomCenter(r); }
       else { if (this.levelSel !== l.id) { this.setLevel(l.id, false); this.focusRoom = roomId; this.renderRoomSel(); } // only this storey, others hidden
         this.stage.frameRoom(l, r); } }
     else this.stage.frame(this.levelSel);
@@ -532,7 +562,7 @@ export class HomeTwinPanel extends HTMLElement {
     else this.openDetail(id);
   }
   boundEntities() {
-    const out = []; const vis = this.plan.levels.filter((l) => this.stage.isVisible(l));
+    const out = []; const vis = this.plan.levels.filter((l) => this.stage.walk ? l.id === this.stage.walk.levelId : this.stage.isVisible(l));
     for (const l of vis) {
       for (const d of l.devices) if (d.entity_id && this.states()[d.entity_id] && !out.some((x) => x.id === d.entity_id)) out.push({ id: d.entity_id, room: roomAt(l, d.pos)?.id, kind: d.kind, level: l });
       for (const f of l.furniture) if (f.entity_id && this.states()[f.entity_id] && !out.some(x => x.id === f.entity_id)) out.push({ id: f.entity_id, room: roomAt(l, f.pos)?.id, kind: 'tv', level: l });
@@ -624,7 +654,7 @@ const template = () => `
 <header class="topbar">
   <button class="ibtn" id="menuBtn" title="${tr('panel.menu')}" data-i18n-title="panel.menu" data-ic="menu" hidden></button>
   <div class="brand"><i class="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="ht-l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f6fd8"/><stop offset="1" stop-color="#22408f"/></linearGradient><linearGradient id="ht-r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#79a6ff"/><stop offset="1" stop-color="#4b7be6"/></linearGradient><linearGradient id="ht-t" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#b9d0ff"/><stop offset="1" stop-color="#e8f0ff"/></linearGradient><radialGradient id="ht-g"><stop offset="0" stop-color="#ffd59a"/><stop offset=".45" stop-color="#ffb35c"/><stop offset="1" stop-color="#ffb35c" stop-opacity="0"/></radialGradient></defs><path d="M10 27 L32 39.5 L32 60 L10 47.5 Z" fill="url(#ht-l)"/><path d="M32 39.5 L54 27 L54 47.5 L32 60 Z" fill="url(#ht-r)"/><path d="M32 39.5 L54 27 L43 21 Z" fill="#8fb4ff"/><path d="M10 27 L32 39.5 L43 21 L21 8.5 Z" fill="url(#ht-t)"/><path d="M21 8.5 L43 21" stroke="#ffffff" stroke-opacity=".7" stroke-width="1.2" stroke-linecap="round"/><circle cx="26.5" cy="24" r="9" fill="url(#ht-g)"/><circle cx="26.5" cy="24" r="3.1" fill="#fff4e3"/><path d="M21 50 L21 43.5 L26 46.3 L26 52.8 Z" fill="#ffb35c" fill-opacity=".85"/></svg></i><strong>HomeTwin</strong><span class="savestate edit-only" id="saveState" data-i18n="panel.saved">${tr('panel.saved')}</span></div>
-  <div class="seg" id="levels" role="group" aria-label="${tr('panel.floor')}" data-i18n-aria-label="panel.floor"></div>
+  <div class="home-navigation"><div class="seg" id="levels" role="group" aria-label="${tr('panel.floor')}" data-i18n-aria-label="panel.floor"></div><span class="navigation-divider" aria-hidden="true"></span><div id="roomPicker"></div></div>
 
   <span class="spacer"></span>
   <div class="seg mode" role="group" aria-label="${tr('panel.mode')}" data-i18n-aria-label="panel.mode"><button id="mView" aria-pressed="true" data-ic="eye"><span class="wide" data-i18n="panel.view">${tr('panel.view')}</span></button><button id="mEdit" aria-pressed="false" data-ic="edit"><span class="wide" data-i18n="panel.edit">${tr('panel.edit')}</span></button></div>
@@ -635,7 +665,7 @@ const template = () => `
 <aside class="panel popover" id="sunPop" hidden></aside>
 <aside class="panel vp view-only" id="vp" aria-label="${tr('panel.controls')}" data-i18n-aria-label="panel.controls" data-sheet="half">
   <button class="sheet-grip" id="sheetGrip" aria-label="${tr('panel.resizeSheet')}" data-i18n-aria-label="panel.resizeSheet"><i></i></button>
-  <div class="panel-head"><div class="rc-heading"><span id="roomContext"></span><h2 id="vpTitle"></h2><label class="roomsel view-only"><span class="sr" data-i18n="panel.room">${tr('panel.room')}</span><select id="roomSel" aria-label="${tr('panel.pickRoom')}" data-i18n-aria-label="panel.pickRoom"></select></label><div id="summary"></div></div><button id="roomCollapse" aria-label="${tr('panel.roomControl.collapse')}">↕</button></div>
+  <div class="panel-head"><div class="rc-heading"><span id="roomContext"></span><h2 id="vpTitle"></h2><div id="summary"></div></div><button id="roomCollapse" aria-label="${tr('panel.roomControl.collapse')}">↕</button></div>
   <div id="vpList" style="display:flex;flex-direction:column;min-height:0;flex:1">
     <div id="roomTabs" role="group" aria-label="${tr('panel.controls')}"></div>
     <div id="roomCategories"></div>
@@ -671,11 +701,24 @@ const template = () => `
 <div class="stats" id="stats" hidden></div>
 <div class="sceneprev" id="scenePrev" hidden></div>
 <div class="walkhud" id="walkHud" hidden>
-  <div class="wh-row"><strong data-i18n="panel.walk">${tr('panel.walk')}</strong><span class="wh-lvl" id="whLevel"></span>
-    <button class="btn small" id="whDown" title="${tr('panel.floorDown')}" data-i18n-title="panel.floorDown">▼</button><button class="btn small" id="whUp" title="${tr('panel.floorUp')}" data-i18n-title="panel.floorUp">▲</button>
-    <label class="wh-body" data-i18n="panel.bodyHeight">${tr('panel.bodyHeight')} <input type="number" id="whBody" min="1" max="2.2" step="0.01"> m</label>
-    <button class="btn small primary" id="whExit" data-i18n="panel.exit">${tr('panel.exit')}</button></div>
-  <div class="wh-hint" id="whHint" data-i18n="panel.walkKeys">${tr('panel.walkKeys')}</div>
+  <div class="wh-header">
+    <span class="wh-avatar">${icon('motion')}</span>
+    <div class="wh-location"><span data-i18n="panel.walk">${tr('panel.walk')}</span><strong id="whLevel"></strong></div>
+    <div class="wh-floors">
+      <button class="btn small" id="whDown" title="${tr('panel.floorDown')}" aria-label="${tr('panel.floorDown')}" data-i18n-title="panel.floorDown" data-i18n-aria-label="panel.floorDown">${icon('walkDown')}</button>
+      <button class="btn small" id="whUp" title="${tr('panel.floorUp')}" aria-label="${tr('panel.floorUp')}" data-i18n-title="panel.floorUp" data-i18n-aria-label="panel.floorUp">${icon('walkUp')}</button>
+    </div>
+    <button class="btn small wh-exit" id="whExit" data-i18n="panel.exit">${tr('panel.exit')}</button>
+  </div>
+  <div class="walk-options" id="whOptions"></div>
+  <details class="wh-details">
+    <summary><span data-i18n="panel.walkSettings">${tr('panel.walkSettings')}</span>${icon('chevronDown')}</summary>
+    <div class="wh-settings">
+      <label class="wh-body" for="whBody"><span data-i18n="panel.bodyHeight">${tr('panel.bodyHeight')}</span><span class="wh-number"><input type="number" id="whBody" min="1" max="2.2" step="0.01"><span>m</span></span></label>
+      <div class="wh-help-title" data-i18n="panel.walkHelp">${tr('panel.walkHelp')}</div>
+      <div class="wh-hint" id="whHint" data-i18n="panel.walkKeys">${tr('panel.walkKeys')}</div>
+    </div>
+  </details>
 </div>
 <div class="joy" id="joy" hidden><i></i></div>
 `;

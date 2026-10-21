@@ -5,9 +5,11 @@ import { buildOpeningModel, shutterColors } from './opening-models.js';
 // The segmentation idea comes from house-control (MIT, 0xProbabillity), generalised
 // here from axis-aligned rectangles to arbitrary polygons.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mergeByMaterial } from '../../engine/recipe.js';
 import { box, mat, surfaceMat, slatTex, neutralSlatTex, garageTex, blockerMat, canvasTex, shade } from './kit.js';
-import { edges, lineOf, lineKey, pointInPolygon, bbox, centroid } from './geometry.js';
+import { floorSurfaceMaterial } from './surfaces.js';
+import { edges, lineOf, lineKey, pointInPolygon, bbox, signedArea, area, distToSeg } from './geometry.js';
 import { slabThickness, plinthHeight } from './plan.js';
 import { facadeMaterial, metricUV } from './roof.js';
 
@@ -16,9 +18,30 @@ const EPS = 1e-4, PLINTH_OUT = 0.0225; // plinth stands 2.25 cm proud of the fac
 const k3 = (v) => Math.round(v * 1000);
 
 export const isIndoor = (r) => !r.kind || r.kind === 'room' || r.kind === 'garage';
-const formsWalls = (r) => isIndoor(r) || r.kind === 'void';
+const formsWalls = (r) => isIndoor(r);
+
+function splitAroundVoids(seg, voids) {
+  const l = seg.l, cuts = [seg.a, seg.b];
+  for (const room of voids) for (const [a, b] of edges(room.points)) {
+    const ex = b[0] - a[0], ez = b[1] - a[1], den = l.ux * ez - l.uz * ex;
+    if (Math.abs(den) < 1e-9) {
+      if (Math.abs(a[0] * l.nx + a[1] * l.nz - l.off) < 1e-6) cuts.push(a[0] * l.ux + a[1] * l.uz, b[0] * l.ux + b[1] * l.uz);
+      continue;
+    }
+    const t = ((a[0] - l.nx * l.off) * ez - (a[1] - l.nz * l.off) * ex) / den;
+    const q = ((a[0] - l.nx * l.off) * l.uz - (a[1] - l.nz * l.off) * l.ux) / den;
+    if (q >= -1e-7 && q <= 1 + 1e-7) cuts.push(t);
+  }
+  const pts = [...new Set(cuts.filter((v) => v >= seg.a - 1e-7 && v <= seg.b + 1e-7).map(k3))].sort((a, b) => a - b).map((v) => v / 1000), out = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const mid = (pts[i] + pts[i + 1]) / 2, p = [l.ux * mid + l.nx * l.off, l.uz * mid + l.nz * l.off];
+    if (!voids.some((r) => pointInPolygon(p, r.points))) out.push({ ...seg, a: pts[i], b: pts[i + 1] });
+  }
+  return out;
+}
 
 export function wallSegments(level) {
+  const voids = level.rooms.filter((r) => r.kind === 'void');
   const lines = new Map();
   for (const r of level.rooms.filter(formsWalls)) {
     for (const [a, b] of edges(r.points)) {
@@ -49,14 +72,13 @@ export function wallSegments(level) {
       const mid = (pts[i] + pts[i + 1]) / 2;
       const cov = L.edges.filter((e) => e.a < mid && mid < e.b);
       if (!cov.length) continue;
-      const voidOnly = cov.every((e) => e.room.kind === 'void');
-      if (voidOnly && cov.length === 1) { /* edge of a stair hole facing outside: railing */ }
-      const seg = { l: L.l, a: pts[i], b: pts[i + 1], kind: cov.length > 1 || cov.some((e) => e.room.kind === 'void') ? 'interior' : 'exterior', side: cov[0].side, opening: L.openings.find((o) => o.a < mid && mid < o.b)?.o || null };
+      const seg = { l: L.l, a: pts[i], b: pts[i + 1], kind: cov.length > 1 ? 'interior' : 'exterior', side: cov[0].side, opening: L.openings.find((o) => o.a < mid && mid < o.b)?.o || null };
       const prev = run[run.length - 1];
       if (prev && Math.abs(prev.b - seg.a) < EPS && prev.kind === seg.kind && prev.side === seg.side && prev.opening === seg.opening) prev.b = seg.b; else run.push(seg);
     }
-    run.forEach((s, i) => { s.freeA = !(run[i - 1] && Math.abs(run[i - 1].b - s.a) < EPS); s.freeB = !(run[i + 1] && Math.abs(run[i + 1].a - s.b) < EPS); });
-    segs.push(...run);
+    const cut = run.flatMap((s) => splitAroundVoids(s, voids));
+    cut.forEach((s, i) => { s.freeA = !(cut[i - 1] && Math.abs(cut[i - 1].b - s.a) < EPS); s.freeB = !(cut[i + 1] && Math.abs(cut[i + 1].a - s.b) < EPS); });
+    segs.push(...cut);
   }
   return segs;
 }
@@ -66,16 +88,92 @@ function shapeOf(points, holes = []) {
   for (const h of holes) { const p = new THREE.Path(); h.forEach(([x, z], i) => (i ? p.lineTo(x, -z) : p.moveTo(x, -z))); p.closePath(); s.holes.push(p); }
   return s;
 }
+function splitPolygon(poly, a, b, orientation, keepInside) {
+  const out = [], side = (p) => orientation * ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]));
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length], dp = side(p), dq = side(q), pin = keepInside ? dp >= -1e-9 : dp <= 1e-9, qin = keepInside ? dq >= -1e-9 : dq <= 1e-9;
+    if (pin) out.push(p);
+    if (pin !== qin) { const t = dp / (dp - dq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+  }
+  return out.filter((p, i) => i === 0 || Math.hypot(p[0] - out[i - 1][0], p[1] - out[i - 1][1]) > 1e-8);
+}
+function subtractTriangle(poly, triangle) {
+  const orientation = Math.sign(signedArea(triangle)) || 1; let inside = [poly], outside = [];
+  for (let i = 0; i < triangle.length && inside.length; i++) {
+    const a = triangle[i], b = triangle[(i + 1) % triangle.length], next = [];
+    for (const part of inside) {
+      const out = splitPolygon(part, a, b, orientation, false), inn = splitPolygon(part, a, b, orientation, true);
+      if (out.length >= 3 && area(out) > 1e-8) outside.push(out);
+      if (inn.length >= 3 && area(inn) > 1e-8) next.push(inn);
+    }
+    inside = next;
+  }
+  return outside;
+}
+function triangles(points) {
+  const vectors = points.map(([x, z]) => new THREE.Vector2(x, z));
+  return THREE.ShapeUtils.triangulateShape(vectors, []).map((face) => face.map((i) => points[i]));
+}
+function cutPolygons(points, holes) {
+  let polys = triangles(points);
+  for (const hole of holes) for (const cut of triangles(hole)) polys = polys.flatMap((poly) => subtractTriangle(poly, cut));
+  return polys;
+}
+function geometryForPolygons(polys, make) {
+  const geoms = polys.map((poly) => make(shapeOf(poly))).filter((g) => g.attributes.position?.count);
+  if (geoms.length < 2) return geoms[0] || new THREE.BufferGeometry();
+  const merged = mergeGeometries(geoms, false); geoms.forEach((g) => g.dispose()); return merged;
+}
+function geometryFor(points, holes, make) {
+  if (!holes.length) return make(shapeOf(points));
+  return geometryForPolygons(cutPolygons(points, holes), make);
+}
+function slabSides(points, holes, polys, y0, y1) {
+  const positions = [], normals = [], uvs = [], indices = [], seen = new Set();
+  const filled = (p) => pointInPolygon(p, points) && !holes.some((hole) => pointInPolygon(p, hole));
+  for (const poly of polys) for (const [a, b] of edges(poly)) {
+    const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz); if (len < 1e-8) continue;
+    const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2, nx = -dz / len, nz = dx / len, probe = Math.min(1e-5, len / 4);
+    const left = filled([mx + nx * probe, mz + nz * probe]), right = filled([mx - nx * probe, mz - nz * probe]);
+    if (left === right) continue; // shared clipping/triangulation edge, not a slab boundary
+    const key = [[a[0], a[1]], [b[0], b[1]]].sort((p, q) => p[0] - q[0] || p[1] - q[1]).flat().map((v) => Math.round(v * 1e7)).join('|');
+    if (seen.has(key)) continue; seen.add(key);
+    const outward = left ? [-nx, -nz] : [nx, nz], base = positions.length / 3;
+    const vertices = left
+      ? [[a[0], y0, a[1]], [a[0], y1, a[1]], [b[0], y1, b[1]], [b[0], y0, b[1]]]
+      : [[a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]];
+    for (const v of vertices) { positions.push(...v); normals.push(outward[0], 0, outward[1]); }
+    if (left) uvs.push(0, 0, 0, y1 - y0, len, y1 - y0, len, 0);
+    else uvs.push(0, 0, len, 0, len, y1 - y0, 0, y1 - y0);
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setIndex(indices); return g;
+}
 // Flat polygon at height y with world-metre UVs.
 export function polyMesh(points, material, y = 0, uvScale = 2.4, holes = []) {
-  const g = new THREE.ShapeGeometry(shapeOf(points, holes)); g.rotateX(-Math.PI / 2); g.translate(0, y, 0);
+  const g = geometryFor(points, holes, (shape) => new THREE.ShapeGeometry(shape)); g.rotateX(-Math.PI / 2); g.translate(0, y, 0);
   const pos = g.attributes.position, uv = g.attributes.uv;
-  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / uvScale, pos.getZ(i) / uvScale);
+  for (let i = 0; i < (pos?.count || 0); i++) uv.setXY(i, pos.getX(i) / uvScale, pos.getZ(i) / uvScale);
   return new THREE.Mesh(g, material);
 }
 function slab(points, y0, y1, material, holes = []) {
-  const g = new THREE.ExtrudeGeometry(shapeOf(points, holes), { depth: y1 - y0, bevelEnabled: false });
-  g.rotateX(-Math.PI / 2); g.translate(0, y0, 0);
+  const contained = holes.every((hole) => hole.every((p) => pointInPolygon(p, points) || edges(points).some(([a, b]) => distToSeg(p, a, b) < 1e-7)));
+  if (!holes.length || contained) {
+    const g = new THREE.ExtrudeGeometry(shapeOf(points, holes), { depth: y1 - y0, bevelEnabled: false }); g.rotateX(-Math.PI / 2); g.translate(0, y0, 0);
+    return new THREE.Mesh(g, material);
+  }
+  const polys = cutPolygons(points, holes);
+  const top = geometryForPolygons(polys, (shape) => new THREE.ShapeGeometry(shape)); top.rotateX(-Math.PI / 2);
+  if (!top.attributes.position) return new THREE.Mesh(top, material);
+  if (!top.index && top.attributes.position) top.setIndex(Array.from({ length: top.attributes.position.count }, (_, i) => i));
+  const bottom = top.clone(); if (bottom.index) { const index = bottom.index.array; for (let i = 0; i < index.length; i += 3) [index[i + 1], index[i + 2]] = [index[i + 2], index[i + 1]]; bottom.index.needsUpdate = true; }
+  bottom.scale(1, -1, 1); bottom.translate(0, y0, 0); top.translate(0, y1, 0);
+  const sides = slabSides(points, holes, polys, y0, y1), parts = sides.attributes.position.count ? [top, bottom, sides] : [top, bottom];
+  const g = mergeGeometries(parts, false); top.dispose(); bottom.dispose(); sides.dispose();
   return new THREE.Mesh(g, material);
 }
 
@@ -116,15 +214,21 @@ export function buildLevel(level, site = {}, opts = {}) {
   for (const r of level.rooms) {
     if (r.kind === 'void') continue;
     const outdoor = r.kind === 'outdoor';
-    const holes = outdoor ? [] : voids.filter((v) => pointInPolygon(centroid(v.points), r.points)).map((v) => v.points);
+    const holes = outdoor ? [] : voids.map((v) => v.points);
     const y = outdoor ? (r.surface === 'pool' ? 0.004 : 0.008 + (r.raise || 0)) : 0;
-    const f = polyMesh(r.points, surfaceMat(r.surface || (outdoor ? 'lawn' : 'oak')), y, 2.4, holes);
+    const floorMaterial = r.surfaceSpec ? floorSurfaceMaterial(r.surfaceSpec, r.surfaceOptions) : surfaceMat(r.surface || (outdoor ? 'lawn' : 'oak'));
+    const f = polyMesh(r.points, floorMaterial, y, 2.4, holes);
     f.receiveShadow = true; f.userData = { room: r.id }; g.add(f); floors[r.id] = f;
     const ov = polyMesh(r.points, new THREE.MeshBasicMaterial({ color: '#79a6ff', transparent: true, opacity: 0, depthWrite: false }), y + 0.006, 2.4, holes);
     ov.renderOrder = 1; g.add(ov); overlays[r.id] = ov;
     if (!outdoor) {
       if (slabDepth > EPS) { const s = slab(r.points, -slabDepth, 0, mat('#1a2030', { rough: 0.9 }), holes); s.receiveShadow = true; s.castShadow = true; g.add(s); }
-      const ceil = slab(r.points, H, H + 0.05, blockerMat); ceil.castShadow = true; ceil.userData.blocker = true; g.add(ceil);
+      const ceilingMaterial = opts.visibleCeilings ? wallBody() : blockerMat;
+      // A visible lower ceiling shares its underside with the floor plate above.
+      // Pull only the visible finish forward in depth, without opening a physical gap.
+      if (opts.visibleCeilings) { ceilingMaterial.polygonOffset = true; ceilingMaterial.polygonOffsetFactor = -1; ceilingMaterial.polygonOffsetUnits = -1; }
+      const ceil = slab(r.points, H, H + 0.05, ceilingMaterial, opts.ceilingHoles || []);
+      ceil.castShadow = true; ceil.receiveShadow = !!opts.visibleCeilings; ceil.userData.blocker = true; g.add(ceil);
     } else if (r.raise) {
       const s = slab(r.points, -0.02, r.raise, mat(shade('#6d6a63', 0), { rough: 0.9 })); s.receiveShadow = true; s.castShadow = true; g.add(s);
     }
