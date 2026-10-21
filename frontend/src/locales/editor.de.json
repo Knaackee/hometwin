@@ -279,6 +279,14 @@
   "editor.solar.rows": "Reihen",
   "editor.solar.sideOffset": "Versatz seitlich (m)",
   "editor.stairs.fitHeight": "Höhe an Etage anpassen",
+  "editor.stairs.targetLevel": "Führt nach",
+  "editor.stairs.nextHigher": "Nächste höhere Etage (automatisch)",
+  "editor.stairs.noConnection": "Keine Etagenverbindung",
+  "editor.stairs.opening": "Treppenöffnung",
+  "editor.stairs.automaticOpening": "Automatisch",
+  "editor.stairs.manualOpening": "Eigene Form",
+  "editor.stairs.editOpening": "Öffnung bearbeiten",
+  "editor.stairs.resetAutomatic": "Automatische Öffnung wiederherstellen",
   "editor.stairs.flightWidth": "Laufbreite (m)",
   "editor.stairs.half": "halbgewendelt (U)",
   "editor.stairs.heightMismatch": "Höhe {height} m, bis „{level}“ sind es {needed} m.",
@@ -421,5 +429,12 @@
   "editor.opening.shutterAppearance": "Rollladen-Gestaltung",
   "editor.opening.shutterColor": "Rollladenpanzer",
   "editor.opening.shutterFrameColor": "Führungsschienen und Abschluss",
-  "editor.opening.resetShutterColors": "Rollladenfarben zurücksetzen"
+  "editor.opening.resetShutterColors": "Rollladenfarben zurücksetzen",
+  "editor.floor.title": "Bodenbelag",
+  "editor.floor.rotation": "Verlegerichtung (°)",
+  "editor.floor.width": "Dielen- / Fliesenbreite (m)",
+  "editor.floor.length": "Dielen- / Fliesenlänge (m)",
+  "editor.floor.reset": "Anpassungen zurücksetzen",
+  "editor.floor.restore": "Ursprünglichen Belag verwenden",
+  "editor.floor.legacy": "Dein bisheriger Boden bleibt unverändert. Wähle ein Muster, um ihn anzupassen."
 }

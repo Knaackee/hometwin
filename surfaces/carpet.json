@@ -1,0 +1,12 @@
+{
+  "id": "carpet",
+  "name": { "en": "Carpet", "de": "Teppich" },
+  "pattern": "noise",
+  "color": "#7b7f8c",
+  "secondaryColor": "#5e626e",
+  "width": 0.5,
+  "length": 0.5,
+  "roughness": 1,
+  "license": "CC0-1.0",
+  "author": "HomeTwin contributors"
+}

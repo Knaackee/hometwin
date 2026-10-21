@@ -1,11 +1,11 @@
 ---
 name: hometwin-add-object
-description: Adds real-world objects (furniture, lamp, appliance, radiator, sensor, instrument, garden item …) to the HomeTwin 3D library and opens one pull request for them. Use when the user names products or sends photos and wants them in HomeTwin, or asks to model, contribute or submit 3D objects for HomeTwin (github.com/knaackee/hometwin).
+description: Adds real-world objects or procedural floor materials to HomeTwin and routes device-visual, opening-model and translation contributions to their supported contracts. Use when the user wants to model, contribute or submit a HomeTwin extension (github.com/knaackee/hometwin).
 ---
 
-# HomeTwin: add an object to the library
+# HomeTwin: contribute an object or floor material
 
-You turn a product the user names or photographs into a library object for HomeTwin (3D home dashboard for Home Assistant) and submit it as a pull request. An object is a folder with:
+You turn a product the user names or photographs into a library object, or add a procedural floor material, for HomeTwin (3D home dashboard for Home Assistant) and submit it as a pull request. For an object, the contribution is a folder with:
 
 | File | Content |
 |---|---|
@@ -15,6 +15,20 @@ You turn a product the user names or photographs into a library object for HomeT
 | `review.png` | rendered four-view review sheet (3/4, front, side, top and dimensions) |
 
 No Blender, no image generation: you build the model from primitives, render it with the same Three.js engine the panel uses, look at the render, and correct it.
+
+## Choose the extension point
+
+Use the narrow contract that matches the requested contribution:
+
+| Extension point | Supported path |
+|---|---|
+| Furniture, decor and physical products | Add a declarative recipe under `library/`. Non-opening recipes are inserted as visual library objects; `ha.domains` is catalogue metadata and does not turn one into an entity-linked device. Follow the object workflow below. |
+| Home Assistant device visuals | Entity-linked representations are built into `frontend/src/devices.js`, exposed by `frontend/src/thumbs.js` and named through the locale files. Treat this as a frontend code contribution, test it in the demo and deliver it with an integration update. Do not present it as a remotely discoverable library object. |
+| Door and window models | Add an opening recipe under `library/` and follow [Wall-opening models](#wall-opening-models-doorwindow). The current contract is fixed windows and single swinging doors. |
+| Floor materials | Add a declarative preset under `surfaces/` and follow [references/surfaces.md](references/surfaces.md). Materials are procedural and bundled; they are not downloaded from the community library. |
+| Translations | Follow [`CONTRIBUTING.md#translation-contributions`](../../CONTRIBUTING.md#translation-contributions). AI may draft text, but a native speaker must review every string and the running UI before merge. |
+
+If the request needs a new renderer capability, entity interaction, opening motion type or surface pattern, it is an engine change rather than a data-only contribution. State that boundary before modelling it.
 
 ## Specific product or generic object?
 
@@ -94,6 +108,16 @@ Submit distinct designs as distinct objects: a glass door has its own card, not 
 Every object needs `preview.webp` and a four-view `review.png`. Previews are generated from the recipe, shipped with the repository and bundled locally for offline selection. Published community entries use the same catalogue metadata and the existing optional library refresh. Keep English and German names complete. A merge makes compatible models discoverable without writing a new editor option.
 
 Verify the four-view sheet, fit at different supported widths/heights/depths, hinge reversal, glass vs solid appearance, colour overrides/reset, open/closed views, and closed shutters at oblique viewing angles. Run strict library validation, `node tools/test-opening-models.mjs`, `node tools/test-opening-seals.mjs`, and `node tools/test-opening-picker.mjs` (demo at port 4185). Model selection must preserve dimensions and cover/contact entities, save the recipe into the plan for offline use, and leave existing homes unchanged until a model is explicitly selected. Incompatible sizes must be explained in the picker. Never self-certify the user's visual acceptance.
+
+## Floor materials
+
+Floor materials use a separate data-only workflow. Read [references/surfaces.md](references/surfaces.md), add one JSON file under `surfaces/`, and run `node tools/build-surfaces.mjs --check` plus `node tools/test-surfaces.mjs`. Then build and inspect the actual rendered floor in the demo in both English and German; a colour swatch or JSON review is not visual evidence.
+
+Use only the supported procedural patterns `planks`, `tiles` and `noise`. Do not add or download texture images. A room stores a `surfaceSpec` snapshot plus user `surfaceOptions` overrides, so changing a preset must not silently restyle an existing room. Legacy room surfaces remain unchanged until the user explicitly chooses a new material.
+
+Floor-material additions ship in an integration release. Do not claim that the panel discovers them from the remote object-library feed.
+
+For a floor material, complete the workflow in `references/surfaces.md`; object steps 5–7 below do not apply.
 ## 5. Validate and look at it
 
 ```bash

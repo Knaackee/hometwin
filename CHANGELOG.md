@@ -1,4 +1,15 @@
 # Changelog
+
+## 0.7.0 (2026-10-21)
+
+- Optionally connect stairs to another floor with automatic or custom stairwell openings. Walk between linked floors while the complete closed house remains rendered, use explicit up/down controls, and follow the corrected walking direction.
+- Add a walkthrough menu with optional wall collision and gravity. Both behaviors remain opt-in.
+- Move the responsive room picker into the top area with clearer room icons and live status on desktop and mobile.
+- Add bilingual “What’s new” release notes inside HomeTwin.
+- Add eight procedural floor materials with generated previews. Adjust colour, direction, and plank or tile dimensions; bundled recipes remain available offline and follow a maintained community extension path.
+- Fix the blank panel on Home Assistant 2026.10 reported in issue #12.
+- Fix clipping around floor voids, add the missing side faces around openings, and prevent ceiling z-fighting.
+
 ## 0.6.0 (2026-10-19)
 
 - Add responsive room controls with device categories, room summaries, scenes and area-assigned automations; use a bottom sheet on mobile.

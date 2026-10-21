@@ -279,6 +279,14 @@
   "editor.solar.rows": "Rows",
   "editor.solar.sideOffset": "Side offset (m)",
   "editor.stairs.fitHeight": "Fit height to level",
+  "editor.stairs.targetLevel": "Leads to",
+  "editor.stairs.nextHigher": "Next higher level (automatic)",
+  "editor.stairs.noConnection": "No level connection",
+  "editor.stairs.opening": "Stairwell opening",
+  "editor.stairs.automaticOpening": "Automatic",
+  "editor.stairs.manualOpening": "Custom shape",
+  "editor.stairs.editOpening": "Edit opening",
+  "editor.stairs.resetAutomatic": "Reset to automatic opening",
   "editor.stairs.flightWidth": "Flight width (m)",
   "editor.stairs.half": "half-turn (U)",
   "editor.stairs.heightMismatch": "Height {height} m; the distance to ‘{level}’ is {needed} m.",
@@ -421,5 +429,12 @@
   "editor.opening.shutterAppearance": "Shutter appearance",
   "editor.opening.shutterColor": "Shutter slats",
   "editor.opening.shutterFrameColor": "Guides and trim",
-  "editor.opening.resetShutterColors": "Reset shutter colours"
+  "editor.opening.resetShutterColors": "Reset shutter colours",
+  "editor.floor.title": "Floor covering",
+  "editor.floor.rotation": "Laying direction (°)",
+  "editor.floor.width": "Plank / tile width (m)",
+  "editor.floor.length": "Plank / tile length (m)",
+  "editor.floor.reset": "Reset adjustments",
+  "editor.floor.restore": "Use original surface",
+  "editor.floor.legacy": "Your existing floor is unchanged. Choose a sample to customize it."
 }

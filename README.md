@@ -4,8 +4,8 @@
 
 <h1 align="center">HomeTwin</h1>
 
-<p align="center"><b>Your home in 3D for Home Assistant.</b><br>
-Upload your floor plan, let AI read the rooms, control every device right where it is.</p>
+<p align="center"><b>Your home in 3D. One integration. A community that builds with you.</b><br>
+HomeTwin is a community-driven, open-source 3D dashboard for Home Assistant. Build and review your plan in the visual editor, optionally let AI read a floor plan, and control devices where they belong.</p>
 
 <p align="center">
   <img alt="Status: beta" src="https://img.shields.io/badge/status-public%20beta-ffb35c">
@@ -30,15 +30,16 @@ Upload your floor plan, let AI read the rooms, control every device right where 
 > **HomeTwin is a public beta.** It runs in daily use, but data formats can still change. Export a backup now and then (*Edit → House → Backup*). HomeTwin currently supports **English and German**. The interface defaults to English; choose German in the integration options. For setup help, see [Installation](#-installation). Want to improve HomeTwin? See [Contribute in 5 minutes](#-contribute-in-5-minutes).
 
 ## ✨ What it does
-- 🏠 **Your house in 3D**: storeys, rooms, walls, windows, doors, stairs, roofs and garden. Built from your floor plan or drawn by hand.
-- 💡 **Room controls**: devices grouped by category, with room temperature, humidity and contact status at a glance. Control lights and covers, open device details, run scenes and enable or disable automations. Room-specific scenes and automations use Home Assistant area assignments.
-- 📱 **Phone and wall tablet ready**: a room sidebar on desktop becomes a bottom sheet on mobile, with compact and expanded views.
-- 🤖 **Floor-plan AI**: reads rooms, doors, windows and scale from an architect's plan, including a self-check pass. Review and correct the result in the editor.
+- 🏠 **Your house in 3D**: storeys, rooms, walls, windows, doors, connected stairs, roofs and garden. Build it from a floor plan or draw it by hand in the visual editor.
+- 💡 **Room controls**: a responsive top-area picker shows room icons and live status. Control devices, scenes and area-assigned automations from layouts made for desktop, phones and wall tablets.
+- 🤖 **Optional floor-plan AI**: reads rooms, doors, windows and scale from an architect's plan, including a self-check pass. You review and correct every result in the visual editor.
 - 🚪 **Doors and windows**: choose models from the library, adjust generic frame colours and set shutter colours separately. Hover hints and the object tree help select small openings.
+- 🎨 **Floor materials**: choose from eight procedural presets and adjust colour, direction, and plank or tile dimensions. Generated previews and bundled recipes work offline.
 - ☀️ **Solar and roofs**: gable, hip, shed and flat roofs, dormers, roof windows and gutters. Arrange individual PV modules or rows, choose dimensions and portrait or landscape mounting.
 - 🌤️ **Real sun and shadows** for your location and time of day.
-- 🚶 **Walk through** your home at eye level and operate or rearrange things on the way.
-- 🧩 **Community object library**: real products and generic objects, including architectural openings. New merged objects become available through the library.
+- 🚶 **Connected walkthrough**: move between linked floors through stair openings while the complete house remains around you. Use the new menu for up/down movement and optional wall collision and gravity.
+- 🧩 **Community extensions**: add furniture, products, doors, windows and floor materials through maintained contribution paths. The contribution skill guides additions; it is separate from the in-app floor-plan assistant.
+- ✨ **What’s new**: review release highlights inside HomeTwin in English or German.
 - ⌨️ **Placement tools**: move selected objects with the mouse or arrow keys; use height settings and automatic support placement for applicable objects.
 - 💾 **Backup**: export and import the complete configuration as one file.
 
@@ -46,9 +47,9 @@ Upload your floor plan, let AI read the rooms, control every device right where 
 |---|---|---|---|
 | ![Demo room controls](docs/assets/screenshot-room.png) | ![Floor-plan assistant](docs/assets/screenshot-wizard.png) | ![Demo walkthrough](docs/assets/screenshot-walk.png) | ![Demo mobile room controls](docs/assets/screenshot-mobile.png) |
 
-All screenshots show the built-in demo house, not a private home.
+<p align="center"><img src="docs/assets/screenshot-flooring.png" alt="HomeTwin floor material picker with generated material previews and adjustment controls" width="100%"></p>
 
-**In development:** robot work areas remain hidden until real-device testing is complete. Saved areas are retained; no robot compatibility is claimed yet. See [implementation status and limitations](docs/robot-work-areas.md).
+All screenshots show the built-in demo house, not a private home.
 
 ## ⚡ From floor plan to 3D in about 2 minutes
 
@@ -94,8 +95,19 @@ From **a single phone photo** the skill recognised a *Martin Ed Sheeran ÷ (Divi
 
 **Got some tokens to spare? Put them to work for the community.** Look around your home: what furniture or devices are missing from HomeTwin? Grab some product photos and use our [contribution guide](CONTRIBUTING.md) with **Opus 5.5 or a comparably capable model**. Bring a whole room’s collection if you like, and bundle it in one pull request. Let’s make HomeTwin better together.
 
+### Maintained extension points
+
+- **Furniture, decor and physical products:** declarative object-library recipes; non-opening recipes are inserted as visual library objects.
+- **Home Assistant device visuals:** built-in entity-linked representations live in the frontend source and require an integration update.
+- **Doors and windows:** declarative library recipes for the supported fixed-window and single-swinging-door opening contract.
+- **Floor materials:** declarative procedural presets with generated snapshots and no downloaded textures; recipes work offline, and additions are bundled with an integration update.
+- **Translations:** frontend, integration and runtime strings; a native speaker must review every string and the running UI before merge.
+
+The [HomeTwin contribution skill](skills/add-object/SKILL.md) routes each extension type to its files, checks and review requirements. It helps contributors extend HomeTwin; the in-app floor-plan assistant separately builds and reviews your own home.
+
 **Recommended model for asset generation:** Opus 5.5 or a comparably capable model with image understanding. Include the model used to generate each asset in the pull request.
 **Translations welcome:** English and German are supported. AI-assisted translations are welcome only after a native speaker manually reviews every string and checks the UI. See the [translation contribution guide](CONTRIBUTING.md#translation-contributions) for files, checks and review requirements.
+
 ## 🗺️ Roadmap
 
 - 🌍 **Community translations** beyond English and German

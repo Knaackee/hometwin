@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "releases": [
+    {
+      "version": "0.7.0",
+      "date": "2026-10-21",
+      "title": {
+        "en": "Connected floors, personal surfaces",
+        "de": "Verbundene Etagen, persönliche Böden"
+      },
+      "changes": [
+        {
+          "en": "Optionally connect stairs to another floor with automatic or custom openings, then walk between floors while the complete house stays around you.",
+          "de": "Verbinde Treppen optional über automatische oder eigene Öffnungen mit einer anderen Etage und gehe durch das vollständig dargestellte Haus von Etage zu Etage."
+        },
+        {
+          "en": "Use the new walkthrough menu for up/down controls and optional wall collision and gravity.",
+          "de": "Nutze das neue Begehungsmenü für die Auf-/Ab-Steuerung sowie optionale Wandkollision und Gravitation."
+        },
+        {
+          "en": "Pick rooms from a responsive top area with clear icons and live status.",
+          "de": "Wähle Räume in einem responsiven oberen Bereich mit klaren Symbolen und Live-Status aus."
+        },
+        {
+          "en": "Choose from eight procedural floor materials and adjust colour, direction, and plank or tile dimensions; previews and recipes stay available offline.",
+          "de": "Wähle aus acht prozeduralen Bodenmaterialien und passe Farbe, Richtung sowie Dielen- oder Fliesenmaße an; Vorschauen und Rezepte bleiben offline verfügbar."
+        },
+        {
+          "en": "Open bilingual What’s new notes in HomeTwin to review release highlights.",
+          "de": "Öffne die zweisprachigen Hinweise unter „Was ist neu?“, um die wichtigsten Änderungen nachzulesen."
+        },
+        {
+          "en": "Fix the blank panel in Home Assistant 2026.10, floor and ceiling rendering glitches, and reversed walkthrough direction.",
+          "de": "Behebt das leere Panel in Home Assistant 2026.10, Darstellungsfehler an Böden und Decken sowie eine vertauschte Laufrichtung."
+        }
+      ]
+    },
+    {
+      "version": "0.6.0",
+      "date": "2026-10-19",
+      "title": {
+        "en": "More control, clearer editing",
+        "de": "Mehr Steuerung, klareres Bearbeiten"
+      },
+      "changes": [
+        {
+          "en": "Control devices, scenes and area automations from responsive room controls.",
+          "de": "Steuere Geräte, Szenen und Bereichsautomationen über die responsive Raumsteuerung."
+        },
+        {
+          "en": "Use configurable library doors and windows, with improved picking and sealed openings.",
+          "de": "Nutze anpassbare Türen und Fenster aus der Bibliothek, mit verbesserter Auswahl und geschlossenen Wandöffnungen."
+        },
+        {
+          "en": "Lay out solar modules more freely in portrait or landscape and add roof gutters.",
+          "de": "Ordne Solarmodule flexibler im Hoch- oder Querformat an und füge Dachrinnen hinzu."
+        },
+        {
+          "en": "Recognize floor plans more reliably, including vector PDFs, printed dimensions and opening details.",
+          "de": "Erkenne Grundrisse zuverlässiger, einschließlich Vektor-PDFs, gedruckter Maße und Details zu Öffnungen."
+        },
+        {
+          "en": "Place objects more precisely with improved mouse and keyboard controls and editor onboarding.",
+          "de": "Platziere Objekte präziser mit verbesserter Maus- und Tastatursteuerung sowie einer Einführung in den Editor."
+        }
+      ]
+    },
+    {
+      "version": "0.5.1",
+      "date": "2026-10-16",
+      "title": {
+        "en": "A stronger object library",
+        "de": "Eine stärkere Objektbibliothek"
+      },
+      "changes": [
+        {
+          "en": "Add the Xbox Wireless Controller from the offline catalogue or website gallery.",
+          "de": "Füge den Xbox Wireless Controller aus dem Offline-Katalog oder der Website-Galerie hinzu."
+        },
+        {
+          "en": "Use local HomeTwin brand assets with corrected Home Assistant translations.",
+          "de": "Nutze lokale HomeTwin-Markenelemente mit korrigierten Home-Assistant-Übersetzungen."
+        },
+        {
+          "en": "Review library objects in new four-view preview sheets.",
+          "de": "Prüfe Bibliotheksobjekte in neuen Vorschauen mit vier Ansichten."
+        }
+      ]
+    },
+    {
+      "version": "0.5.0",
+      "date": "2026-10-16",
+      "title": {
+        "en": "HomeTwin's first public release",
+        "de": "Die erste öffentliche HomeTwin-Version"
+      },
+      "changes": [
+        {
+          "en": "Existing Raumwerk plans and floor-plan images move to HomeTwin automatically.",
+          "de": "Bestehende Raumwerk-Pläne und Grundrissbilder werden automatisch zu HomeTwin übernommen."
+        },
+        {
+          "en": "Export and import your complete plan and view configuration as one backup file.",
+          "de": "Exportiere und importiere deinen vollständigen Plan samt Ansichtseinstellungen als eine Sicherungsdatei."
+        },
+        {
+          "en": "Walk through the house at eye level on desktop or touch devices.",
+          "de": "Begehe das Haus auf Desktop- oder Touch-Geräten in Augenhöhe."
+        },
+        {
+          "en": "Place objects from the community library and keep their recipes available offline.",
+          "de": "Platziere Objekte aus der Community-Bibliothek und halte ihre Rezepte offline verfügbar."
+        }
+      ]
+    }
+  ]
+}

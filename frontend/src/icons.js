@@ -1,4 +1,10 @@
 const P = {
+  walkWalls: '<path d="M3 4h18v16H3zM3 9h18M3 15h18M9 4v5M15 9v6M9 15v5"/>',
+  walkGravity: '<path d="M12 3v12m-4-4 4 4 4-4M4 21h16"/>',
+  walkUp: '<path d="M12 20V4m-6 6 6-6 6 6"/>',
+  walkDown: '<path d="M12 4v16m-6-6 6 6 6-6"/>',
+  floorplan: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 11h6m4 0h6M11 4v4m0 6v6"/>',
+  chevronDown: '<path d="m6 9 6 6 6-6"/>',
   bulb: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V17h5v-1.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',
   blinds: '<path d="M4 4h16M5 4v16M19 4v16M5 8h14M5 12h14M5 16h14"/>',
   garage: '<path d="M3 10l9-6 9 6v10H3zM6 20v-7h12v7M6 16h12"/>',

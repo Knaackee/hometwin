@@ -1,3 +1,4 @@
+import { normalizeSurfaceDefinition, normalizeSurfaceOptions } from '../../engine/surface.js';
 // Plan schema (version 2), migration, lookup helpers and the operation applier that both
 // the editor and the AI agent use. Every change an agent proposes is one of these ops.
 import { registerLibrary } from './furniture.js';
@@ -150,28 +151,61 @@ export function usedEntities(plan) {
 }
 export function roomCenter(r) { return labelPoint(r.points); }
 
-// Every staircase cuts a stairwell (a 'void' room) into the storey above. The void follows the
-// stair until the user reshapes it; it is regenerated whenever the stair itself changes.
+export function stairTargetLevel(plan, level, stair) {
+  const next = [...plan.levels].filter((l) => l.elevation > level.elevation).sort((a, b) => a.elevation - b.elevation)[0] || null;
+  if (stair?.targetLevelId === null) return null;
+  if (stair?.targetLevelId) return stair.targetLevelId === next?.id ? next : null;
+  return next;
+}
+
+function stairPose(stair) {
+  return { x: stair.pos[0], z: stair.pos[1], rot: stair.rot || 0, w: (stair.width ?? 1) + 0.1, d: (stair.depth ?? 3.2) + 0.1 };
+}
+function poseSignature(p) { return `${p.x},${p.z}|${p.rot}|${p.w}|${p.d}`; }
+function poseFromSignature(sig) {
+  const [pos, rot, w, d] = String(sig || '').split('|'), [x, z] = (pos || '').split(',').map(Number); const values = [x, z, +rot, +w, +d];
+  return values.every(Number.isFinite) ? { x, z, rot: +rot, w: +w, d: +d } : null;
+}
+function stairOpeningPoints(p) {
+  const th = p.rot * Math.PI / 180, X = [Math.cos(th), -Math.sin(th)], Z = [Math.sin(th), Math.cos(th)];
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [r3(p.x + a * p.w / 2 * X[0] + b * p.d / 2 * Z[0]), r3(p.z + a * p.w / 2 * X[1] + b * p.d / 2 * Z[1])]);
+}
+const samePoints = (a, b) => a?.length === b?.length && a.every((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1]) < 0.002);
+function moveManualOpening(points, from, to) {
+  if (!from || (from.x === to.x && from.z === to.z && from.rot === to.rot)) return points;
+  const th = (to.rot - from.rot) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
+  return points.map(([x, z]) => { const dx = x - from.x, dz = z - from.z; return [r3(to.x + dx * c + dz * s), r3(to.z - dx * s + dz * c)]; });
+}
+
+// Every staircase owns one void on its target storey. Legacy edited voids are recognized from
+// their saved signature and retained as manual openings instead of being regenerated.
 export function syncStairVoids(plan) {
-  const changed = new Set();
-  plan.levels.forEach((L, i) => {
-    const above = plan.levels[i + 1];
-    const stairs = L.furniture.filter((f) => f.type === 'stairs');
-    if (!above) return;
-    const keep = new Set();
-    for (const s of stairs) {
-      const w = (s.width ?? 1.0) + 0.1, d = (s.depth ?? 3.2) + 0.1, th = ((s.rot || 0) * Math.PI) / 180;
-      const X = [Math.cos(th), -Math.sin(th)], Z = [Math.sin(th), Math.cos(th)];
-      const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [r3(s.pos[0] + a * w / 2 * X[0] + b * d / 2 * Z[0]), r3(s.pos[1] + a * w / 2 * X[1] + b * d / 2 * Z[1])]);
-      const sig = `${s.pos}|${s.rot || 0}|${w}|${d}`; const id = `void_${s.id}`; keep.add(id);
-      let v = above.rooms.find((r) => r.id === id);
-      if (!v) { above.rooms.push({ id, name: t('data.defaults.stairwell'), kind: 'void', surface: 'oak', area_id: null, points: pts, stair: s.id, sig }); changed.add(above.id); }
-      else if (v.sig !== sig) { v.points = pts; v.sig = sig; changed.add(above.id); }
+  const changed = new Set(), desired = new Map(), existing = new Map();
+  for (const level of plan.levels) for (const room of level.rooms) if (room.stair) existing.set(room.stair, { level, room });
+  for (const level of plan.levels) for (const stair of level.furniture.filter((f) => f.type === 'stairs')) {
+    const target = stairTargetLevel(plan, level, stair), found = existing.get(stair.id);
+    if (!target) {
+      if (found && stair.openingMode === 'manual') { stair.openingPoints = found.room.points.map((p) => [...p]); stair.openingSig = found.room.sig; }
+      continue;
     }
-    const before = above.rooms.length;
-    above.rooms = above.rooms.filter((r) => !r.stair || keep.has(r.id));
-    if (above.rooms.length !== before) changed.add(above.id);
-  });
+    const pose = stairPose(stair), sig = poseSignature(pose); let room = found?.room;
+    if (!room) room = { id: `void_${stair.id}`, name: t('data.defaults.stairwell'), kind: 'void', surface: 'oak', area_id: null, points: stair.openingMode === 'manual' && stair.openingPoints ? stair.openingPoints.map((p) => [...p]) : stairOpeningPoints(pose), stair: stair.id, sig: stair.openingSig || sig };
+    const oldPose = poseFromSignature(room.sig);
+    if (stair.openingMode == null && (!oldPose || !samePoints(room.points, stairOpeningPoints(oldPose)))) stair.openingMode = 'manual';
+    const manual = stair.openingMode === 'manual';
+    const points = manual ? moveManualOpening(room.points, oldPose, pose) : stairOpeningPoints(pose);
+    if (!samePoints(room.points, points) || room.sig !== sig || found?.level !== target) {
+      room.points = points; room.sig = sig; changed.add(target.id); if (found?.level && found.level !== target) changed.add(found.level.id);
+    }
+    desired.set(stair.id, target.id);
+    if (manual) { stair.openingPoints = points.map((p) => [...p]); stair.openingSig = sig; }
+    if (found?.level !== target) target.rooms.push(room);
+  }
+  for (const level of plan.levels) {
+    const before = level.rooms.length;
+    level.rooms = level.rooms.filter((r) => !r.stair || (desired.get(r.stair) === level.id && existing.get(r.stair)?.room === r) || (!existing.has(r.stair) && desired.get(r.stair) === level.id));
+    if (level.rooms.length !== before) changed.add(level.id);
+  }
   return changed;
 }
 export function planBounds(plan, level) {
@@ -198,8 +232,15 @@ export function applyOps(plan, ops) {
       switch (op.op) {
         case 'add_level': { const l = newLevel(op.name || t('data.defaults.newLevel'), num(op.elevation, 0), pick(op, ['floor_id'])); if (op.id) l.id = op.id; if (op.height) l.height = num(op.height, DEFAULT_ROOM_HEIGHT); if (Number.isFinite(op.slab) && op.slab >= 0) l.slab = op.slab; if (op.autoElevation === false) l.autoElevation = false; plan.levels.push(l); computeElevations(plan); results.push({ ok: true, id: l.id }); break; }
         case 'update_level': { const { item } = f(op.level_id); Object.assign(item, pick(op, ['name', 'floor_id'])); for (const k of ['elevation', 'height', 'cutHeight']) if (op[k] !== undefined) item[k] = num(op[k], item[k]); if (op.elevation !== undefined) item.autoElevation = false; computeElevations(plan); results.push({ ok: true }); break; }
-        case 'add_room': { const points = pointsFrom(op); if (!points) throw new Error(t('data.error.roomGeometry')); const r = { id: op.id || newId('r'), name: op.name || t('data.defaults.room'), kind: op.kind || 'room', surface: op.surface || (op.kind === 'outdoor' ? 'lawn' : 'oak'), area_id: op.area_id || null, points }; lvl(op).rooms.push(r); results.push({ ok: true, id: r.id }); break; }
-        case 'update_room': { const { item } = f(op.room_id); Object.assign(item, pick(op, ['name', 'kind', 'surface', 'area_id'])); const p = pointsFrom(op); if (p) item.points = p; results.push({ ok: true }); break; }
+        case 'add_room': { const points = pointsFrom(op); if (!points) throw new Error(t('data.error.roomGeometry')); const r = { id: op.id || newId('r'), name: op.name || t('data.defaults.room'), kind: op.kind || 'room', surface: op.surface || (op.kind === 'outdoor' ? 'lawn' : 'oak'), area_id: op.area_id || null, points }; if (op.surfaceSpec) r.surfaceSpec = normalizeSurfaceDefinition(op.surfaceSpec); if (op.surfaceOptions) r.surfaceOptions = normalizeSurfaceOptions(op.surfaceOptions); lvl(op).rooms.push(r); results.push({ ok: true, id: r.id }); break; }
+        case 'update_room': { const { item } = f(op.room_id);
+          const spec = op.surfaceSpec ? normalizeSurfaceDefinition(op.surfaceSpec) : null;
+          const options = op.surfaceOptions ? normalizeSurfaceOptions(op.surfaceOptions) : null;
+          if (op.surface !== undefined || op.surfaceSpec === null || ['outdoor', 'void'].includes(op.kind)) { delete item.surfaceSpec; delete item.surfaceOptions; }
+          if (spec) { item.surfaceSpec = spec; delete item.surfaceOptions; }
+          if (options) item.surfaceOptions = options;
+          if (op.surfaceOptions === null) delete item.surfaceOptions;
+          Object.assign(item, pick(op, ['name', 'kind', 'surface', 'area_id'])); const p = pointsFrom(op); if (p) item.points = p; results.push({ ok: true }); break; }
         case 'add_opening': { const from = pt(op.from), to = pt(op.to); if (!from || !to) throw new Error(t('data.error.openingGeometry')); const o = { id: op.id || newId('o'), type: op.type || 'door', from, to, ...pick(op, ['sill', 'head', 'glazed', 'model', 'frameColor', 'leafColor', 'shutterColor', 'shutterFrameColor', 'cover', 'contact', 'preset', 'hinge', 'swing']) }; lvl(op).openings.push(o); results.push({ ok: true, id: o.id }); break; }
         case 'update_opening': { const { item } = f(op.opening_id); Object.assign(item, pick(op, ['type', 'sill', 'head', 'glazed', 'model', 'frameColor', 'leafColor', 'shutterColor', 'shutterFrameColor', 'cover', 'contact', 'hinge', 'swing'])); if (pt(op.from)) item.from = pt(op.from); if (pt(op.to)) item.to = pt(op.to); results.push({ ok: true }); break; }
         case 'place_device': { const pos = pt(op.pos); if (!pos) throw new Error(t('data.error.devicePosition')); const d = markStandaloneProjectorScreen({ id: op.id || newId('d'), kind: op.kind, pos, ...pick(op, ['style', 'entity_id', 'y', 'elevation', 'autoElevation', 'rot', 'length', 'projector_id', 'projector_screen_only']) }); lvl(op).devices.push(d); results.push({ ok: true, id: d.id }); break; }

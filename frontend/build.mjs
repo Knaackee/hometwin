@@ -2,6 +2,8 @@ import { build } from 'esbuild';
 import { readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import '../tools/build-index.mjs';
+import '../tools/releases.mjs';
+import '../tools/build-surfaces.mjs';
 
 // Bundle the object library (index + recipes) into the panel so it works offline.
 const lib = JSON.parse(readFileSync('../library/index.json', 'utf8'));

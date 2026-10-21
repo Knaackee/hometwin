@@ -1,0 +1,12 @@
+{
+  "id": "ash",
+  "name": { "en": "Ash", "de": "Esche" },
+  "pattern": "planks",
+  "color": "#ddc9a8",
+  "secondaryColor": "#bda581",
+  "width": 0.16,
+  "length": 1.2,
+  "roughness": 0.75,
+  "license": "CC0-1.0",
+  "author": "HomeTwin contributors"
+}

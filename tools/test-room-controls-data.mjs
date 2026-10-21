@@ -45,4 +45,11 @@ assert.deepEqual(entities.map(({ id }) => id), ['light.bound', 'sensor.temp', 's
 assert.equal(entities.find((entity) => entity.id === 'switch.auto').room, 'living');
 assert.equal(entities.find((entity) => entity.id === 'light.bound').kind, 'light');
 
+// The complete house stays rendered while walking; controls still belong to the current floor.
+app.plan.levels.push({ id: 'upper', rooms: [{ id: 'bedroom', area_id: 'upper_area', kind: 'room' }] });
+states['light.upper'] = { state: 'on', attributes: { area: 'upper_area' } };
+assert(collectRoomEntities(app).some(entity => entity.id === 'light.upper'));
+app.stage.walk = { levelId: 'ground' };
+assert(!collectRoomEntities(app).some(entity => entity.id === 'light.upper'));
+
 console.log('room-controls-data tests passed');

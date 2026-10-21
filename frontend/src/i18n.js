@@ -10,10 +10,12 @@ import assistantEn from './locales/assistant.en.json' with { type: 'json' };
 import assistantDe from './locales/assistant.de.json' with { type: 'json' };
 import dataEn from './locales/data.en.json' with { type: 'json' };
 import dataDe from './locales/data.de.json' with { type: 'json' };
+import releaseEn from './locales/release.en.json' with { type: 'json' };
+import releaseDe from './locales/release.de.json' with { type: 'json' };
 
 const messages = {
-  en: { ...panelEn, ...editorEn, ...assistantEn, ...dataEn, ...mediaEn, ...robotsEn },
-  de: { ...panelDe, ...editorDe, ...assistantDe, ...dataDe, ...mediaDe, ...robotsDe },
+  en: { ...panelEn, ...editorEn, ...assistantEn, ...dataEn, ...mediaEn, ...robotsEn, ...releaseEn },
+  de: { ...panelDe, ...editorDe, ...assistantDe, ...dataDe, ...mediaDe, ...robotsDe, ...releaseDe },
 };
 let language = 'en';
 

@@ -2,8 +2,8 @@
 
 <h1 align="center">HomeTwin</h1>
 
-<p align="center"><b>Dein Zuhause in 3D für Home Assistant.</b><br>
-Bauplan hochladen, KI liest die Räume, jedes Gerät dort bedienen, wo es ist.</p>
+<p align="center"><b>Dein Zuhause in 3D. Eine Integration. Eine Community, die mitbaut.</b><br>
+HomeTwin ist ein von der Community gestaltetes Open-Source-3D-Dashboard für Home Assistant. Starte optional mit KI aus einem echten Grundriss und verfeinere dein Haus im visuellen Editor. Der Contribution-Skill hilft dir, fehlende Objekte und Materialien zu erstellen und mit allen zu teilen.</p>
 
 <p align="center">
   <a href="https://knaackee.github.io/hometwin/demo/"><b>▶️ Live-Demo</b></a> ·
@@ -24,7 +24,10 @@ Bauplan hochladen, KI liest die Räume, jedes Gerät dort bedienen, wo es ist.</
 - 🚪 **Türen und Fenster**: Modelle aus der Bibliothek wählen, generische Rahmenfarben anpassen und Rollladenfarben separat festlegen. Hinweise beim Überfahren und der Objektbaum erleichtern die Auswahl kleiner Öffnungen.
 - ☀️ **PV und Dächer**: Sattel-, Walm-, Pult- und Flachdach, Gauben, Dachfenster und Regenrinnen. Einzelne PV-Module oder Reihen anordnen, Maße sowie Hoch- oder Querformat wählen.
 - 🌤️ **Echter Sonnenstand** mit Schatten für Standort und Tageszeit.
-- 🚶 **Begehen**: in Augenhöhe durchs Haus gehen, unterwegs bedienen und umstellen.
+- 🚶 **Begehen über mehrere Etagen**: Treppen über automatische oder eigene Durchbrüche verbinden und im vollständig dargestellten Haus hoch- und hinuntergehen. Wandkollision und Gravitation sind optional.
+- 🎨 **Bodenbeläge**: acht Muster mit anpassbarer Farbe, Verlegerichtung und Dielen- oder Fliesenmaßen. Verwendete Materialdefinitionen bleiben offline im Plan erhalten.
+- ✨ **Was ist neu?**: zweisprachige Release-Hinweise direkt in HomeTwin.
+- 🧭 **Raumauswahl**: oben neben den Etagen, mit Raumsymbolen, Suche und Live-Status.
 - 🧩 **Objekt-Bibliothek der Community**: echte Produkte und generische Objekte, einschließlich Türen und Fenstern. Neue gemergte Objekte werden über die Bibliothek verfügbar.
 - ⌨️ **Platzierung**: ausgewählte Objekte mit Maus oder Pfeiltasten bewegen; bei geeigneten Objekten Höhe und automatisches Aufsetzen verwenden.
 - 💾 **Backup**: komplette Konfiguration exportieren und importieren.
@@ -35,7 +38,6 @@ Bauplan hochladen, KI liest die Räume, jedes Gerät dort bedienen, wo es ist.</
 
 Alle Screenshots zeigen das integrierte Demohaus, kein privates Zuhause.
 
-**In Entwicklung:** Roboter-Arbeitsbereiche bleiben bis zum erfolgreichen Gerätetest ausgeblendet. Gespeicherte Bereiche bleiben erhalten; eine Gerätekompatibilität wird noch nicht zugesagt. Siehe [Implementierungsstand und Grenzen](docs/robot-work-areas.md).
 
 ## ⚡ Vom Bauplan zum 3D-Haus in ca. 2 Minuten
 
@@ -61,6 +63,16 @@ Gib deinem Agenten (Claude, Codex …) den Skill [`skills/add-object/SKILL.md`](
 **Noch ein paar Tokens übrig? Mach etwas für die Community daraus.** Schau dich zu Hause um: Welche Möbel und Geräte fehlen noch in HomeTwin? Mit ein paar Produktfotos, unserem [Contribution-Guide](CONTRIBUTING.md) und **Opus 5.5 oder einem vergleichbar leistungsfähigen Modell** kannst du sie zur Bibliothek beitragen. Gerne gleich als Sammlung für einen ganzen Raum, gebündelt in einem Pull Request. So machen wir HomeTwin gemeinsam besser.
 
 **Übersetzungen willkommen:** Englisch und Deutsch werden unterstützt. KI darf beim Übersetzen helfen; vor der Aufnahme muss ein Native Speaker jeden Text manuell prüfen und die Oberfläche testen. Dateien, Prüfungen und Review-Anforderungen stehen im [Leitfaden für Übersetzungen](CONTRIBUTING.md#translation-contributions).
+### Gepflegte Erweiterungspunkte
+
+- **Möbel, Dekoration und Produkte:** deklarative Rezepte für die Objektbibliothek.
+- **Gerätedarstellungen:** entitätsgebundene Darstellungen im Frontend; verfügbar mit einem Integrationsupdate.
+- **Türen und Fenster:** Bibliotheksmodelle für feste Fenster und einflügelige Drehtüren.
+- **Bodenbeläge:** prozedurale Materialdateien ohne heruntergeladene Texturen; verfügbar mit einem Integrationsupdate.
+- **Übersetzungen:** KI-Unterstützung ist erlaubt; ein Native Speaker prüft jeden Text und die laufende Oberfläche.
+
+Der [Contribution-Skill](skills/add-object/SKILL.md) erklärt die jeweiligen Dateien, Prüfungen und Beitragswege.
+
 ## 🗺️ Roadmap
 
 Weitere Community-Übersetzungen neben Englisch und Deutsch · „Braucht Aufmerksamkeit“ (Batterie, Ausfälle, Alarme) · Geräte-Sheets · parametrische Objekte · Kiosk-Modus.

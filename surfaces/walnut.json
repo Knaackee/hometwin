@@ -1,0 +1,12 @@
+{
+  "id": "walnut",
+  "name": { "en": "Walnut", "de": "Walnuss" },
+  "pattern": "planks",
+  "color": "#8f6c56",
+  "secondaryColor": "#684938",
+  "width": 0.18,
+  "length": 1.2,
+  "roughness": 0.75,
+  "license": "CC0-1.0",
+  "author": "HomeTwin contributors"
+}

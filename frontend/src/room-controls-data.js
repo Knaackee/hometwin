@@ -19,6 +19,7 @@ function statesFor(app, hass) {
 
 function visibleLevels(app) {
   const levels = app?.plan?.levels || [];
+  if (app?.stage?.walk) return levels.filter(level => level.id === app.stage.walk.levelId);
   return levels.filter((level) => !app?.stage?.isVisible || app.stage.isVisible(level));
 }
 

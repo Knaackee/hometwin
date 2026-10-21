@@ -62,6 +62,9 @@ function plate(levelObject, depth) {
 const defaultBuilt = buildLevel(level('default', 0, 2.6));
 const defaultPlate = plate(defaultBuilt, DEFAULT_SLAB);
 assert.ok(defaultPlate, 'default floor plate spans from -0.25 m to local 0');
+assert.ok(new THREE.Raycaster(new THREE.Vector3(2, 0.1, 2), new THREE.Vector3(0, -1, 0), 0, 1).intersectObject(defaultPlate, false).length, 'no-void plate keeps its top face');
+assert.ok(new THREE.Raycaster(new THREE.Vector3(2, -0.35, 2), new THREE.Vector3(0, 1, 0), 0, 1).intersectObject(defaultPlate, false).length, 'no-void plate keeps its underside');
+assert.ok(new THREE.Raycaster(new THREE.Vector3(-0.5, -0.125, 2), new THREE.Vector3(1, 0, 0), 0, 1).intersectObject(defaultPlate, false).length, 'no-void plate keeps its exterior side');
 
 const customLevel = level('custom', 0, 2.6, { slab: 0.4 });
 customLevel.rooms.push({ id: 'stairwell', name: 'Stairwell', kind: 'void', points: [[1.5, 1.5], [2.5, 1.5], [2.5, 2.5], [1.5, 2.5]] });

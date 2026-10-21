@@ -1,0 +1,12 @@
+{
+  "id": "concrete",
+  "name": { "en": "Concrete", "de": "Beton" },
+  "pattern": "noise",
+  "color": "#9a9c9e",
+  "secondaryColor": "#777a7d",
+  "width": 1,
+  "length": 1,
+  "roughness": 0.9,
+  "license": "CC0-1.0",
+  "author": "HomeTwin contributors"
+}

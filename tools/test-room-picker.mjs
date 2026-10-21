@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {roomPickerSummary,roomPickerRooms} from '../frontend/src/room-picker.js';
+import {setLanguage} from '../frontend/src/i18n.js';
+setLanguage('en');
+const states={'light.a':{state:'on'},'binary_sensor.a':{state:'on',attributes:{device_class:'window'}},'sensor.a':{state:'22',attributes:{device_class:'temperature',unit_of_measurement:'°C'}}};
+const entities=[{id:'light.a',room:'r'},{id:'light.a',room:'r'},{id:'binary_sensor.a',room:'r'},{id:'sensor.a',room:'r'}];
+const app={states:()=>states,levelSel:'a',plan:{levels:[{id:'a',rooms:[{id:'r',kind:'room',name:'Living'}]},{id:'b',rooms:[{id:'s',kind:'room',name:'Study'}]}]}};
+assert.deepEqual(roomPickerSummary(app,'r',entities),['Lights on: 1','Open contacts: 1']);
+states['light.a'].state='off';assert.equal(roomPickerSummary(app,'r',entities)[0],'Lights off');
+states['light.a'].state='unavailable';assert.equal(roomPickerSummary(app,'r',entities).length,2);assert(!roomPickerSummary(app,'r',entities).includes('Lights off'));
+assert.equal(roomPickerRooms(app,'Study').length,0);
+app.levelSel='all';assert.equal(roomPickerRooms(app,'Study')[0].room.id,'s');
+console.log('PASS room status deduplication, unavailable lights, status cap and floor-scoped search');
