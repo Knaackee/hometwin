@@ -26,8 +26,7 @@ HomeTwin is a community-driven, open-source 3D dashboard for Home Assistant. Bui
 
 <p align="center"><img src="docs/assets/screenshot-room.png" alt="HomeTwin: an illuminated room in the interactive 3D view" width="100%"></p>
 
-> [!WARNING]
-> **HomeTwin is a public beta.** It runs in daily use, but data formats can still change. Export a backup now and then (*Edit → House → Backup*). HomeTwin currently supports **English and German**. The interface defaults to English; choose German in the integration options. For setup help, see [Installation](#-installation). Want to improve HomeTwin? See [Contribute in 5 minutes](#-contribute-in-5-minutes).
+HomeTwin supports **English and German**. The interface defaults to English; choose German in the integration options.
 
 ## ✨ What it does
 - 🏠 **Your house in 3D**: storeys, rooms, walls, windows, doors, connected stairs, roofs and garden. Build it from a floor plan or draw it by hand in the visual editor.
